@@ -12,10 +12,14 @@ namespace OverHorizon.Server;
 /// <param name="PlayerViewDistanceChunks">Chebyshev chunk radius streamed around each logged-in player.</param>
 /// <param name="DefaultPlayerPermission">Initial <see cref="PermissionLevel"/> granted to newly connected players.</param>
 /// <param name="DataPackDirectory">Optional filesystem directory scanned for <c>*.datapack.json</c> content packs.</param>
+/// <param name="WorldSeed">Deterministic 64-bit world generation seed.</param>
+/// <param name="WorldSaveDirectory">Optional filesystem directory for persistent world chunk saving (<see langword="null"/> uses in-memory storage).</param>
 public sealed record ServerOptions(
     int TicksPerSecond = EngineConstants.TicksPerSecond,
     long? MaxTicks = null,
     int? ListenPort = null,
     int PlayerViewDistanceChunks = 1,
     PermissionLevel DefaultPlayerPermission = PermissionLevel.Everyone,
-    string? DataPackDirectory = null);
+    string? DataPackDirectory = null,
+    long WorldSeed = 0x5F3759DF42424242L,
+    string? WorldSaveDirectory = null);

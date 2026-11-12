@@ -21,4 +21,22 @@ internal static partial class ClientLog
         Level = LogLevel.Information,
         Message = "F3 Telemetry:\n{OverlayText}")]
     public static partial void DebugTelemetrySnapshot(ILogger logger, string overlayText);
+
+    [LoggerMessage(
+        EventId = 2003,
+        Level = LogLevel.Information,
+        Message = "[Chat] {Message}")]
+    public static partial void SystemChatReceived(ILogger logger, string message);
+
+    [LoggerMessage(
+        EventId = 2004,
+        Level = LogLevel.Information,
+        Message = "[Multiplayer] {Username} appeared in the world (EntityId={EntityId}).")]
+    public static partial void RemotePlayerJoined(ILogger logger, string username, long entityId);
+
+    [LoggerMessage(
+        EventId = 2005,
+        Level = LogLevel.Information,
+        Message = "[Multiplayer] Player EntityId={EntityId} left the world.")]
+    public static partial void RemotePlayerLeft(ILogger logger, long entityId);
 }

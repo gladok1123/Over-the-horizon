@@ -1,37 +1,73 @@
-# Over-the-horizon
+# Over-the-Horizon (`v0.1.0-alpha` — Play With Friends)
 
-Educational/technical reimplementation of a Minecraft-like voxel engine in C# (.NET 9) with Horizon-style multithreading. **Не аффилирован с Mojang/Microsoft. Не использует их код и ассеты.**
+Образовательная и инженерная clean-room реимплементация воксельного мультиплеерного движка в духе Minecraft Java Edition на **C# 13 / .NET 9** с многопоточной архитектурой в стиле **Horizon** (детерминированные фазы тика, Copy-on-Write снапшоты чанков, параллельный Greedy Meshing + Ambient Occlusion, Arch ECS, `System.IO.Pipelines` и `Channel<T>`).
 
-## Статус
+> **Дисклеймер:** Проект создан исключительно в образовательных и исследовательских целях. **Не аффилирован и не одобрен Mojang Studios или Microsoft.** Не содержит ни строчки кода Mojang/Horizon и не использует проприетарные текстуры или звуки (все текстуры и 3D-звуки синтезируются процедурно на лету).
 
-- Шаг 1 (анализ и план) — завершён. См. `docs/`.
-- Шаг 2 (скелет решения, DI, логирование, анализаторы, CI, архитектурные тесты) — завершён. См. `OverHorizon.sln`.
-- Шаг 3 (Core: математика, реестры, интернированный `BlockState`, `ItemStack`, бинарный NBT, детерминированный ГСЧ/хеширование и параллельный Arch ECS с 100-кратным тестом детерминизма) — завершён.
-- Шаг 4 (World: `BitStorage`, `PalettedContainer<T>`, `ChunkSection`, `ChunkColumn` + CoW `ChunkSnapshot`, `PerlinNoise`/`SimplexNoise2D` worldgen, пещеры, биомы, деревья, `LightingEngine` sky+block, `ChunkNbtSerializer`, `FileChunkStorage` на `System.IO.Pipelines` и `ChunkManager` с тикетами и `Channel<T>`) — завершён.
-- Шаг 5 (Physics + Gameplay: swept AABB с защитой от туннелирования, гравитация/плавучесть/течение и клеточная симуляция жидкостей, 41-слотовый инвентарь, крафт 2×2/3×3 shaped+shapeless, 3D воксельный A* pathfinding, правила спавна мобов, урон/здоровье и 100-кратный детерминированный тик World + Physics + Arch ECS) — завершён.
-- Шаг 6 (Networking + Server MVP: `VarInt`/`VarLong`, `PacketFramer` на `System.IO.Pipelines` с ZLib-сжатием и защитой от zip-bomb, `JavaProtocolCodec`, source-generated JSON статуса, асинхронный `NetworkServer` + `JavaProtocolClient`, `ChunkNetworkSerializer`, `ServerPlaySessionBridge` с авторитативным античитом движения, мультиплеерной синхронизацией блоков и чата, fuzz-тестами и headless TCP loopback интеграционными тестами) — завершён.
-- Шаг 7 (Modding API + Commands & Permissions: `ModManifest`, топологический резолвер зависимостей `ModDependencySorter`, выгружаемый `PluginAssemblyLoader` на `AssemblyLoadContext`, AOT JSON `DataPackLoader`, без-аллокационный `EventBus` с приоритетами и отменой событий, `CommandDispatcher` с `PermissionLevel` и встроенными командами `/help`, `/seed`, `/tp`, `/setblock`, `/op`) — завершён.
-- Шаг 8 (Client + Rendering + Audio на Silk.NET: процедурный RGBA8-атлас без проприетарных ассетов, параллельный Greedy Chunk Meshing с межчанковым face culling и плавным вершинным Ambient Occlusion, camera-relative рендерер Silk.NET OpenGL 3.3 + `HeadlessRenderSubsystem`, Gribb-Hartmann frustum culling, двухпроходная отрисовка непрозрачной геометрии и полупрозрачной воды с линейным туманом, F3 телеметрия, позиционное 3D-аудио Silk.NET OpenAL с процедурным 16-bit PCM синтезатором звуков и клиентская сессия singleplayer/multiplayer TCP) — завершён.
-- Решения: кастомный MVP, сервер-first, Silk.NET, Arch ECS, протокол Java + Bedrock (фазово).
+---
 
-## Сборка и тесты
+## Быстрый старт: Как поиграть с друзьями прямо сейчас
+
+Готовые самодостаточные сборки (**установка `.NET` не требуется!**) автоматически собираются для **Windows (`win-x64`)**, **Linux (`linux-x64`)** и **macOS (`osx-arm64`, `osx-x64`)** в разделе **[GitHub Releases — `v0.1.0-alpha`](https://github.com/gladok1123/Over-the-horizon/releases/tag/v0.1.0-alpha)**.
+
+1. **Скачайте и распакуйте** архив под вашу ОС (например, `OverHorizon-v0.1.0-alpha-win-x64.zip`).
+2. **Хост (кто держит мир):** запустите `Start-Server.bat` (или `./start-server.sh`). Мир автоматически сохраняется в папку `./world`.
+3. **Подключение к игре (вы и ваши друзья):**
+   - Запустите `Join-Friend-Server.bat` (или `./join-friend-server.sh`).
+   - Хост вводит `127.0.0.1:25565`, а друзья вводят ваш IP в **Radmin VPN / Tailscale** (`26.x.x.x:25565`) или публичный TCP-туннель **playit.gg** и свой никнейм!
+4. **Одиночная игра:** запустите `Play-Singleplayer.bat` (или `./play-singleplayer.sh`).
+
+Подробное руководство по сетевой игре и управлению: **[`docs/play-with-friends.md`](docs/play-with-friends.md)**.
+
+### Управление в игре
+- **`W / A / S / D`** — ходьба, **`Shift` / `Ctrl`** — бег, **`Пробел`** — прыжок, **Мышь** — камера.
+- **ЛКМ** — сломать подсвеченный блок (до 6 блоков), **ПКМ** — поставить выбранный блок.
+- **`1`..`9` или колесо мыши** — выбор блока в хотбаре (`булыжник`, `камень`, `земля`, `дёрн`, `доски`, `бревно`, `песок`, `листва`, `светящийся камень`).
+- **`F3`** — FPS, координаты и число друзей онлайн в заголовке окна; **`Esc`** — освободить курсор мыши.
+
+---
+
+## Завершённые итерации разработки (Шаги 1–9)
+
+- **Шаг 1 (Архитектура и ADR)** — чистая модульная DAG-архитектура из 11 проектов без циклических зависимостей, модель потоков и фаз тика (`docs/`).
+- **Шаг 2 (Решение, DI, анализаторы, CI)** — `OverHorizon.sln`, `TreatWarningsAsErrors=true`, 5 пакетов статических анализаторов, архитектурные тесты (`<= 500` строк на файл).
+- **Шаг 3 (`Core` + `Shared` + Arch ECS)** — математика, замороженные реестры, интернированный `BlockState`, `ItemStack`, бинарный NBT, детерминированный `Xoroshiro128PlusPlus` и параллельный планировщик систем ECS.
+- **Шаг 4 (`World`)** — `BitStorage`, `PalettedContainer<T>`, `ChunkColumn` + иммутабельный `ChunkSnapshot`, шумы Перлина/Симплекса, биомы, пещеры, деревья, BFS-освещение (sky + block), `.ohrg` регионы и `ChunkManager`.
+- **Шаг 5 (`Physics` + `Gameplay`)** — swept-AABB коллизии без туннелирования, жидкости, 41-слотовый инвентарь, крафт 2×2/3×3, мобы и 3D A* pathfinding.
+- **Шаг 6 (`Networking` + `Server`)** — `VarInt`, `PacketFramer` на `System.IO.Pipelines` с ZLib-сжатием, `JavaProtocolCodec`, серверный античит движения и репликация мира по TCP.
+- **Шаг 7 (`Modding` + Команды)** — выгружаемые плагины (`AssemblyLoadContext`), `EventBus`, JSON datapacks, диспетчер команд (`/help`, `/seed`, `/tp`, `/setblock`, `/op`).
+- **Шаг 8 (`Rendering` + `Audio` + `Client`)** — процедурный текстурный атлас, параллельный Greedy Chunk Meshing + плавный вершина-AO, camera-relative рендерер Silk.NET OpenGL 3.3 Core, Frustum Culling, позиционный 3D-звук OpenAL Soft.
+- **Шаг 9 (`v0.1.0-alpha` — Playable Multiplayer Build)** — 3D DDA рейкастер блоков (`VoxelRaycaster`), интерактивное разрушение и строительство, 9-слотовый хотбар и прицел, репликация и 3D-рендеринг анимированных аватаров друзей (`RemotePlayerSpawn`/`Move`/`Despawn`), автосохранение мира на диск (`--world-dir`), скрипты запуска в один клик и самодостаточные релизы в GitHub Releases.
+
+---
+
+## Сборка и запуск тестов из исходников
+
+Требуется **.NET 9 SDK (`9.0.100+`)**:
 
 ```bash
 dotnet restore OverHorizon.sln
-dotnet build OverHorizon.sln --configuration Release
+dotnet build OverHorizon.sln --configuration Release -warnaserror
 dotnet test tests/OverHorizon.Tests/OverHorizon.Tests.csproj --configuration Release
+```
+
+Запуск микробенчмарков `BenchmarkDotNet`:
+
+```bash
+dotnet run --project tests/OverHorizon.Benchmarks/OverHorizon.Benchmarks.csproj -c Release -- --filter "*"
 ```
 
 ## Документация
 
-- `docs/architecture.md` — целевая архитектура
-- `docs/threading.md` — модель потоков и фазы тика
-- `docs/roadmap.md` — MVP → Beta → 1.0
-- `docs/protocol.md` — стратегия протокола
-- `docs/modding.md` — Modding API
-- `docs/benchmarks.md` — цели производительности
-- `docs/adr/` — Architecture Decision Records
+- [`docs/play-with-friends.md`](docs/play-with-friends.md) — инструкция по запуску сервера и совместной игре с друзьями
+- [`docs/architecture.md`](docs/architecture.md) — модульная архитектура и границы слоёв
+- [`docs/threading.md`](docs/threading.md) — модель потоков, владение данными и фазы тика
+- [`docs/protocol.md`](docs/protocol.md) — таблица сетевых пакетов и стратегия протокола
+- [`docs/modding.md`](docs/modding.md) — Modding API, события и команды
+- [`docs/benchmarks.md`](docs/benchmarks.md) — цели производительности и бенчмарки
+- [`docs/roadmap.md`](docs/roadmap.md) — план развития `MVP → Beta → 1.0`
+- [`docs/adr/`](docs/adr/) — Architecture Decision Records (`ADR-0001` .. `ADR-0006`)
 
 ## Лицензия
 
-Проект — Apache-2.0 (планируется). Без копирования кода Mojang/Horizon и без проприетарных ассетов.
+Распространяется под лицензией **Apache-2.0**.

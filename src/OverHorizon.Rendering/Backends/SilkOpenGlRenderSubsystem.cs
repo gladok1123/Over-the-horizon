@@ -2,6 +2,7 @@ using System.Numerics;
 using Microsoft.Extensions.Logging;
 using OverHorizon.Core.Math;
 using OverHorizon.Rendering.Camera;
+using OverHorizon.Rendering.Hud;
 using OverHorizon.Rendering.Meshing;
 using OverHorizon.Rendering.Textures;
 using Silk.NET.Input;
@@ -31,6 +32,7 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
     private IInputContext? _inputContext;
     private GL? _gl;
     private SilkOpenGlProgramResources? _program;
+    private SilkOpenGlOverlayRenderer? _overlayRenderer;
     private long _frameCount;
     private bool _disposed;
 
@@ -200,7 +202,7 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
     }
 
     /// <inheritdoc />
-    public unsafe RenderFrameMetrics RenderFrame(FirstPersonCamera camera, float skyBrightness = 1.0f)
+    public unsafe RenderFrameMetrics RenderFrame(FirstPersonCamera camera, float skyBrightness = 1.0f, FrameOverlayState? overlay = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(camera);
@@ -241,13 +243,16 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
 
         var (visible, culled, drawCalls, triangles) = DrawOpaqueAndCollectTranslucent(gl, prog, in frustum, camera.Position);
         var (transCalls, transTris) = DrawTranslucentPass(gl, prog, camera.Position);
+        var overlayCalls = (overlay is not null && _overlayRenderer is not null)
+            ? _overlayRenderer.RenderOverlays(camera, overlay)
+            : 0;
 
         gl.BindVertexArray(0);
         _frameCount++;
         LastFrameMetrics = new RenderFrameMetrics(
             visible,
             culled,
-            drawCalls + transCalls,
+            drawCalls + transCalls + overlayCalls,
             triangles + transTris,
             _frameCount);
         return LastFrameMetrics;
@@ -378,6 +383,7 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
     {
         gl.Viewport(framebufferSize);
         _program = new SilkOpenGlProgramResources(gl);
+        _overlayRenderer = new SilkOpenGlOverlayRenderer(gl);
 
         RenderingLog.ContextInitialized(_logger, framebufferSize.X, framebufferSize.Y, _options.VSync);
 
@@ -458,6 +464,8 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         }
 
         _gpuSections.Clear();
+        _overlayRenderer?.Dispose();
+        _overlayRenderer = null;
         _program?.Dispose();
         _program = null;
         _inputContext?.Dispose();

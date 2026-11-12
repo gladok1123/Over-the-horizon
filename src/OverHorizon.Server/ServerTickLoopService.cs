@@ -5,14 +5,17 @@ using OverHorizon.Core;
 using OverHorizon.Modding.Events;
 using OverHorizon.Networking;
 using OverHorizon.Shared;
+using OverHorizon.World;
 
 namespace OverHorizon.Server;
 
 /// <summary>
-/// Hosted 20 TPS deterministic simulation loop for the dedicated server.
+/// Hosted 20 TPS deterministic simulation loop for the dedicated server with periodic and shutdown world persistence.
 /// </summary>
 public sealed class ServerTickLoopService : BackgroundService
 {
+    private const long AutoSaveIntervalTicks = 300; // Every 15 seconds at 20 TPS
+
     private readonly ITickSubsystem[] _subsystems;
     private readonly IClock _clock;
     private readonly ServerOptions _options;
@@ -20,18 +23,12 @@ public sealed class ServerTickLoopService : BackgroundService
     private readonly ILogger<ServerTickLoopService> _logger;
     private readonly INetworkServer? _networkServer;
     private readonly IEventBus? _eventBus;
+    private readonly IWorldSubsystem? _worldSubsystem;
     private long _completedTicks;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ServerTickLoopService"/> class.
     /// </summary>
-    /// <param name="subsystems">Registered tick subsystems.</param>
-    /// <param name="clock">Monotonic clock used to measure tick duration.</param>
-    /// <param name="options">Server tick configuration.</param>
-    /// <param name="lifetime">Host application lifetime controller.</param>
-    /// <param name="logger">Structured logger instance.</param>
-    /// <param name="networkServer">Optional network server started when <see cref="ServerOptions.ListenPort"/> is specified.</param>
-    /// <param name="eventBus">Optional mod event bus receiving <see cref="ServerTickEvent"/> notifications.</param>
     public ServerTickLoopService(
         IEnumerable<ITickSubsystem> subsystems,
         IClock clock,
@@ -39,7 +36,8 @@ public sealed class ServerTickLoopService : BackgroundService
         IHostApplicationLifetime lifetime,
         ILogger<ServerTickLoopService> logger,
         INetworkServer? networkServer = null,
-        IEventBus? eventBus = null)
+        IEventBus? eventBus = null,
+        IWorldSubsystem? worldSubsystem = null)
     {
         ArgumentNullException.ThrowIfNull(subsystems);
         ArgumentNullException.ThrowIfNull(clock);
@@ -62,6 +60,7 @@ public sealed class ServerTickLoopService : BackgroundService
         _logger = logger;
         _networkServer = networkServer;
         _eventBus = eventBus;
+        _worldSubsystem = worldSubsystem;
     }
 
     /// <summary>
@@ -74,8 +73,14 @@ public sealed class ServerTickLoopService : BackgroundService
     {
         if (_options.ListenPort is { } port && _networkServer is not null && _networkServer.BoundEndPoint is null)
         {
-            _ = await _networkServer.StartListeningAsync(new IPEndPoint(IPAddress.Any, port), stoppingToken)
+            var bound = await _networkServer.StartListeningAsync(new IPEndPoint(IPAddress.Any, port), stoppingToken)
                 .ConfigureAwait(false);
+            ServerLog.ListeningReady(
+                _logger,
+                bound.Port,
+                _options.PlayerViewDistanceChunks,
+                _options.WorldSeed,
+                _options.WorldSaveDirectory ?? "in-memory");
         }
 
         var tickBudget = TimeSpan.FromSeconds(1.0 / _options.TicksPerSecond);
@@ -109,6 +114,18 @@ public sealed class ServerTickLoopService : BackgroundService
                     _eventBus.Publish(ref tickEvent);
                 }
 
+                if (_worldSubsystem is not null &&
+                    !string.IsNullOrWhiteSpace(_options.WorldSaveDirectory) &&
+                    tickNumber > 0 &&
+                    (tickNumber % AutoSaveIntervalTicks) == 0)
+                {
+                    var saved = await _worldSubsystem.Chunks.SaveDirtyChunksAsync(stoppingToken).ConfigureAwait(false);
+                    if (saved > 0)
+                    {
+                        ServerLog.WorldSaved(_logger, saved);
+                    }
+                }
+
                 var elapsed = _clock.GetElapsedTime(startTimestamp);
                 if (elapsed > tickBudget)
                 {
@@ -137,6 +154,16 @@ public sealed class ServerTickLoopService : BackgroundService
         }
         finally
         {
+            if (_worldSubsystem is not null && !string.IsNullOrWhiteSpace(_options.WorldSaveDirectory))
+            {
+                var finalSaved = await _worldSubsystem.Chunks.SaveDirtyChunksAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
+                if (finalSaved > 0)
+                {
+                    ServerLog.WorldSaved(_logger, finalSaved);
+                }
+            }
+
             ServerLog.ServerStopped(_logger, Interlocked.Read(ref _completedTicks));
         }
     }

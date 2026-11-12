@@ -60,8 +60,7 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
 
         try
         {
-            var alc = ALContext.GetApi();
-            var al = AL.GetApi();
+            var (alc, al) = AcquireOpenAlApis();
 
             var device = alc.OpenDevice(string.Empty);
             if (device is null)
@@ -177,6 +176,18 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
 
         ReleaseOpenAlHandles();
         _disposed = true;
+    }
+
+    private static (ALContext Alc, AL Al) AcquireOpenAlApis()
+    {
+        try
+        {
+            return (ALContext.GetApi(soft: true), AL.GetApi(soft: true));
+        }
+        catch (FileNotFoundException)
+        {
+            return (ALContext.GetApi(soft: false), AL.GetApi(soft: false));
+        }
     }
 
     private void UploadSoundBank(AL al)

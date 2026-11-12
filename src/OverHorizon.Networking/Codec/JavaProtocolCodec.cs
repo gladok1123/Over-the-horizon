@@ -185,6 +185,32 @@ public sealed class JavaProtocolCodec : IProtocolCodec
                 PacketBufferWriter.WriteBool(destination, sysChat.IsOverlay);
                 break;
 
+            case RemotePlayerSpawnPacket remoteSpawn:
+                PacketBufferWriter.WriteVarInt(destination, 0x06);
+                PacketBufferWriter.WriteVarLong(destination, remoteSpawn.EntityId);
+                PacketBufferWriter.WriteUtf8(destination, remoteSpawn.Username, maxChars: 16);
+                PacketBufferWriter.WriteFloat64(destination, remoteSpawn.Position.X);
+                PacketBufferWriter.WriteFloat64(destination, remoteSpawn.Position.Y);
+                PacketBufferWriter.WriteFloat64(destination, remoteSpawn.Position.Z);
+                PacketBufferWriter.WriteFloat32(destination, remoteSpawn.YawDegrees);
+                PacketBufferWriter.WriteFloat32(destination, remoteSpawn.PitchDegrees);
+                break;
+
+            case RemotePlayerMovePacket remoteMove:
+                PacketBufferWriter.WriteVarInt(destination, 0x07);
+                PacketBufferWriter.WriteVarLong(destination, remoteMove.EntityId);
+                PacketBufferWriter.WriteFloat64(destination, remoteMove.Position.X);
+                PacketBufferWriter.WriteFloat64(destination, remoteMove.Position.Y);
+                PacketBufferWriter.WriteFloat64(destination, remoteMove.Position.Z);
+                PacketBufferWriter.WriteFloat32(destination, remoteMove.YawDegrees);
+                PacketBufferWriter.WriteFloat32(destination, remoteMove.PitchDegrees);
+                break;
+
+            case RemotePlayerDespawnPacket remoteDespawn:
+                PacketBufferWriter.WriteVarInt(destination, 0x08);
+                PacketBufferWriter.WriteVarLong(destination, remoteDespawn.EntityId);
+                break;
+
             default:
                 throw new ProtocolException($"Unsupported clientbound packet type '{packet.GetType().Name}'.");
         }
@@ -220,6 +246,18 @@ public sealed class JavaProtocolCodec : IProtocolCodec
             (ConnectionState.Play, 0x05) => new SystemChatPacket(
                 reader.ReadUtf8(maxChars: 4096),
                 reader.ReadBool()),
+            (ConnectionState.Play, 0x06) => new RemotePlayerSpawnPacket(
+                reader.ReadVarLong(),
+                reader.ReadUtf8(maxChars: 16),
+                new Vec3d(reader.ReadFloat64(), reader.ReadFloat64(), reader.ReadFloat64()),
+                reader.ReadFloat32(),
+                reader.ReadFloat32()),
+            (ConnectionState.Play, 0x07) => new RemotePlayerMovePacket(
+                reader.ReadVarLong(),
+                new Vec3d(reader.ReadFloat64(), reader.ReadFloat64(), reader.ReadFloat64()),
+                reader.ReadFloat32(),
+                reader.ReadFloat32()),
+            (ConnectionState.Play, 0x08) => new RemotePlayerDespawnPacket(reader.ReadVarLong()),
             _ => throw new ProtocolException($"Unknown clientbound packet ID 0x{packetId:X2} in state {state}."),
         };
 

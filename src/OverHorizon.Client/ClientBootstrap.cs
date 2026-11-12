@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using OverHorizon.Audio;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Registry;
@@ -35,28 +36,38 @@ public static class ClientBootstrap
         var username = "Explorer";
         var viewDistance = 3;
 
-        for (var i = 0; i < args.Length; i++)
+        var i = 0;
+        while (i < args.Length)
         {
             var token = args[i];
             if (string.Equals(token, "--headless-check", StringComparison.Ordinal))
             {
                 headlessCheckOnly = true;
+                i++;
+                continue;
             }
-            else if (string.Equals(token, "--headless", StringComparison.Ordinal))
+
+            if (string.Equals(token, "--headless", StringComparison.Ordinal))
             {
                 headless = true;
+                i++;
+                continue;
             }
-            else if (string.Equals(token, "--max-frames", StringComparison.Ordinal) && i + 1 < args.Length)
+
+            if (string.Equals(token, "--max-frames", StringComparison.Ordinal) && i + 1 < args.Length)
             {
                 if (int.TryParse(args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var frames) && frames > 0)
                 {
                     maxFrames = frames;
-                    i++;
                 }
+
+                i += 2;
+                continue;
             }
-            else if (string.Equals(token, "--connect", StringComparison.Ordinal) && i + 1 < args.Length)
+
+            if (string.Equals(token, "--connect", StringComparison.Ordinal) && i + 1 < args.Length)
             {
-                var endpoint = args[++i];
+                var endpoint = args[i + 1];
                 var colon = endpoint.LastIndexOf(':');
                 if (colon > 0 && ushort.TryParse(endpoint.AsSpan(colon + 1), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedPort))
                 {
@@ -67,21 +78,35 @@ public static class ClientBootstrap
                 {
                     serverHost = endpoint;
                 }
+
+                i += 2;
+                continue;
             }
-            else if (string.Equals(token, "--username", StringComparison.Ordinal) && i + 1 < args.Length)
+
+            if (string.Equals(token, "--username", StringComparison.Ordinal) && i + 1 < args.Length)
             {
-                var candidate = args[++i];
+                var candidate = args[i + 1];
                 if (!string.IsNullOrWhiteSpace(candidate) && candidate.Length <= 16)
                 {
                     username = candidate;
                 }
+
+                i += 2;
+                continue;
             }
-            else if (string.Equals(token, "--view-distance", StringComparison.Ordinal) && i + 1 < args.Length &&
-                int.TryParse(args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var vd) && vd is >= 1 and <= 16)
+
+            if (string.Equals(token, "--view-distance", StringComparison.Ordinal) && i + 1 < args.Length)
             {
-                viewDistance = vd;
-                i++;
+                if (int.TryParse(args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var vd) && vd is >= 1 and <= 16)
+                {
+                    viewDistance = vd;
+                }
+
+                i += 2;
+                continue;
             }
+
+            i++;
         }
 
         return new ClientOptions(
@@ -97,10 +122,6 @@ public static class ClientBootstrap
     /// <summary>
     /// Registers all client modules and services into <paramref name="services"/>.
     /// </summary>
-    /// <param name="services">Target service collection.</param>
-    /// <param name="options">Optional client options override.</param>
-    /// <param name="mods">Optional <see cref="IModInitializer"/> plugins to load prior to registry freeze.</param>
-    /// <returns>The same <see cref="IServiceCollection"/> for chaining.</returns>
     public static IServiceCollection ConfigureServices(
         IServiceCollection services,
         ClientOptions? options = null,
@@ -138,10 +159,6 @@ public static class ClientBootstrap
     /// <summary>
     /// Builds the client <see cref="IHost"/>.
     /// </summary>
-    /// <param name="args">Command-line arguments.</param>
-    /// <param name="options">Optional client options override.</param>
-    /// <param name="mods">Optional <see cref="IModInitializer"/> plugins.</param>
-    /// <returns>Configured <see cref="IHost"/> instance.</returns>
     public static IHost BuildHost(
         string[] args,
         ClientOptions? options = null,

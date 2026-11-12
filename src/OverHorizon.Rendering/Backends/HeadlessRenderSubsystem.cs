@@ -1,5 +1,6 @@
 using OverHorizon.Core.Math;
 using OverHorizon.Rendering.Camera;
+using OverHorizon.Rendering.Hud;
 using OverHorizon.Rendering.Meshing;
 using OverHorizon.Rendering.Textures;
 
@@ -79,10 +80,12 @@ public sealed class HeadlessRenderSubsystem : IRenderSubsystem
     }
 
     /// <inheritdoc />
-    public RenderFrameMetrics RenderFrame(FirstPersonCamera camera, float skyBrightness = 1.0f)
+    public RenderFrameMetrics RenderFrame(FirstPersonCamera camera, float skyBrightness = 1.0f, FrameOverlayState? overlay = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(camera);
+        _ = skyBrightness;
+        _ = overlay;
 
         var frustum = Frustum.FromCamera(camera);
         var visible = 0;

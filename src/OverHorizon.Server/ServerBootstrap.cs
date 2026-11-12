@@ -33,34 +33,88 @@ public static class ServerBootstrap
         long? maxTicks = null;
         int? listenPort = null;
         string? dataPackDir = null;
+        string? worldDir = null;
+        var viewDistance = 1;
+        var worldSeed = 0x5F3759DF42424242L;
+        var defaultPerm = PermissionLevel.Everyone;
 
-        for (var i = 0; i < args.Length; i++)
+        var i = 0;
+        while (i < args.Length)
         {
-            if (string.Equals(args[i], "--max-ticks", StringComparison.Ordinal) &&
+            var token = args[i];
+            if (string.Equals(token, "--max-ticks", StringComparison.Ordinal) &&
                 i + 1 < args.Length &&
                 long.TryParse(args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedTicks) &&
                 parsedTicks >= 0)
             {
                 maxTicks = parsedTicks;
-                i++;
+                i += 2;
+                continue;
             }
-            else if (string.Equals(args[i], "--port", StringComparison.Ordinal) &&
+
+            if (string.Equals(token, "--port", StringComparison.Ordinal) &&
                 i + 1 < args.Length &&
                 int.TryParse(args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedPort) &&
                 parsedPort is >= 0 and <= ushort.MaxValue)
             {
                 listenPort = parsedPort;
-                i++;
+                i += 2;
+                continue;
             }
-            else if (string.Equals(args[i], "--datapacks", StringComparison.Ordinal) &&
+
+            if (string.Equals(token, "--view-distance", StringComparison.Ordinal) &&
+                i + 1 < args.Length &&
+                int.TryParse(args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var vd) &&
+                vd is >= 1 and <= 16)
+            {
+                viewDistance = vd;
+                i += 2;
+                continue;
+            }
+
+            if (string.Equals(token, "--seed", StringComparison.Ordinal) &&
+                i + 1 < args.Length &&
+                long.TryParse(args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedSeed))
+            {
+                worldSeed = parsedSeed;
+                i += 2;
+                continue;
+            }
+
+            if (string.Equals(token, "--world-dir", StringComparison.Ordinal) &&
                 i + 1 < args.Length &&
                 !string.IsNullOrWhiteSpace(args[i + 1]))
             {
-                dataPackDir = args[++i];
+                worldDir = args[i + 1];
+                i += 2;
+                continue;
             }
+
+            if (string.Equals(token, "--datapacks", StringComparison.Ordinal) &&
+                i + 1 < args.Length &&
+                !string.IsNullOrWhiteSpace(args[i + 1]))
+            {
+                dataPackDir = args[i + 1];
+                i += 2;
+                continue;
+            }
+
+            if (string.Equals(token, "--op-all", StringComparison.Ordinal))
+            {
+                defaultPerm = PermissionLevel.Operator;
+            }
+
+            i++;
         }
 
-        return new ServerOptions(MaxTicks: maxTicks, ListenPort: listenPort, DataPackDirectory: dataPackDir);
+        return new ServerOptions(
+            MaxTicks: maxTicks,
+            ListenPort: listenPort,
+            PlayerViewDistanceChunks: viewDistance,
+            DefaultPlayerPermission: defaultPerm,
+            DataPackDirectory: dataPackDir,
+            WorldSeed: worldSeed,
+            WorldSaveDirectory: worldDir);
     }
 
     /// <summary>
@@ -102,7 +156,8 @@ public static class ServerBootstrap
                 sp.GetRequiredService<CoreRegistries>(),
                 sp.GetRequiredService<ServerOptions>(),
                 sp.GetRequiredService<IEventBus>(),
-                sp.GetRequiredService<ICommandDispatcher>());
+                sp.GetRequiredService<ICommandDispatcher>(),
+                sp.GetRequiredService<INetworkServer>);
 
             BuiltInServerCommands.RegisterAll(
                 sp.GetRequiredService<ICommandDispatcher>(),
@@ -119,7 +174,7 @@ public static class ServerBootstrap
         services.AddNetworkingModule();
         services.AddGameplayModule();
         services.AddPhysicsModule();
-        services.AddWorldModule();
+        services.AddWorldModule(effectiveOptions.WorldSeed, effectiveOptions.WorldSaveDirectory);
 
         services.AddSingleton<ServerTickLoopService>(static sp => new ServerTickLoopService(
             sp.GetServices<ITickSubsystem>(),
@@ -128,7 +183,8 @@ public static class ServerBootstrap
             sp.GetRequiredService<IHostApplicationLifetime>(),
             sp.GetRequiredService<ILogger<ServerTickLoopService>>(),
             sp.GetService<INetworkServer>(),
-            sp.GetService<IEventBus>()));
+            sp.GetService<IEventBus>(),
+            sp.GetService<IWorldSubsystem>()));
         services.AddSingleton<IHostedService>(static sp => sp.GetRequiredService<ServerTickLoopService>());
 
         return services;

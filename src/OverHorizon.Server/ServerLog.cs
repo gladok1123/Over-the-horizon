@@ -21,4 +21,16 @@ internal static partial class ServerLog
         Level = LogLevel.Warning,
         Message = "Tick {TickNumber} exceeded budget ({ElapsedMilliseconds:F2} ms > {BudgetMilliseconds:F2} ms).")]
     public static partial void TickOverrun(ILogger logger, long tickNumber, double elapsedMilliseconds, double budgetMilliseconds);
+
+    [LoggerMessage(
+        EventId = 1003,
+        Level = LogLevel.Information,
+        Message = "Multiplayer TCP listener READY on port {Port} (ViewDistance={ViewDistance} chunks, Seed={WorldSeed}, SaveDir={SaveDir}). Friends can connect via --connect <your-ip>:{Port}")]
+    public static partial void ListeningReady(ILogger logger, int port, int viewDistance, long worldSeed, string saveDir);
+
+    [LoggerMessage(
+        EventId = 1004,
+        Level = LogLevel.Information,
+        Message = "Saved {SavedChunkCount} modified chunk(s) to disk.")]
+    public static partial void WorldSaved(ILogger logger, int savedChunkCount);
 }

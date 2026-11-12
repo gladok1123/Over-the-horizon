@@ -1,28 +1,25 @@
-using System.Net;
-using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using OverHorizon.Audio;
+using OverHorizon.Core.Biomes;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
-using OverHorizon.Gameplay;
-using OverHorizon.Networking.Client;
 using OverHorizon.Networking.Packets;
 using OverHorizon.Networking.Packets.Clientbound;
 using OverHorizon.Networking.Packets.Serverbound;
 using OverHorizon.Rendering;
 using OverHorizon.Rendering.Backends;
 using OverHorizon.Rendering.Hud;
-using OverHorizon.Rendering.Meshing;
 using OverHorizon.Rendering.Textures;
 using OverHorizon.World;
 using OverHorizon.World.ChunkManagement;
 using OverHorizon.World.Serialization;
+using OverHorizon.World.Storage;
 
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Drives the voxel client runtime across both multiplayer (<see cref="JavaProtocolClient"/>) and local singleplayer
-/// (<see cref="IWorldSubsystem"/>) sessions, supporting interactive Silk.NET OpenGL windowing and headless simulation frames.
+/// Drives the voxel client runtime across both multiplayer and local singleplayer sessions,
+/// supporting interactive Silk.NET OpenGL windowing and headless simulation frames.
 /// </summary>
 public sealed class ClientSessionRunner : IAsyncDisposable
 {
@@ -31,7 +28,6 @@ public sealed class ClientSessionRunner : IAsyncDisposable
     private readonly ClientOptions _options;
     private readonly IBlockRegistry _blocks;
     private readonly IWorldSubsystem _localWorld;
-    private readonly IGameplaySubsystem _gameplay;
     private readonly IRenderSubsystem _renderer;
     private readonly IAudioSubsystem _audio;
     private readonly ILogger<ClientSessionRunner> _logger;
@@ -39,19 +35,15 @@ public sealed class ClientSessionRunner : IAsyncDisposable
     private readonly ClientWorldCache _worldCache;
     private readonly ClientPlayerController _player;
     private readonly ClientInputBinder _inputBinder;
-    private readonly Channel<IClientboundPacket> _inboundPackets = Channel.CreateUnbounded<IClientboundPacket>();
-    private readonly Channel<IServerboundPacket> _outboundPackets = Channel.CreateUnbounded<IServerboundPacket>();
-    private readonly Channel<IReadOnlyList<ChunkNeighborhood>> _meshJobs = Channel.CreateUnbounded<IReadOnlyList<ChunkNeighborhood>>();
-    private readonly Channel<(ChunkPos Position, IReadOnlyList<SectionMeshData> Sections)> _completedMeshes =
-        Channel.CreateUnbounded<(ChunkPos, IReadOnlyList<SectionMeshData>)>();
+    private readonly ClientRemotePlayerTracker _remotePlayers;
+    private readonly ClientAsyncMeshQueue _meshQueue;
+    private readonly ClientMultiplayerTransport _transport = new();
 
-    private JavaProtocolClient? _networkClient;
-    private Task? _networkReadTask;
-    private Task? _networkWriteTask;
-    private Task? _meshWorkerTask;
     private CancellationTokenSource? _sessionCts;
     private double _lastFps = 60.0;
     private Vec3d _lastSentFeetPosition;
+    private float _lastSentYaw;
+    private float _lastSentPitch;
     private string _latestDebugText = string.Empty;
 
     /// <summary>
@@ -61,7 +53,6 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         ClientOptions options,
         IBlockRegistry blocks,
         IWorldSubsystem localWorld,
-        IGameplaySubsystem gameplay,
         IRenderSubsystem renderer,
         IAudioSubsystem audio,
         ILogger<ClientSessionRunner> logger)
@@ -69,7 +60,6 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(blocks);
         ArgumentNullException.ThrowIfNull(localWorld);
-        ArgumentNullException.ThrowIfNull(gameplay);
         ArgumentNullException.ThrowIfNull(renderer);
         ArgumentNullException.ThrowIfNull(audio);
         ArgumentNullException.ThrowIfNull(logger);
@@ -77,7 +67,6 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         _options = options;
         _blocks = blocks;
         _localWorld = localWorld;
-        _gameplay = gameplay;
         _renderer = renderer;
         _audio = audio;
         _logger = logger;
@@ -85,9 +74,11 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         _atlas = ProceduralAtlasGenerator.CreateDefault(blocks);
         _renderer.UploadAtlas(_atlas);
         _worldCache = new ClientWorldCache(blocks, _atlas);
-        _player = new ClientPlayerController(new Vec3d(0.5, 80.0, 0.5));
+        _player = new ClientPlayerController(new Vec3d(0.5, 80.0, 0.5), blocks);
         _player.Camera.SetAspectRatio(1280, 720);
-        _inputBinder = new ClientInputBinder(_player, _logger, () => _latestDebugText);
+        _inputBinder = new ClientInputBinder(_player, _audio, _logger, () => _latestDebugText);
+        _remotePlayers = new ClientRemotePlayerTracker(_logger);
+        _meshQueue = new ClientAsyncMeshQueue(blocks, _atlas);
     }
 
     /// <summary>Gets the client-side world and mesh cache.</summary>
@@ -99,6 +90,9 @@ public sealed class ClientSessionRunner : IAsyncDisposable
     /// <summary>Gets the procedural texture atlas uploaded to the renderer.</summary>
     public TextureAtlasData Atlas => _atlas;
 
+    /// <summary>Gets the number of remote multiplayer friends currently visible to this client.</summary>
+    public int RemotePlayerCount => _remotePlayers.Count;
+
     /// <summary>Gets the most recently formatted F3 debug telemetry text.</summary>
     public string LatestDebugOverlayText => _latestDebugText;
 
@@ -106,8 +100,6 @@ public sealed class ClientSessionRunner : IAsyncDisposable
     /// Connects to a remote TCP multiplayer server (when <see cref="ClientOptions.ServerHost"/> is set)
     /// or primes the local singleplayer world around spawn.
     /// </summary>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Completion task.</returns>
     public async ValueTask InitializeSessionAsync(CancellationToken cancellationToken = default)
     {
         _ = _audio.TryInitializeDevice();
@@ -115,31 +107,115 @@ public sealed class ClientSessionRunner : IAsyncDisposable
 
         if (!string.IsNullOrWhiteSpace(_options.ServerHost))
         {
-            var addresses = await Dns.GetHostAddressesAsync(_options.ServerHost, cancellationToken).ConfigureAwait(false);
-            var endpoint = new IPEndPoint(addresses[0], _options.ServerPort);
-            var client = await JavaProtocolClient.ConnectTcpAsync(endpoint, cancellationToken).ConfigureAwait(false);
-            var login = await client.LoginAsync(_options.Username, cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            _networkClient = client;
-            _networkReadTask = PumpServerPacketsAsync(client, _sessionCts.Token);
-            _networkWriteTask = PumpOutboundPacketsAsync(client, _sessionCts.Token);
+            var login = await _transport.ConnectAndLoginAsync(
+                _options.ServerHost,
+                _options.ServerPort,
+                _options.Username,
+                cancellationToken).ConfigureAwait(false);
 
             ClientLog.MultiplayerConnected(_logger, _options.ServerHost, _options.ServerPort, login.Username, login.AssignedEntityId);
             return;
         }
 
         await StreamLocalWorldStepAsync(maxChunks: 25, cancellationToken).ConfigureAwait(false);
+        if (_localWorld.Chunks.TryGetSnapshot(new ChunkPos(0, 0), out var centerSnap))
+        {
+            var spawnY = centerSnap.GetHeight(HeightmapType.MotionBlocking, 0, 0);
+            _player.ApplyAuthoritativePose(new Vec3d(0.5, spawnY, 0.5), 0.0f, 0.0f);
+        }
+    }
+
+    /// <summary>
+    /// Breaks the block currently targeted by the player's crosshair (singleplayer or multiplayer).
+    /// </summary>
+    public bool TryBreakTargetedBlock()
+    {
+        if (_player.CurrentTarget is not { } target)
+        {
+            return false;
+        }
+
+        var existing = _worldCache.GetBlockState(target.BlockPosition);
+        if (existing.IsAir || existing == _blocks.GetDefaultState(BuiltInBlocks.Bedrock))
+        {
+            return false;
+        }
+
+        if (_transport.IsConnected)
+        {
+            _transport.EnqueueOutbound(
+                new PlayerBlockActionPacket(PlayerBlockActionKind.BreakBlock, target.BlockPosition, target.HitFace, 0));
+            return true;
+        }
+
+        if (!_localWorld.SetBlockState(target.BlockPosition, BlockState.Air))
+        {
+            return false;
+        }
+
+        SyncLocalSnapshots();
+        var center = new Vec3d(target.BlockPosition.X + 0.5, target.BlockPosition.Y + 0.5, target.BlockPosition.Z + 0.5);
+        _audio.PlayPositional(SoundCue.BlockBreak, center, gain: 0.7f);
+        _player.RefreshRaycastTarget(_worldCache);
+        return true;
+    }
+
+    /// <summary>
+    /// Places the currently selected hotbar block onto the adjacent face of <see cref="ClientPlayerController.CurrentTarget"/>.
+    /// </summary>
+    public bool TryPlaceSelectedBlock()
+    {
+        if (_player.CurrentTarget is not { } target)
+        {
+            return false;
+        }
+
+        var placePos = target.AdjacentPosition;
+        var playerBox = BoundingBox.FromEntityFeet(
+            _player.FeetPosition,
+            ClientPlayerController.PlayerWidth,
+            ClientPlayerController.PlayerHeight).Inflate(-1e-4, -1e-4, -1e-4);
+
+        if (playerBox.Intersects(BoundingBox.FromBlock(placePos)))
+        {
+            return false;
+        }
+
+        var stateToPlace = _player.Hotbar.SelectedBlockState;
+        if (_transport.IsConnected)
+        {
+            _transport.EnqueueOutbound(
+                new PlayerBlockActionPacket(PlayerBlockActionKind.PlaceBlock, placePos, target.HitFace, stateToPlace.Id));
+            return true;
+        }
+
+        if (!_localWorld.SetBlockState(placePos, stateToPlace))
+        {
+            return false;
+        }
+
+        SyncLocalSnapshots();
+        var center = new Vec3d(placePos.X + 0.5, placePos.Y + 0.5, placePos.Z + 0.5);
+        _audio.PlayPositional(SoundCue.BlockPlace, center, gain: 0.7f);
+        _player.RefreshRaycastTarget(_worldCache);
+        return true;
+    }
+
+    /// <summary>
+    /// Sends a chat message or slash command (e.g. <c>/help</c>, <c>/seed</c>, <c>/tp</c>) when connected to multiplayer.
+    /// </summary>
+    public void SendChatOrCommand(string message)
+    {
+        if (_transport.IsConnected && !string.IsNullOrWhiteSpace(message))
+        {
+            _transport.EnqueueOutbound(new ChatMessagePacket(message));
+        }
     }
 
     /// <summary>
     /// Executes <paramref name="frameCount"/> deterministic client update, parallel chunk-meshing, and render frames
-    /// without opening an OS window (used by headless runs and integration tests).
+    /// without opening an OS window.
     /// </summary>
-    /// <param name="frameCount">Number of frames to simulate.</param>
-    /// <param name="deltaSeconds">Simulated frame delta seconds.</param>
-    /// <param name="moveForward">Optional forward movement wish in <c>[-1, 1]</c>.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Metrics from the final rendered frame.</returns>
     public async ValueTask<RenderFrameMetrics> RunHeadlessFramesAsync(
         int frameCount,
         double deltaSeconds = 1.0 / 60.0,
@@ -151,8 +227,8 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         for (var i = 0; i < frameCount; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await StepFrameAsync(deltaSeconds, moveForward, 0.0f, jump: false, cancellationToken).ConfigureAwait(false);
-            lastMetrics = _renderer.RenderFrame(_player.Camera);
+            await StepFrameAsync(deltaSeconds, (moveForward, 0.0f, false, false), cancellationToken).ConfigureAwait(false);
+            lastMetrics = _renderer.RenderFrame(_player.Camera, overlay: BuildOverlayState());
             RefreshDebugTelemetry(lastMetrics, deltaSeconds);
         }
 
@@ -162,8 +238,6 @@ public sealed class ClientSessionRunner : IAsyncDisposable
     /// <summary>
     /// Runs the interactive Silk.NET OpenGL 3.3 window loop (or falls back to headless frames when configured headless).
     /// </summary>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Completion task.</returns>
     public async ValueTask RunAsync(CancellationToken cancellationToken = default)
     {
         if (_options.Headless || _renderer is not SilkOpenGlRenderSubsystem silkRenderer)
@@ -174,100 +248,87 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         }
 
         var sessionToken = _sessionCts?.Token ?? cancellationToken;
-        _meshWorkerTask = PumpMeshJobsAsync(sessionToken);
+        _meshQueue.Start(sessionToken);
 
         silkRenderer.RunWindowLoop(
             onUpdate: dt =>
             {
                 _inputBinder.EnsureBound(silkRenderer.InputContext);
-                var (fwd, strafe, jump) = ClientInputBinder.PollMovement(silkRenderer.InputContext);
+                var movement = ClientInputBinder.PollMovement(silkRenderer.InputContext);
                 DrainInboundPackets();
 
-                if (_networkClient is null)
+                if (!_transport.IsConnected)
                 {
                     SyncLocalSnapshots();
                 }
 
-                _player.StepMovement(_worldCache, _blocks, _audio, fwd, strafe, jump, dt);
+                _player.StepMovement(_worldCache, _blocks, _audio, movement, dt);
+                var (brk, plc) = _inputBinder.ConsumeBlockActionRequests();
+                if (brk)
+                {
+                    _ = TryBreakTargetedBlock();
+                }
+
+                if (plc)
+                {
+                    _ = TryPlaceSelectedBlock();
+                }
+
                 EnqueueOutboundMovementIfChanged();
-                DispatchAndUploadWindowMeshes(silkRenderer);
+                _meshQueue.DispatchAndUpload(_worldCache, silkRenderer);
             },
             onRender: dt =>
             {
-                var metrics = silkRenderer.RenderFrame(_player.Camera);
+                var metrics = silkRenderer.RenderFrame(_player.Camera, overlay: BuildOverlayState());
                 RefreshDebugTelemetry(metrics, dt);
 
-                if (_player.IsDebugOverlayVisible)
-                {
-                    silkRenderer.WindowTitle =
-                        $"Over-the-Horizon | {_lastFps:F0} FPS | ({_player.FeetPosition.X:F1}, {_player.FeetPosition.Y:F1}, {_player.FeetPosition.Z:F1}) | Chunks: {_worldCache.LoadedChunkCount}";
-                }
+                var slotNum = _player.Hotbar.SelectedSlot + 1;
+                var blockName = _player.Hotbar.SelectedBlockKey.Path;
+                silkRenderer.WindowTitle = _player.IsDebugOverlayVisible
+                    ? $"Over-the-Horizon | {_lastFps:F0} FPS | ({_player.FeetPosition.X:F1}, {_player.FeetPosition.Y:F1}, {_player.FeetPosition.Z:F1}) | [{slotNum}: {blockName}] | Friends: {_remotePlayers.Count}"
+                    : $"Over-the-Horizon — [{slotNum}: {blockName}] (WASD+Space, LMB=Break, RMB=Place, 1-9=Block, F3=Info, Esc=Mouse)";
             },
             onResize: (w, h) => _player.Camera.SetAspectRatio(w, h),
             cancellationToken: cancellationToken);
 
-        _meshJobs.Writer.TryComplete();
-        await AwaitQuietlyAsync(_meshWorkerTask).ConfigureAwait(false);
-        _meshWorkerTask = null;
+        await _meshQueue.DisposeAsync().ConfigureAwait(false);
     }
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        _outboundPackets.Writer.TryComplete();
-        _meshJobs.Writer.TryComplete();
-
         if (_sessionCts is not null)
         {
             await _sessionCts.CancelAsync().ConfigureAwait(false);
         }
 
-        await AwaitQuietlyAsync(_networkReadTask).ConfigureAwait(false);
-        await AwaitQuietlyAsync(_networkWriteTask).ConfigureAwait(false);
-        await AwaitQuietlyAsync(_meshWorkerTask).ConfigureAwait(false);
+        await _meshQueue.DisposeAsync().ConfigureAwait(false);
+        await _transport.DisposeAsync().ConfigureAwait(false);
 
         _sessionCts?.Dispose();
         _sessionCts = null;
-
-        if (_networkClient is not null)
-        {
-            await _networkClient.DisposeAsync().ConfigureAwait(false);
-            _networkClient = null;
-        }
     }
 
-    private static async ValueTask AwaitQuietlyAsync(Task? task)
-    {
-        if (task is null)
-        {
-            return;
-        }
-
-        try
-        {
-            await task.ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            // Normal teardown cancellation.
-        }
-    }
+    private FrameOverlayState BuildOverlayState() =>
+        new(
+            _player.CurrentTarget?.BlockPosition,
+            _player.Hotbar.SelectedSlot,
+            _player.Hotbar.SlotColors,
+            _remotePlayers.BuildSnapshot());
 
     private async ValueTask StepFrameAsync(
         double deltaSeconds,
-        float moveForward,
-        float moveStrafe,
-        bool jump,
+        (float Forward, float Strafe, bool Jump, bool Sprint) movement,
         CancellationToken ct)
     {
         DrainInboundPackets();
 
-        if (_networkClient is null)
+        if (!_transport.IsConnected)
         {
             await StreamLocalWorldStepAsync(maxChunks: 8, ct).ConfigureAwait(false);
         }
 
-        _player.StepMovement(_worldCache, _blocks, _audio, moveForward, moveStrafe, jump, deltaSeconds);
+        _player.StepMovement(_worldCache, _blocks, _audio, movement, deltaSeconds);
         EnqueueOutboundMovementIfChanged();
         _ = await _worldCache.RebuildDirtyMeshesAsync(_renderer, maxColumns: 16, ct).ConfigureAwait(false);
     }
@@ -299,120 +360,70 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         }
     }
 
-    private async Task PumpServerPacketsAsync(JavaProtocolClient client, CancellationToken ct)
-    {
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                var packet = await client.ReceivePacketAsync(ct).ConfigureAwait(false);
-                if (packet is KeepAliveRequestPacket keepAlive)
-                {
-                    _ = _outboundPackets.Writer.TryWrite(new KeepAliveResponsePacket(keepAlive.KeepAliveId));
-                    continue;
-                }
-
-                _ = _inboundPackets.Writer.TryWrite(packet);
-            }
-        }
-        catch (Exception ex) when (ex is OperationCanceledException or IOException or ProtocolException)
-        {
-            _inboundPackets.Writer.TryComplete();
-        }
-    }
-
-    private async Task PumpOutboundPacketsAsync(JavaProtocolClient client, CancellationToken ct)
-    {
-        try
-        {
-            await foreach (var packet in _outboundPackets.Reader.ReadAllAsync(ct).ConfigureAwait(false))
-            {
-                await client.SendPlayPacketAsync(packet, ct).ConfigureAwait(false);
-            }
-        }
-        catch (Exception ex) when (ex is OperationCanceledException or IOException or ProtocolException)
-        {
-            // Connection closed.
-        }
-    }
-
-    private async Task PumpMeshJobsAsync(CancellationToken ct)
-    {
-        try
-        {
-            await foreach (var batch in _meshJobs.Reader.ReadAllAsync(ct).ConfigureAwait(false))
-            {
-                foreach (var nb in batch)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    var sections = ParallelChunkMesher.MeshColumn(in nb, _blocks, _atlas);
-                    _ = _completedMeshes.Writer.TryWrite((nb.Center.Position, sections));
-                }
-            }
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            // Shutdown requested.
-        }
-    }
-
-    private void DispatchAndUploadWindowMeshes(SilkOpenGlRenderSubsystem silkRenderer)
-    {
-        var dirty = _worldCache.DequeueDirtyNeighborhoods(maxColumns: 4);
-        if (dirty.Count > 0)
-        {
-            _ = _meshJobs.Writer.TryWrite(dirty);
-        }
-
-        while (_completedMeshes.Reader.TryRead(out var completed))
-        {
-            silkRenderer.RemoveChunkMeshes(completed.Position);
-            foreach (var mesh in completed.Sections)
-            {
-                silkRenderer.UploadOrReplaceSectionMesh(mesh);
-            }
-        }
-    }
-
     private void DrainInboundPackets()
     {
-        while (_inboundPackets.Reader.TryRead(out var packet))
+        while (_transport.TryReadInbound(out var packet))
         {
-            switch (packet)
-            {
-                case SynchronizePlayerPositionPacket syncPos:
-                    _player.ApplyAuthoritativePose(syncPos.Position, syncPos.YawDegrees, syncPos.PitchDegrees);
-                    _lastSentFeetPosition = syncPos.Position;
-                    break;
+            ApplyInboundPacket(packet);
+        }
+    }
 
-                case ChunkDataPacket chunkPkt:
-                    var col = ChunkNetworkSerializer.DeserializeColumn(chunkPkt.Position, chunkPkt.Payload.Span, _blocks);
-                    _worldCache.UpsertColumn(col);
-                    break;
+    private void ApplyInboundPacket(IClientboundPacket packet)
+    {
+        if (_remotePlayers.TryApply(packet))
+        {
+            return;
+        }
 
-                case BlockUpdatePacket blockPkt:
-                    var newState = new BlockState(blockPkt.BlockStateId);
-                    if (_worldCache.ApplyBlockUpdate(blockPkt.Position, newState))
-                    {
-                        var soundPos = new Vec3d(blockPkt.Position.X + 0.5, blockPkt.Position.Y + 0.5, blockPkt.Position.Z + 0.5);
-                        _audio.PlayPositional(newState.IsAir ? SoundCue.BlockBreak : SoundCue.BlockPlace, soundPos, gain: 0.7f);
-                    }
+        switch (packet)
+        {
+            case SynchronizePlayerPositionPacket syncPos:
+                _player.ApplyAuthoritativePose(syncPos.Position, syncPos.YawDegrees, syncPos.PitchDegrees);
+                _lastSentFeetPosition = syncPos.Position;
+                break;
 
-                    break;
-            }
+            case ChunkDataPacket chunkPkt:
+                var col = ChunkNetworkSerializer.DeserializeColumn(chunkPkt.Position, chunkPkt.Payload.Span, _blocks);
+                _worldCache.UpsertColumn(col);
+                break;
+
+            case BlockUpdatePacket blockPkt:
+                var newState = new BlockState(blockPkt.BlockStateId);
+                if (_worldCache.ApplyBlockUpdate(blockPkt.Position, newState))
+                {
+                    var soundPos = new Vec3d(blockPkt.Position.X + 0.5, blockPkt.Position.Y + 0.5, blockPkt.Position.Z + 0.5);
+                    _audio.PlayPositional(newState.IsAir ? SoundCue.BlockBreak : SoundCue.BlockPlace, soundPos, gain: 0.7f);
+                }
+
+                break;
+
+            case SystemChatPacket chatPkt:
+                ClientLog.SystemChatReceived(_logger, chatPkt.Message);
+                break;
         }
     }
 
     private void EnqueueOutboundMovementIfChanged()
     {
-        if (_networkClient is null || _player.FeetPosition.DistanceSquaredTo(_lastSentFeetPosition) <= 0.0004)
+        if (!_transport.IsConnected)
+        {
+            return;
+        }
+
+        var posDeltaSq = (_player.FeetPosition - _lastSentFeetPosition).LengthSquared;
+        var rotChanged = MathF.Abs(_player.Camera.YawDegrees - _lastSentYaw) > 0.5f ||
+            MathF.Abs(_player.Camera.PitchDegrees - _lastSentPitch) > 0.5f;
+
+        if (posDeltaSq <= 0.0004 && !rotChanged)
         {
             return;
         }
 
         _lastSentFeetPosition = _player.FeetPosition;
-        _ = _outboundPackets.Writer.TryWrite(
-            new MovePlayerPacket(_player.FeetPosition, _player.Camera.YawDegrees, _player.Camera.PitchDegrees, _player.OnGround));
+        _lastSentYaw = _player.Camera.YawDegrees;
+        _lastSentPitch = _player.Camera.PitchDegrees;
+        _transport.EnqueueOutbound(
+            new MovePlayerPacket(_player.FeetPosition, _lastSentYaw, _lastSentPitch, _player.OnGround));
     }
 
     private void RefreshDebugTelemetry(RenderFrameMetrics metrics, double dt)
@@ -430,10 +441,10 @@ public sealed class ClientSessionRunner : IAsyncDisposable
             Facing: _player.Camera.CardinalFacing,
             YawDegrees: _player.Camera.YawDegrees,
             PitchDegrees: _player.Camera.PitchDegrees,
-            Biome: OverHorizon.Core.Biomes.BuiltInBiomes.Plains,
+            Biome: BuiltInBiomes.Plains,
             VisibleSections: metrics.VisibleSections,
             TotalMeshedSections: _renderer.UploadedSectionCount,
-            DrawnVertices: (long)metrics.TrianglesSubmitted * 3L,
+            DrawnVertices: metrics.TrianglesSubmitted * 3,
             ManagedMemoryBytes: GC.GetTotalMemory(forceFullCollection: false));
 
         _latestDebugText = F3OverlayFormatter.Format(in snapshot);

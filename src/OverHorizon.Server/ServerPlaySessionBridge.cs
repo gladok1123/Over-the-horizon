@@ -38,6 +38,7 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
     private readonly ServerOptions _options;
     private readonly IEventBus _eventBus;
     private readonly ICommandDispatcher _commands;
+    private readonly Func<INetworkBroadcaster>? _getBroadcaster;
     private readonly ConcurrentDictionary<long, ConnectedPlayerState> _players = new();
 
     /// <summary>
@@ -50,6 +51,7 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
     /// <param name="options">Server configuration.</param>
     /// <param name="eventBus">Strongly-typed mod event bus.</param>
     /// <param name="commands">Slash-command dispatcher.</param>
+    /// <param name="getBroadcaster">Optional lazy network broadcaster resolver for peer presence sync.</param>
     public ServerPlaySessionBridge(
         IWorldSubsystem world,
         IGameplaySubsystem gameplay,
@@ -57,7 +59,8 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
         CoreRegistries registries,
         ServerOptions options,
         IEventBus eventBus,
-        ICommandDispatcher commands)
+        ICommandDispatcher commands,
+        Func<INetworkBroadcaster>? getBroadcaster = null)
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(gameplay);
@@ -74,6 +77,7 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
         _options = options;
         _eventBus = eventBus;
         _commands = commands;
+        _getBroadcaster = getBroadcaster;
     }
 
     /// <summary>
@@ -92,10 +96,12 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
             return false;
         }
 
+        state.LastPosition = destination;
         _ = _gameplay.TrySetEntityKinematics(state.EntityId, destination, Vec3d.Zero, onGround: false);
         _ = broadcaster.SendToSession(
             sessionId,
-            new SynchronizePlayerPositionPacket(destination, 0.0f, 0.0f, state.NextTeleportId++));
+            new SynchronizePlayerPositionPacket(destination, state.YawDegrees, state.PitchDegrees, state.NextTeleportId++));
+        BroadcastToPeers(sessionId, broadcaster, new RemotePlayerMovePacket(state.EntityId, destination, state.YawDegrees, state.PitchDegrees));
         return true;
     }
 
@@ -160,6 +166,7 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
             entityId,
             session.Username,
             spawnChunk,
+            spawnPos,
             _options.DefaultPlayerPermission);
         _players[session.SessionId] = state;
 
@@ -168,6 +175,24 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
             YawDegrees: 0.0f,
             PitchDegrees: 0.0f,
             TeleportId: state.NextTeleportId++));
+
+        var broadcaster = _getBroadcaster?.Invoke();
+        var joinedAnnouncement = new RemotePlayerSpawnPacket(entityId, session.Username, spawnPos, 0.0f, 0.0f);
+        foreach (var (peerSessionId, peer) in _players)
+        {
+            if (peerSessionId == session.SessionId)
+            {
+                continue;
+            }
+
+            initialPlayPackets.Add(new RemotePlayerSpawnPacket(
+                peer.EntityId,
+                peer.Username,
+                peer.LastPosition,
+                peer.YawDegrees,
+                peer.PitchDegrees));
+            _ = broadcaster?.SendToSession(peerSessionId, joinedAnnouncement);
+        }
 
         CollectUnsentChunksAround(state, spawnChunk, radius, initialPlayPackets);
         return entityId;
@@ -222,6 +247,10 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
         {
             _ = _world.Chunks.RemoveTicket(session.SessionId);
             _ = _gameplay.DespawnEntity(state.EntityId);
+            if (_getBroadcaster?.Invoke() is { } broadcaster)
+            {
+                BroadcastToPeers(session.SessionId, broadcaster, new RemotePlayerDespawnPacket(state.EntityId));
+            }
         }
     }
 
@@ -292,6 +321,13 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
         }
 
         _ = _gameplay.TrySetEntityKinematics(playerState.EntityId, target, Vec3d.Zero, move.OnGround);
+        playerState.LastPosition = target;
+        playerState.YawDegrees = move.YawDegrees;
+        playerState.PitchDegrees = move.PitchDegrees;
+        BroadcastToPeers(
+            session.SessionId,
+            broadcaster,
+            new RemotePlayerMovePacket(playerState.EntityId, target, move.YawDegrees, move.PitchDegrees));
 
         var newChunk = target.ToBlockPos().ToChunkPos();
         if (newChunk != playerState.CenterChunk)
@@ -411,6 +447,17 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
                     sink.Add(new ChunkDataPacket(pos, bytes));
                     _ = state.SentChunks.Add(pos.PackInt64());
                 }
+            }
+        }
+    }
+
+    private void BroadcastToPeers(long senderSessionId, INetworkBroadcaster broadcaster, IClientboundPacket packet)
+    {
+        foreach (var (peerSessionId, _) in _players)
+        {
+            if (peerSessionId != senderSessionId)
+            {
+                _ = broadcaster.SendToSession(peerSessionId, packet);
             }
         }
     }

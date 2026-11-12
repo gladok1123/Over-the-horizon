@@ -7,7 +7,8 @@ using OverHorizon.Rendering.Camera;
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Client-side first-person player kinematics, camera synchronization, F3 toggle state, and footstep audio trigger.
+/// Client-side first-person player kinematics, camera synchronization, 6-block DDA raycast targeting,
+/// 9-slot block hotbar, F3 toggle state, and footstep audio trigger.
 /// </summary>
 public sealed class ClientPlayerController
 {
@@ -20,7 +21,11 @@ public sealed class ClientPlayerController
     /// <summary>Eye offset above feet in blocks.</summary>
     public const double EyeHeight = 1.62;
 
+    /// <summary>Maximum block interaction reach in blocks.</summary>
+    public const double BlockReachDistance = 6.0;
+
     private const double WalkSpeedBlocksPerSec = 4.317;
+    private const double SprintMultiplier = 1.38;
     private const double JumpImpulse = 8.4;
     private const double FootstepStrideBlocks = 1.85;
 
@@ -30,9 +35,13 @@ public sealed class ClientPlayerController
     /// Initializes a new instance of the <see cref="ClientPlayerController"/> class.
     /// </summary>
     /// <param name="initialFeetPosition">Initial world-space feet position.</param>
-    public ClientPlayerController(Vec3d initialFeetPosition)
+    /// <param name="blocks">Frozen block registry for the 9-slot building hotbar.</param>
+    public ClientPlayerController(Vec3d initialFeetPosition, IBlockRegistry blocks)
     {
+        ArgumentNullException.ThrowIfNull(blocks);
+
         FeetPosition = initialFeetPosition;
+        Hotbar = new ClientHotbar(blocks);
         Camera = new FirstPersonCamera
         {
             Position = initialFeetPosition + new Vec3d(0.0, EyeHeight, 0.0),
@@ -54,6 +63,12 @@ public sealed class ClientPlayerController
     /// <summary>Gets the synchronized first-person 3D camera.</summary>
     public FirstPersonCamera Camera { get; }
 
+    /// <summary>Gets the 9-slot quick-build block hotbar.</summary>
+    public ClientHotbar Hotbar { get; }
+
+    /// <summary>Gets the block currently targeted by the player's crosshair within 6 blocks, if any.</summary>
+    public VoxelRaycastHit? CurrentTarget { get; private set; }
+
     /// <summary>
     /// Applies an authoritative server teleport or spawn synchronization.
     /// </summary>
@@ -69,22 +84,25 @@ public sealed class ClientPlayerController
     }
 
     /// <summary>
-    /// Advances client-side player movement and swept-AABB voxel physics by <paramref name="deltaSeconds"/>.
+    /// Recomputes <see cref="CurrentTarget"/> against <paramref name="world"/> along the current camera look ray.
     /// </summary>
     /// <param name="world">Client world collision cache.</param>
-    /// <param name="blocks">Block registry for footstep surface material lookup.</param>
-    /// <param name="audio">Positional audio subsystem.</param>
-    /// <param name="moveForward">Normalized forward/back wish in <c>[-1, 1]</c>.</param>
-    /// <param name="moveStrafe">Normalized right/left strafe wish in <c>[-1, 1]</c>.</param>
-    /// <param name="jumpRequested">Whether jump is pressed.</param>
-    /// <param name="deltaSeconds">Step duration in seconds.</param>
+    public void RefreshRaycastTarget(ClientWorldCache world)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        CurrentTarget = VoxelRaycaster.TryRaycast(world, Camera.Position, Camera.Forward, BlockReachDistance, out var hit)
+            ? hit
+            : null;
+    }
+
+    /// <summary>
+    /// Advances client-side player movement and swept-AABB voxel physics by <paramref name="deltaSeconds"/>.
+    /// </summary>
     public void StepMovement(
         ClientWorldCache world,
         IBlockRegistry blocks,
         IAudioSubsystem audio,
-        float moveForward,
-        float moveStrafe,
-        bool jumpRequested,
+        (float Forward, float Strafe, bool Jump, bool Sprint) input,
         double deltaSeconds)
     {
         ArgumentNullException.ThrowIfNull(world);
@@ -95,8 +113,8 @@ public sealed class ClientPlayerController
         var forwardFlat = Camera.HorizontalForward;
         var rightFlat = Camera.Right;
 
-        var wishX = (forwardFlat.X * moveForward) + (rightFlat.X * moveStrafe);
-        var wishZ = (forwardFlat.Z * moveForward) + (rightFlat.Z * moveStrafe);
+        var wishX = (forwardFlat.X * input.Forward) + (rightFlat.X * input.Strafe);
+        var wishZ = (forwardFlat.Z * input.Forward) + (rightFlat.Z * input.Strafe);
         var wishLen = MathF.Sqrt((wishX * wishX) + (wishZ * wishZ));
         if (wishLen > 1e-4f)
         {
@@ -104,18 +122,16 @@ public sealed class ClientPlayerController
             wishZ /= wishLen;
         }
 
+        var speed = WalkSpeedBlocksPerSec * (input.Sprint ? SprintMultiplier : 1.0);
         var vy = Velocity.Y;
-        if (jumpRequested && OnGround)
+        if (input.Jump && OnGround)
         {
             vy = JumpImpulse;
         }
 
-        var inputVelocity = new Vec3d(
-            wishX * WalkSpeedBlocksPerSec,
-            vy,
-            wishZ * WalkSpeedBlocksPerSec);
-
+        var inputVelocity = new Vec3d(wishX * speed, vy, wishZ * speed);
         var previousFeet = FeetPosition;
+
         var step = KinematicsIntegrator.StepEntity(
             world,
             FeetPosition,
@@ -129,6 +145,7 @@ public sealed class ClientPlayerController
         OnGround = step.OnGround;
         Camera.Position = FeetPosition + new Vec3d(0.0, EyeHeight, 0.0);
 
+        RefreshRaycastTarget(world);
         audio.UpdateListener(Camera.Position, Camera.Forward, Camera.Up);
         UpdateFootstepAudio(world, blocks, audio, previousFeet);
     }

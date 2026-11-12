@@ -1,5 +1,6 @@
 using OverHorizon.Core.Math;
 using OverHorizon.Rendering.Camera;
+using OverHorizon.Rendering.Hud;
 using OverHorizon.Rendering.Meshing;
 using OverHorizon.Rendering.Textures;
 
@@ -51,6 +52,7 @@ public interface IRenderSubsystem : IDisposable
     /// </summary>
     /// <param name="camera">Active first-person camera.</param>
     /// <param name="skyBrightness">Global sky light multiplier in <c>[0.05, 1.0]</c>.</param>
+    /// <param name="overlay">Optional per-frame 3D remote player avatars, targeted block highlight, and 2D HUD state.</param>
     /// <returns>Frame visibility and draw-call metrics.</returns>
-    RenderFrameMetrics RenderFrame(FirstPersonCamera camera, float skyBrightness = 1.0f);
+    RenderFrameMetrics RenderFrame(FirstPersonCamera camera, float skyBrightness = 1.0f, FrameOverlayState? overlay = null);
 }
