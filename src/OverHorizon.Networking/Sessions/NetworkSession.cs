@@ -386,7 +386,19 @@ internal sealed class NetworkSession : IAsyncDisposable
         }
         finally
         {
-            await _writer.CompleteAsync().ConfigureAwait(false);
+            try
+            {
+                await _writer.CompleteAsync().ConfigureAwait(false);
+            }
+            catch (IOException)
+            {
+                // Peer already reset socket during flush.
+            }
+            catch (SocketException)
+            {
+                // Peer already reset socket during flush.
+            }
+
             if (_ownedSocket is not null)
             {
                 try
