@@ -68,8 +68,11 @@ internal sealed class ClientMenuController
 
     public float PanoramaYawDegrees { get; set; }
 
-    public void AdvancePanorama(double dt)
+    public float CloudDriftOffset { get; private set; }
+
+    public void AdvanceAnimations(double dt)
     {
+        CloudDriftOffset = (CloudDriftOffset + (float)(dt * 1.4)) % 1024.0f;
         if (Mode == UiOverlayMode.TitleMenu)
         {
             PanoramaYawDegrees = (PanoramaYawDegrees + (float)(dt * 9.0)) % 360.0f;
@@ -220,10 +223,11 @@ internal sealed class ClientMenuController
             Mode = Mode,
             ViewportSize = new Vector2(width, height),
             ActiveBlockDisplayName = player.Hotbar.SelectedBlockDisplayName,
-            ActiveBlockColor = player.Hotbar.SelectedBlockColor,
+            HeldBlockColor = player.Hotbar.SelectedBlockColor,
             HandSwingProgress = player.HandSwingProgress,
             WalkBobPhase = player.WalkBobPhase,
-            DebugOverlayText = player.IsDebugOverlayVisible ? latestDebugText : null,
+            CloudDriftOffset = CloudDriftOffset,
+            DebugOverlayText = player.IsDebugOverlayVisible ? latestDebugText : string.Empty,
             RecentChatLines = chatHistory.GetVisibleLines(Mode == UiOverlayMode.ChatInput),
             ChatInputBuffer = ChatDraft,
             MenuTitle = title,

@@ -326,9 +326,9 @@ public sealed class ClientSessionRunner : IAsyncDisposable
             _inputBinder, silkRenderer, _player, _localSpawnY, SendChatOrCommand, () => _transport, t => _transport = t, sessionToken);
         DrainInboundPackets();
 
+        _menu.AdvanceAnimations(dt);
         if (_menu.Mode == UiOverlayMode.TitleMenu)
         {
-            _menu.AdvancePanorama(dt);
             _player.Camera.Position = new Vec3d(0.5, _localSpawnY + 14.0, 0.5);
             _player.Camera.SetRotation(_menu.PanoramaYawDegrees, -12.0f);
             _meshQueue.DispatchAndUpload(_worldCache, silkRenderer);

@@ -157,7 +157,8 @@ public static class ClientBootstrap
         services.AddNetworkingModule();
         services.AddGameplayModule();
         services.AddPhysicsModule();
-        services.AddWorldModule(worldSaveDirectory: resolvedOptions.Headless ? null : "./saves/SingleplayerWorld");
+        var saveDir = resolvedOptions.Headless || resolvedOptions.HeadlessCheckOnly ? null : "./saves/SingleplayerWorld";
+        services.AddWorldModule(worldSaveDirectory: saveDir);
         services.AddRenderingModule(new RenderingOptions(Headless: resolvedOptions.Headless));
         services.AddAudioModule();
         services.AddSingleton<ClientSessionRunner>();
