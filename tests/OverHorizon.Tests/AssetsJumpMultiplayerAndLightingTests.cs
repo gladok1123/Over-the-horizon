@@ -88,7 +88,7 @@ public sealed class AssetsJumpMultiplayerAndLightingTests
         var cache = new ClientWorldCache(blocks, atlas);
         var stone = blocks.GetDefaultState(BuiltInBlocks.Stone);
 
-        var col = new ChunkColumn(new ChunkPos(0, 0), registries);
+        var col = new ChunkColumn(new ChunkPos(0, 0));
         for (var z = 0; z < 16; z++)
         {
             for (var x = 0; x < 16; x++)
@@ -135,9 +135,9 @@ public sealed class AssetsJumpMultiplayerAndLightingTests
         using var renderer = new HeadlessRenderSubsystem();
         renderer.UploadAtlas(atlas);
 
-        var westCol = new ChunkColumn(new ChunkPos(0, 0), registries);
-        var eastCol = new ChunkColumn(new ChunkPos(1, 0), registries);
-        var farCol = new ChunkColumn(new ChunkPos(12, 12), registries);
+        var westCol = new ChunkColumn(new ChunkPos(0, 0));
+        var eastCol = new ChunkColumn(new ChunkPos(1, 0));
+        var farCol = new ChunkColumn(new ChunkPos(12, 12));
 
         var stone = blocks.GetDefaultState(BuiltInBlocks.Stone);
         var glowstone = blocks.GetDefaultState(BuiltInBlocks.Glowstone);
