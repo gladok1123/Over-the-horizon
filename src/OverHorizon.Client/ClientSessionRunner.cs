@@ -4,6 +4,7 @@ using OverHorizon.Audio;
 using OverHorizon.Core.Biomes;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
+using OverHorizon.Networking.Packets;
 using OverHorizon.Networking.Packets.Serverbound;
 using OverHorizon.Rendering;
 using OverHorizon.Rendering.Backends;
