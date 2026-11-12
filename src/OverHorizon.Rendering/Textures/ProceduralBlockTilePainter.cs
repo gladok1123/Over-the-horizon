@@ -79,11 +79,11 @@ internal static class ProceduralBlockTilePainter
         for (var py = 0; py < TileDimension; py++)
         {
             var row = py / 8;
-            var offsetX = (pxOffset: (row & 1) * 8);
+            var offsetX = (row & 1) * 8;
             for (var px = 0; px < TileDimension; px++)
             {
-                var mortar = (py % 8 == 0) || (((px + offsetX.pxOffset) % 16) == 0);
-                var highlight = (py % 8 == 1) || (((px + offsetX.pxOffset) % 16) == 1);
+                var mortar = (py % 8 == 0) || (((px + offsetX) % 16) == 0);
+                var highlight = (py % 8 == 1) || (((px + offsetX) % 16) == 1);
                 var baseVal = mortar ? 74 : (highlight ? 156 : 132) + (rng.NextInt32(15) - 7);
                 var c = ClampByte(baseVal);
                 WritePixel(atlas, tileIndex, px, py, c, c, ClampByte(baseVal + 3), 255);
