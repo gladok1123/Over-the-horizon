@@ -34,9 +34,8 @@ public sealed class DependencyInjectionTests
 
         host.Services.GetRequiredService<IModHost>().LoadedModCount.Should().Be(0);
 
-        await host.RunAsync(cts.Token).ConfigureAwait(false);
-
         var tickLoop = host.Services.GetRequiredService<ServerTickLoopService>();
+        await host.RunAsync(cts.Token).ConfigureAwait(false);
         tickLoop.CompletedTicks.Should().Be(3);
     }
 

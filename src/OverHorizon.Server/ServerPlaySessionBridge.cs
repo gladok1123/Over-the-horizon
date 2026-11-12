@@ -243,7 +243,12 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
     /// <inheritdoc />
     public void OnPlayerDisconnected(PlayerSessionInfo session)
     {
-        if (_players.TryRemove(session.SessionId, out var state))
+        if (!_players.TryRemove(session.SessionId, out var state))
+        {
+            return;
+        }
+
+        try
         {
             _ = _world.Chunks.RemoveTicket(session.SessionId);
             _ = _gameplay.DespawnEntity(state.EntityId);
@@ -251,6 +256,10 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
             {
                 BroadcastToPeers(session.SessionId, broadcaster, new RemotePlayerDespawnPacket(state.EntityId));
             }
+        }
+        catch (ObjectDisposedException)
+        {
+            // Host container is tearing down; subsystems are already disposed.
         }
     }
 
