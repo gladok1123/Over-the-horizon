@@ -42,7 +42,7 @@ public sealed record ItemDefinition(
             return "Unknown";
         }
 
-        Span<char> buf = stackalloc char[Math.Min(64, path.Length)];
+        Span<char> buf = stackalloc char[System.Math.Min(64, path.Length)];
         var capitalize = true;
         for (var i = 0; i < buf.Length; i++)
         {
