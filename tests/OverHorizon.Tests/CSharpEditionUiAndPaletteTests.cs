@@ -1,5 +1,6 @@
 using System.Numerics;
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using OverHorizon.Audio;
 using OverHorizon.Client;
 using OverHorizon.Core.Blocks;
@@ -34,8 +35,8 @@ public sealed class CSharpEditionUiAndPaletteTests
         blocks.GetDefaultState(BuiltInBlocks.CrimsonWool).IsAir.Should().BeFalse();
 
         var glassDef = blocks.GetRequired(BuiltInBlocks.Glass);
+        glassDef.IsSolid.Should().BeTrue();
         glassDef.IsOpaque.Should().BeFalse();
-        glassDef.LightOpacity.Should().Be(1);
 
         var atlas = ProceduralAtlasGenerator.CreateDefault(blocks);
         atlas.GetTileIndex(BuiltInBlocks.Bookshelf, Direction.North)
@@ -123,8 +124,8 @@ public sealed class CSharpEditionUiAndPaletteTests
         vertices.Count.Should().BeGreaterThan(300);
 
         // Verify InGame HUD + 3D projected friend nametag in front of camera (-Z) vs behind (+Z).
-        var visibleFriend = new RemotePlayerAvatar(7, "Alex", new Vec3d(0.5, 74.0, -6.0), 0.0f, 0.0f, new Vector3(0.3f, 0.7f, 0.9f));
-        var behindFriend = new RemotePlayerAvatar(8, "Behind", new Vec3d(0.5, 74.0, 8.0), 0.0f, 0.0f, new Vector3(0.9f, 0.4f, 0.3f));
+        var visibleFriend = new RemotePlayerAvatar(7, "Alex", new Vec3d(0.5, 74.0, -6.0), 0.0f, 0.0f, 0.0f);
+        var behindFriend = new RemotePlayerAvatar(8, "Behind", new Vec3d(0.5, 74.0, 8.0), 0.0f, 0.0f, 0.0f);
 
         var withoutFriends = new FrameOverlayState(null, 0, hotbar.ActiveSlotColors, [])
         {
@@ -150,7 +151,7 @@ public sealed class CSharpEditionUiAndPaletteTests
         var blocks = BuiltInBlocks.CreateFrozen();
         var atlas = ProceduralAtlasGenerator.CreateDefault(blocks);
         var cache = new ClientWorldCache(blocks, atlas);
-        using var audio = new OpenAlAudioSubsystem();
+        using var audio = new OpenAlAudioSubsystem(NullLogger<OpenAlAudioSubsystem>.Instance);
         var player = new ClientPlayerController(new Vec3d(0.5, 80.0, 0.5), blocks);
 
         player.HandSwingProgress.Should().Be(0.0f);
