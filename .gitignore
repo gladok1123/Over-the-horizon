@@ -19,7 +19,11 @@ artifacts/
 .DS_Store
 Thumbs.db
 
-# Runtime World Saves
+# Runtime World Saves & User-Downloaded Resource Packs
 world/
 saves/
+assets/
+minecraft-assets/
+resourcepacks/
+
 

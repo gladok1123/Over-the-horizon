@@ -11,6 +11,7 @@ namespace OverHorizon.Client;
 /// <param name="Username">Player username (<c>1..16</c> chars) used during multiplayer login.</param>
 /// <param name="ViewDistanceChunks">Client chunk streaming and meshing radius (<c>1..16</c>).</param>
 /// <param name="StartInWorld">When <see langword="true"/>, skips the Title Screen and spawns directly into Singleplayer.</param>
+/// <param name="ExternalAssetsPath">Optional path to external resource pack directory, <c>.zip</c>, or <c>.jar</c>.</param>
 public sealed record ClientOptions(
     bool HeadlessCheckOnly = false,
     bool Headless = false,
@@ -19,4 +20,5 @@ public sealed record ClientOptions(
     ushort ServerPort = 25565,
     string Username = "Explorer",
     int ViewDistanceChunks = 4,
-    bool StartInWorld = false);
+    bool StartInWorld = false,
+    string? ExternalAssetsPath = null);

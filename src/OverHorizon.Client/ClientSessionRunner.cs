@@ -4,8 +4,6 @@ using OverHorizon.Audio;
 using OverHorizon.Core.Biomes;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
-using OverHorizon.Networking.Packets;
-using OverHorizon.Networking.Packets.Clientbound;
 using OverHorizon.Networking.Packets.Serverbound;
 using OverHorizon.Rendering;
 using OverHorizon.Rendering.Backends;
@@ -13,7 +11,6 @@ using OverHorizon.Rendering.Hud;
 using OverHorizon.Rendering.Textures;
 using OverHorizon.World;
 using OverHorizon.World.ChunkManagement;
-using OverHorizon.World.Serialization;
 using OverHorizon.World.Storage;
 
 namespace OverHorizon.Client;
@@ -47,6 +44,8 @@ public sealed class ClientSessionRunner : IAsyncDisposable
     private Task? _backgroundWorldStreamTask;
     private double _lastFps = 60.0;
     private double _localSpawnY = 76.0;
+    private double _moveSendTimer;
+    private bool _receivedInitialSpawnSync;
     private Vec3d _lastSentFeetPosition;
     private float _lastSentYaw;
     private float _lastSentPitch;
@@ -80,7 +79,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         var startDirectlyInGame = options.Headless || options.StartInWorld || !string.IsNullOrWhiteSpace(options.ServerHost);
         var initialMode = startDirectlyInGame ? UiOverlayMode.InGame : UiOverlayMode.TitleMenu;
 
-        _atlas = ProceduralAtlasGenerator.CreateDefault(blocks);
+        _atlas = ProceduralAtlasGenerator.CreateDefault(blocks, options.ExternalAssetsPath);
         _renderer.UploadAtlas(_atlas);
         _worldCache = new ClientWorldCache(blocks, _atlas);
         _player = new ClientPlayerController(new Vec3d(0.5, 80.0, 0.5), blocks);
@@ -160,17 +159,19 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         _player.TriggerHandSwing();
         if (_transport.IsConnected)
         {
+            _ = _worldCache.ApplyBlockUpdate(target.BlockPosition, BlockState.Air);
             _transport.EnqueueOutbound(
                 new PlayerBlockActionPacket(PlayerBlockActionKind.BreakBlock, target.BlockPosition, target.HitFace, 0));
-            return true;
         }
-
-        if (!_localWorld.SetBlockState(target.BlockPosition, BlockState.Air))
+        else if (!_localWorld.SetBlockState(target.BlockPosition, BlockState.Air))
         {
             return false;
         }
+        else
+        {
+            SyncLocalSnapshots();
+        }
 
-        SyncLocalSnapshots();
         var center = new Vec3d(target.BlockPosition.X + 0.5, target.BlockPosition.Y + 0.5, target.BlockPosition.Z + 0.5);
         _audio.PlayPositional(SoundCue.BlockBreak, center, gain: 0.7f * _player.MasterVolume);
         _player.RefreshRaycastTarget(_worldCache);
@@ -202,17 +203,19 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         var stateToPlace = _player.Hotbar.SelectedBlockState;
         if (_transport.IsConnected)
         {
+            _ = _worldCache.ApplyBlockUpdate(placePos, stateToPlace);
             _transport.EnqueueOutbound(
                 new PlayerBlockActionPacket(PlayerBlockActionKind.PlaceBlock, placePos, target.HitFace, stateToPlace.Id));
-            return true;
         }
-
-        if (!_localWorld.SetBlockState(placePos, stateToPlace))
+        else if (!_localWorld.SetBlockState(placePos, stateToPlace))
         {
             return false;
         }
+        else
+        {
+            SyncLocalSnapshots();
+        }
 
-        SyncLocalSnapshots();
         var center = new Vec3d(placePos.X + 0.5, placePos.Y + 0.5, placePos.Z + 0.5);
         _audio.PlayPositional(SoundCue.BlockPlace, center, gain: 0.7f * _player.MasterVolume);
         _player.RefreshRaycastTarget(_worldCache);
@@ -283,7 +286,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
                 var metrics = silkRenderer.RenderFrame(_player.Camera, overlay: BuildOverlayState(silkRenderer.WindowPixelSize));
                 RefreshDebugTelemetry(metrics, dt);
                 silkRenderer.WindowTitle = _menu.Mode == UiOverlayMode.TitleMenu
-                    ? "Over-the-Horizon: C# EDITION (v0.2.0-alpha)"
+                    ? "Over-the-Horizon: C# EDITION (v0.3.0-alpha)"
                     : $"Over-the-Horizon: C# EDITION | {_lastFps:F0} FPS | [{_player.Hotbar.SelectedSlot + 1}: {_player.Hotbar.SelectedBlockDisplayName}] | Friends: {_remotePlayers.Count}";
             },
             onResize: (w, h) => _player.Camera.SetAspectRatio(w, h),
@@ -345,6 +348,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
 
         var movement = _inputBinder.PollMovement(silkRenderer.InputContext);
         _player.StepMovement(_worldCache, _blocks, _audio, movement, dt);
+        _remotePlayers.StepInterpolation(dt);
 
         var (brk, plc) = _inputBinder.ConsumeBlockActionRequests();
         if (_menu.IsGameplayActive)
@@ -360,7 +364,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
             }
         }
 
-        EnqueueOutboundMovementIfChanged();
+        EnqueueOutboundMovementIfChanged(dt);
         _meshQueue.DispatchAndUpload(_worldCache, silkRenderer);
     }
 
@@ -379,7 +383,8 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         }
 
         _player.StepMovement(_worldCache, _blocks, _audio, movement, deltaSeconds);
-        EnqueueOutboundMovementIfChanged();
+        _remotePlayers.StepInterpolation(deltaSeconds);
+        EnqueueOutboundMovementIfChanged(deltaSeconds);
         _ = await _worldCache.RebuildDirtyMeshesAsync(_renderer, maxColumns: 16, ct).ConfigureAwait(false);
     }
 
@@ -408,59 +413,35 @@ public sealed class ClientSessionRunner : IAsyncDisposable
                 }
             }
         }
+
+        _ = _worldCache.EvictOutOfRangeChunks(center, radius + 3, _renderer);
     }
 
     private void DrainInboundPackets()
     {
         while (_transport.TryReadInbound(out var packet))
         {
-            ApplyInboundPacket(packet);
+            ClientInboundPacketApplier.Apply(
+                packet, _remotePlayers, _player, _worldCache, _blocks, _audio, _renderer, _chatHistory, _logger,
+                _menu.ActiveViewDistance, ref _receivedInitialSpawnSync, ref _lastSentFeetPosition);
         }
     }
 
-    private void ApplyInboundPacket(IClientboundPacket packet)
-    {
-        if (_remotePlayers.TryApply(packet))
-        {
-            return;
-        }
-
-        switch (packet)
-        {
-            case SynchronizePlayerPositionPacket syncPos:
-                _player.ApplyAuthoritativePose(syncPos.Position, syncPos.YawDegrees, syncPos.PitchDegrees);
-                _lastSentFeetPosition = syncPos.Position;
-                break;
-
-            case ChunkDataPacket chunkPkt:
-                var col = ChunkNetworkSerializer.DeserializeColumn(chunkPkt.Position, chunkPkt.Payload.Span, _blocks);
-                _worldCache.UpsertColumn(col);
-                break;
-
-            case BlockUpdatePacket blockPkt:
-                var newState = new BlockState(blockPkt.BlockStateId);
-                if (_worldCache.ApplyBlockUpdate(blockPkt.Position, newState))
-                {
-                    var soundPos = new Vec3d(blockPkt.Position.X + 0.5, blockPkt.Position.Y + 0.5, blockPkt.Position.Z + 0.5);
-                    _audio.PlayPositional(newState.IsAir ? SoundCue.BlockBreak : SoundCue.BlockPlace, soundPos, gain: 0.7f * _player.MasterVolume);
-                }
-
-                break;
-
-            case SystemChatPacket chatPkt:
-                ClientLog.SystemChatReceived(_logger, chatPkt.Message);
-                _chatHistory.AddMessage(chatPkt.Message);
-                break;
-        }
-    }
-
-    private void EnqueueOutboundMovementIfChanged()
+    private void EnqueueOutboundMovementIfChanged(double dt)
     {
         if (!_transport.IsConnected)
         {
+            _receivedInitialSpawnSync = false;
             return;
         }
 
+        _moveSendTimer += dt;
+        if (_moveSendTimer < 0.05)
+        {
+            return;
+        }
+
+        _moveSendTimer = 0.0;
         var posDeltaSq = (_player.FeetPosition - _lastSentFeetPosition).LengthSquared;
         var rotChanged = MathF.Abs(_player.Camera.YawDegrees - _lastSentYaw) > 0.5f ||
             MathF.Abs(_player.Camera.PitchDegrees - _lastSentPitch) > 0.5f;

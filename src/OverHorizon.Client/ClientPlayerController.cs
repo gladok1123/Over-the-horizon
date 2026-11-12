@@ -26,12 +26,15 @@ public sealed class ClientPlayerController
 
     private const double WalkSpeedBlocksPerSec = 4.317;
     private const double SprintMultiplier = 1.38;
-    private const double JumpImpulse = 8.4;
-    private const double FootstepStrideBlocks = 1.85;
+    private const double JumpImpulse = 9.55;
+    private const double WaterSwimUpVelocity = 5.20;
+    private const double FootstepStrideBlocks = 1.80;
     private const float HandSwingDurationSeconds = 0.24f;
 
     private double _stepDistanceAccumulator;
     private float _handSwingTimer;
+    private int _stepPitchCounter;
+    private bool _inFluid;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientPlayerController"/> class.
@@ -56,6 +59,9 @@ public sealed class ClientPlayerController
 
     /// <summary>Gets a value indicating whether the player is resting on solid ground.</summary>
     public bool OnGround { get; private set; }
+
+    /// <summary>Gets a value indicating whether the player's bounding box currently intersects a fluid.</summary>
+    public bool InFluid => _inFluid;
 
     /// <summary>Gets or sets a value indicating whether the F3 debug telemetry overlay is enabled.</summary>
     public bool IsDebugOverlayVisible { get; set; }
@@ -94,6 +100,17 @@ public sealed class ClientPlayerController
         FeetPosition = feetPosition;
         Velocity = Vec3d.Zero;
         Camera.SetRotation(yawDegrees, pitchDegrees);
+        Camera.Position = feetPosition + new Vec3d(0.0, EyeHeight, 0.0);
+    }
+
+    /// <summary>
+    /// Applies an authoritative position correction without snapping the player's local mouse look angles.
+    /// </summary>
+    /// <param name="feetPosition">Corrected world-space feet position.</param>
+    public void ApplyAuthoritativePositionOnly(Vec3d feetPosition)
+    {
+        FeetPosition = feetPosition;
+        Velocity = new Vec3d(0.0, Math.Min(0.0, Velocity.Y), 0.0);
         Camera.Position = feetPosition + new Vec3d(0.0, EyeHeight, 0.0);
     }
 
@@ -142,13 +159,21 @@ public sealed class ClientPlayerController
 
         var speed = WalkSpeedBlocksPerSec * (input.Sprint ? SprintMultiplier : 1.0);
         var vy = Velocity.Y;
-        if (input.Jump && OnGround)
+        if (input.Jump)
         {
-            vy = JumpImpulse;
+            if (OnGround)
+            {
+                vy = JumpImpulse;
+            }
+            else if (_inFluid)
+            {
+                vy = Math.Max(vy, WaterSwimUpVelocity);
+            }
         }
 
         var inputVelocity = new Vec3d(wishX * speed, vy, wishZ * speed);
         var previousFeet = FeetPosition;
+        var wasInFluid = _inFluid;
 
         var step = KinematicsIntegrator.StepEntity(
             world,
@@ -161,6 +186,12 @@ public sealed class ClientPlayerController
         FeetPosition = step.Position;
         Velocity = step.Velocity;
         OnGround = step.OnGround;
+        _inFluid = step.InFluid;
+
+        if (!wasInFluid && _inFluid)
+        {
+            audio.PlayPositional(SoundCue.WaterSplash, FeetPosition, gain: 0.65f * MasterVolume, pitch: 1.0f);
+        }
 
         var dx = FeetPosition.X - previousFeet.X;
         var dz = FeetPosition.Z - previousFeet.Z;
@@ -210,6 +241,7 @@ public sealed class ClientPlayerController
             _ => SoundCue.FootstepStone,
         };
 
-        audio.PlayPositional(cue, FeetPosition, gain: 0.45f * MasterVolume, pitch: 1.0f);
+        var pitchJitter = 0.93f + (((_stepPitchCounter++ * 37) % 15) * 0.01f);
+        audio.PlayPositional(cue, FeetPosition, gain: 0.50f * MasterVolume, pitch: pitchJitter);
     }
 }

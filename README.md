@@ -1,4 +1,4 @@
-# Over-the-Horizon: C# EDITION (`v0.2.0-alpha`)
+# Over-the-Horizon: C# EDITION (`v0.3.0-alpha`)
 
 Образовательная и инженерная 100% clean-room воксельная песочница на **C# 13 / .NET 9** с главным меню **«OVER THE HORIZON — C# EDITION»**, вращающейся 3D-панорамой мира, палитрой из 22 блоков (`E`), живым чатом (`T`) и многопоточной архитектурой в стиле **Horizon** (детерминированные фазы тика, Copy-on-Write снапшоты чанков, параллельный Greedy Meshing + Ambient Occlusion, Arch ECS, `System.IO.Pipelines` и `Channel<T>`).
 
@@ -8,9 +8,10 @@
 
 ## Быстрый старт: Как запустить игру и поиграть с друзьями
 
-Готовые самодостаточные сборки (**установка `.NET` не требуется!**) автоматически собираются для **Windows (`win-x64`)**, **Linux (`linux-x64`)** и **macOS (`osx-arm64`, `osx-x64`)** в разделе **[GitHub Releases — `v0.2.0-alpha`](https://github.com/gladok1123/Over-the-horizon/releases/tag/v0.2.0-alpha)**.
+Готовые самодостаточные сборки (**установка `.NET` не требуется!**) автоматически собираются для **Windows (`win-x64`)**, **Linux (`linux-x64`)** и **macOS (`osx-arm64`, `osx-x64`)** в разделе **[GitHub Releases — `v0.3.0-alpha`](https://github.com/gladok1123/Over-the-horizon/releases/tag/v0.3.0-alpha)**.
 
-1. **Скачайте и распакуйте** архив под вашу ОС (например, `OverHorizon-v0.2.0-alpha-win-x64.zip`).
+1. **Скачайте и распакуйте** архив под вашу ОС (например, `OverHorizon-v0.3.0-alpha-win-x64.zip`).
+2. *(По желанию)* Запустите **`Download-Real-Assets.bat`** (или `./download-real-assets.sh`), либо положите любой ресурс-пак `.zip` / `.jar` в папку `./resourcepacks/` — встроенный парсер `ResourcePackLoader` автоматически загрузит PNG-текстуры блоков и `.wav` звуки!
 2. **Запустите `Play-OverHorizon.bat`** (или `./play-overhorizon.sh`, либо просто дважды кликните `OverHorizon.Client.exe`!).
 3. Откроется главное меню **OVER THE HORIZON — C# EDITION** с вращающейся 3D-панорамой мира:
    - **`Singleplayer`** — одиночный мир с автоматическим сохранением построек в `./saves/SingleplayerWorld`.

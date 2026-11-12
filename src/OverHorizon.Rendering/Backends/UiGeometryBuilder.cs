@@ -78,7 +78,7 @@ public static class UiGeometryBuilder
             DrawCenteredText(v, state.StatusMessage, cx, height - 64.0f, 1.6f, new Vector4(1.0f, 0.72f, 0.42f, 1.0f), shadow: true);
         }
 
-        DrawText(v, "Over-the-Horizon v0.2.0-alpha (C# / .NET 9)", 14.0f, height - 24.0f, 1.5f, new Vector4(0.88f, 0.90f, 0.94f, 0.90f), shadow: true);
+        DrawText(v, "Over-the-Horizon v0.3.0-alpha (C# / .NET 9)", 14.0f, height - 24.0f, 1.5f, new Vector4(0.88f, 0.90f, 0.94f, 0.90f), shadow: true);
         const string rightNote = "Clean-Room Engine - Not affiliated with Mojang";
         DrawText(v, rightNote, width - MeasureText(rightNote, 1.5f) - 14.0f, height - 24.0f, 1.5f, new Vector4(0.82f, 0.84f, 0.88f, 0.85f), shadow: true);
     }

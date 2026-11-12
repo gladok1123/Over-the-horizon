@@ -75,20 +75,27 @@ public static class KinematicsIntegrator
             vz = 0.0;
         }
 
-        // Apply medium-appropriate damping.
+        // Apply medium-appropriate damping scaled to 20 TPS so high-FPS clients preserve exact jump height & inertia.
+        var tickScale = deltaSeconds * 20.0;
+        var exactSingleTick = Math.Abs(tickScale - 1.0) <= 1e-6;
         if (inFluid)
         {
-            vx *= PhysicsConstants.FluidDragFactor;
-            vy *= PhysicsConstants.FluidDragFactor;
-            vz *= PhysicsConstants.FluidDragFactor;
+            var fluidRetention = exactSingleTick
+                ? PhysicsConstants.FluidDragFactor
+                : Math.Pow(PhysicsConstants.FluidDragFactor, tickScale);
+            vx *= fluidRetention;
+            vy *= fluidRetention;
+            vz *= fluidRetention;
         }
         else
         {
-            var horizRetention = onGround
+            var baseHoriz = onGround
                 ? PhysicsConstants.GroundSlipperiness * PhysicsConstants.AirDragFactor
                 : PhysicsConstants.AirDragFactor;
+            var horizRetention = exactSingleTick ? baseHoriz : Math.Pow(baseHoriz, tickScale);
+            var vertRetention = exactSingleTick ? PhysicsConstants.AirDragFactor : Math.Pow(PhysicsConstants.AirDragFactor, tickScale);
             vx *= horizRetention;
-            vy *= PhysicsConstants.AirDragFactor;
+            vy *= vertRetention;
             vz *= horizRetention;
         }
 

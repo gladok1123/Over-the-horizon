@@ -108,8 +108,7 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
         if (previous != newState)
         {
             column.LastModifiedTick = tickNumber;
-            LightingEngine.RefreshChunkLight(column, _registries.Blocks);
-            _publishedSnapshots[key] = column.CreateSnapshot();
+            RefreshColumnAndBorderNeighbors(chunkPos, column);
         }
 
         return true;
@@ -283,6 +282,40 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
         }
 
         return desired;
+    }
+
+    private void RefreshColumnAndBorderNeighbors(ChunkPos centerPos, ChunkColumn center)
+    {
+        _ = _loadedChunks.TryGetValue(new ChunkPos(centerPos.X, centerPos.Z - 1).PackInt64(), out var north);
+        _ = _loadedChunks.TryGetValue(new ChunkPos(centerPos.X, centerPos.Z + 1).PackInt64(), out var south);
+        _ = _loadedChunks.TryGetValue(new ChunkPos(centerPos.X - 1, centerPos.Z).PackInt64(), out var west);
+        _ = _loadedChunks.TryGetValue(new ChunkPos(centerPos.X + 1, centerPos.Z).PackInt64(), out var east);
+
+        LightingEngine.RefreshChunkLight(center, _registries.Blocks);
+        _ = LightingEngine.PropagateCrossChunkLight(center, north, south, west, east, _registries.Blocks);
+        _publishedSnapshots[centerPos.PackInt64()] = center.CreateSnapshot();
+
+        PropagateIntoNeighbor(north, centerPos.X, centerPos.Z - 1);
+        PropagateIntoNeighbor(south, centerPos.X, centerPos.Z + 1);
+        PropagateIntoNeighbor(west, centerPos.X - 1, centerPos.Z);
+        PropagateIntoNeighbor(east, centerPos.X + 1, centerPos.Z);
+    }
+
+    private void PropagateIntoNeighbor(ChunkColumn? neighbor, int nx, int nz)
+    {
+        if (neighbor is null)
+        {
+            return;
+        }
+
+        _ = _loadedChunks.TryGetValue(new ChunkPos(nx, nz - 1).PackInt64(), out var nn);
+        _ = _loadedChunks.TryGetValue(new ChunkPos(nx, nz + 1).PackInt64(), out var ns);
+        _ = _loadedChunks.TryGetValue(new ChunkPos(nx - 1, nz).PackInt64(), out var nw);
+        _ = _loadedChunks.TryGetValue(new ChunkPos(nx + 1, nz).PackInt64(), out var ne);
+
+        LightingEngine.RefreshChunkLight(neighbor, _registries.Blocks);
+        _ = LightingEngine.PropagateCrossChunkLight(neighbor, nn, ns, nw, ne, _registries.Blocks);
+        _publishedSnapshots[new ChunkPos(nx, nz).PackInt64()] = neighbor.CreateSnapshot();
     }
 
     private async Task RunSaveWorkerAsync(CancellationToken cancellationToken)

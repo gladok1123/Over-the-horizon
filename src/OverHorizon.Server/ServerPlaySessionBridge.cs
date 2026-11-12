@@ -313,7 +313,7 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
 
         var candidateBox = BoundingBox
             .FromEntityFeet(target, PlayerWidth, PlayerHeight)
-            .Inflate(-1e-4, -1e-4, -1e-4);
+            .Inflate(-0.06, -0.02, -0.06);
 
         if (outOfVerticalBounds ||
             delta.LengthSquared > MaxMoveDistanceSquared ||
@@ -350,7 +350,7 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
                 radius));
 
             var diameter = (radius * 2) + 1;
-            _ = await _world.Chunks.ProcessTicketsAsync(diameter, ct).ConfigureAwait(false);
+            _ = await _world.Chunks.ProcessTicketsAsync(Math.Min(4, diameter), ct).ConfigureAwait(false);
 
             var streamed = new List<IClientboundPacket>(diameter);
             CollectUnsentChunksAround(playerState, newChunk, radius, streamed);

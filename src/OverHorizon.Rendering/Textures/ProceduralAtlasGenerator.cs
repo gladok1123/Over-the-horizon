@@ -17,6 +17,9 @@ public static class ProceduralAtlasGenerator
     /// <summary>Edge size of each block tile in pixels.</summary>
     public const int TileDimension = 16;
 
+    /// <summary>Number of <c>16x16</c> tiles along each row of the atlas (<c>16</c>).</summary>
+    public const int TilesPerRow = AtlasDimension / TileDimension;
+
     private const ushort TileStone = 0;
     private const ushort TileDirt = 1;
     private const ushort TileGrassTop = 2;
@@ -47,14 +50,22 @@ public static class ProceduralAtlasGenerator
     private const ushort FirstCustomTile = 32;
 
     /// <summary>
-    /// Alias for <see cref="Generate"/> creating the default procedural block texture atlas.
+    /// Alias for <see cref="Generate"/> creating the block texture atlas with optional external resource pack overrides.
     /// </summary>
-    public static TextureAtlasData CreateDefault(IBlockRegistry blocks) => Generate(blocks);
+    /// <param name="blocks">Frozen block registry.</param>
+    /// <param name="externalAssetsPath">Optional directory, <c>.zip</c>, or <c>.jar</c> containing <c>assets/*/textures/block/*.png</c>.</param>
+    /// <returns>Constructed <see cref="TextureAtlasData"/>.</returns>
+    public static TextureAtlasData CreateDefault(IBlockRegistry blocks, string? externalAssetsPath = null) =>
+        Generate(blocks, externalAssetsPath);
 
     /// <summary>
-    /// Generates a deterministic 256x256 RGBA8 texture atlas covering all built-in and mod-registered blocks in <paramref name="blocks"/>.
+    /// Generates a deterministic 256x256 RGBA8 texture atlas covering all built-in and mod-registered blocks in <paramref name="blocks"/>,
+    /// overlaying real PNG block textures whenever discovered by <see cref="ResourcePackLoader"/>.
     /// </summary>
-    public static TextureAtlasData Generate(IBlockRegistry blocks)
+    /// <param name="blocks">Frozen block registry.</param>
+    /// <param name="externalAssetsPath">Optional directory, <c>.zip</c>, or <c>.jar</c> path.</param>
+    /// <returns>Constructed <see cref="TextureAtlasData"/>.</returns>
+    public static TextureAtlasData Generate(IBlockRegistry blocks, string? externalAssetsPath = null)
     {
         ArgumentNullException.ThrowIfNull(blocks);
 
@@ -87,6 +98,14 @@ public static class ProceduralAtlasGenerator
         ProceduralBlockTilePainter.PaintCobblestoneTile(pixels, TileMossyCobblestone, mossy: true);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileSnowBlock, 240, 246, 250, variation: 8, alpha: 255);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileCrimsonWool, 178, 42, 52, variation: 16, alpha: 255);
+
+        using (var resourcePack = ResourcePackLoader.Discover(externalAssetsPath))
+        {
+            if (resourcePack.LoadedBlockTextureCount > 0)
+            {
+                ApplyResourcePackOverrides(pixels, resourcePack);
+            }
+        }
 
         var lookup = new Dictionary<(ResourceKey, Direction), ushort>();
         MapAllFaces(lookup, BuiltInBlocks.Stone, TileStone);
@@ -157,6 +176,48 @@ public static class ProceduralAtlasGenerator
             pixels,
             lookup.ToFrozenDictionary(),
             FirstCustomTile);
+    }
+
+    private static void ApplyResourcePackOverrides(byte[] pixels, ResourcePackLoader pack)
+    {
+        _ = pack.TryBlitTile(pixels, TileStone, "stone");
+        _ = pack.TryBlitTile(pixels, TileDirt, "dirt");
+        _ = pack.TryBlitTile(pixels, TileGrassTop, "grass_block_top", 118, 190, 92);
+        _ = pack.TryBlitTile(pixels, TileGrassSide, "grass_block_side");
+        _ = pack.TryBlitTile(pixels, TileCobblestone, "cobblestone");
+        _ = pack.TryBlitTile(pixels, TileOakLogSide, "oak_log");
+        _ = pack.TryBlitTile(pixels, TileOakLogTop, "oak_log_top");
+        _ = pack.TryBlitTile(pixels, TileOakLeaves, "oak_leaves", 96, 172, 72);
+        _ = pack.TryBlitTile(pixels, TileSand, "sand");
+        _ = pack.TryBlitTile(pixels, TileWater, "water_still", 63, 118, 228, alphaOverride: 205);
+        _ = pack.TryBlitTile(pixels, TileGlowstone, "glowstone");
+        _ = pack.TryBlitTile(pixels, TileBedrock, "bedrock");
+        _ = pack.TryBlitTile(pixels, TileOakPlanks, "oak_planks");
+        _ = pack.TryBlitTile(pixels, TileCraftingTop, "crafting_table_top");
+        if (!pack.TryBlitTile(pixels, TileCraftingSide, "crafting_table_front"))
+        {
+            _ = pack.TryBlitTile(pixels, TileCraftingSide, "crafting_table_side");
+        }
+
+        _ = pack.TryBlitTile(pixels, TileStoneBricks, "stone_bricks");
+        _ = pack.TryBlitTile(pixels, TileClayBricks, "bricks");
+        _ = pack.TryBlitTile(pixels, TileGlass, "glass");
+        _ = pack.TryBlitTile(pixels, TileSandstoneSide, "sandstone");
+        _ = pack.TryBlitTile(pixels, TileBookshelfSide, "bookshelf");
+        _ = pack.TryBlitTile(pixels, TileCoalOre, "coal_ore");
+        _ = pack.TryBlitTile(pixels, TileIronOre, "iron_ore");
+        _ = pack.TryBlitTile(pixels, TileGoldOre, "gold_ore");
+        _ = pack.TryBlitTile(pixels, TileDiamondOre, "diamond_ore");
+        _ = pack.TryBlitTile(pixels, TileMossyCobblestone, "mossy_cobblestone");
+        if (!pack.TryBlitTile(pixels, TileSnowBlock, "snow"))
+        {
+            _ = pack.TryBlitTile(pixels, TileSnowBlock, "snow_block");
+        }
+
+        if (!pack.TryBlitTile(pixels, TileCrimsonWool, "red_wool"))
+        {
+            _ = pack.TryBlitTile(pixels, TileCrimsonWool, "crimson_wool");
+        }
     }
 
     private static void MapAllFaces(Dictionary<(ResourceKey, Direction), ushort> map, ResourceKey key, ushort tile)

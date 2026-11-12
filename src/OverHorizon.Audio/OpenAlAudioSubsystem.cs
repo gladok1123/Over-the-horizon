@@ -30,11 +30,12 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
     /// Initializes a new instance of the <see cref="OpenAlAudioSubsystem"/> class.
     /// </summary>
     /// <param name="logger">Structured logger.</param>
-    public OpenAlAudioSubsystem(ILogger<OpenAlAudioSubsystem> logger)
+    /// <param name="externalAssetsPath">Optional path to external <c>.wav</c> sound pack or directory.</param>
+    public OpenAlAudioSubsystem(ILogger<OpenAlAudioSubsystem> logger, string? externalAssetsPath = null)
     {
         ArgumentNullException.ThrowIfNull(logger);
         _logger = logger;
-        _soundBank = ProceduralSoundBank.CreateDefaultBank();
+        _soundBank = ProceduralSoundBank.CreateDefaultBank(externalAssetsPath);
     }
 
     /// <inheritdoc />

@@ -7,6 +7,7 @@ using OverHorizon.Physics;
 using OverHorizon.Rendering;
 using OverHorizon.Rendering.Meshing;
 using OverHorizon.Rendering.Textures;
+using OverHorizon.World.Lighting;
 using OverHorizon.World.Storage;
 
 namespace OverHorizon.Client;
@@ -68,7 +69,7 @@ public sealed class ClientWorldCache : IVoxelCollisionReader
 
         var pos = column.Position;
         _mutableColumns[pos] = column;
-        _publishedSnapshots[pos] = column.CreateSnapshot();
+        RelightMutableColumnAndCardinals(pos, column);
         MarkColumnAndCardinalsDirty(pos);
     }
 
@@ -110,28 +111,55 @@ public sealed class ClientWorldCache : IVoxelCollisionReader
         }
 
         _ = column.SetBlockState(worldPos.SectionLocalX, worldPos.Y, worldPos.SectionLocalZ, newState, _blocks);
-        _publishedSnapshots[chunkPos] = column.CreateSnapshot();
+        LightingEngine.RefreshChunkLight(column, _blocks);
+        RelightMutableColumnAndCardinals(chunkPos, column);
 
         _dirtyMeshColumns.Add(chunkPos);
-        if (worldPos.SectionLocalX == 0)
-        {
-            MarkIfLoaded(new ChunkPos(chunkPos.X - 1, chunkPos.Z));
-        }
-        else if (worldPos.SectionLocalX == 15)
-        {
-            MarkIfLoaded(new ChunkPos(chunkPos.X + 1, chunkPos.Z));
-        }
-
-        if (worldPos.SectionLocalZ == 0)
-        {
-            MarkIfLoaded(new ChunkPos(chunkPos.X, chunkPos.Z - 1));
-        }
-        else if (worldPos.SectionLocalZ == 15)
-        {
-            MarkIfLoaded(new ChunkPos(chunkPos.X, chunkPos.Z + 1));
-        }
+        MarkIfLoaded(new ChunkPos(chunkPos.X - 1, chunkPos.Z));
+        MarkIfLoaded(new ChunkPos(chunkPos.X + 1, chunkPos.Z));
+        MarkIfLoaded(new ChunkPos(chunkPos.X, chunkPos.Z - 1));
+        MarkIfLoaded(new ChunkPos(chunkPos.X, chunkPos.Z + 1));
 
         return true;
+    }
+
+    /// <summary>
+    /// Evicts cached chunk columns outside Chebyshev distance <paramref name="keepRadius"/> from <paramref name="center"/>,
+    /// immediately freeing their GPU section meshes in <paramref name="renderer"/>.
+    /// </summary>
+    /// <param name="center">Player's current chunk coordinate.</param>
+    /// <param name="keepRadius">Maximum Chebyshev chunk radius to retain.</param>
+    /// <param name="renderer">Active render subsystem whose VRAM meshes should be freed immediately.</param>
+    /// <returns>Number of unloaded chunk columns.</returns>
+    public int EvictOutOfRangeChunks(ChunkPos center, int keepRadius, IRenderSubsystem renderer)
+    {
+        ArgumentNullException.ThrowIfNull(renderer);
+
+        List<ChunkPos>? toEvict = null;
+        foreach (var pos in _publishedSnapshots.Keys)
+        {
+            if (center.ChessboardDistance(pos) > keepRadius)
+            {
+                toEvict ??= [];
+                toEvict.Add(pos);
+            }
+        }
+
+        if (toEvict is null)
+        {
+            return 0;
+        }
+
+        for (var i = 0; i < toEvict.Count; i++)
+        {
+            var pos = toEvict[i];
+            _ = _publishedSnapshots.TryRemove(pos, out _);
+            _ = _mutableColumns.Remove(pos);
+            _ = _dirtyMeshColumns.Remove(pos);
+            renderer.RemoveChunkMeshes(pos);
+        }
+
+        return toEvict.Count;
     }
 
     /// <summary>
@@ -294,6 +322,40 @@ public sealed class ClientWorldCache : IVoxelCollisionReader
         sbyte.TryParse(lvlStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var lvl)
             ? lvl
             : (sbyte)0;
+
+    private void RelightMutableColumnAndCardinals(ChunkPos pos, ChunkColumn center)
+    {
+        _ = _mutableColumns.TryGetValue(new ChunkPos(pos.X, pos.Z - 1), out var north);
+        _ = _mutableColumns.TryGetValue(new ChunkPos(pos.X, pos.Z + 1), out var south);
+        _ = _mutableColumns.TryGetValue(new ChunkPos(pos.X - 1, pos.Z), out var west);
+        _ = _mutableColumns.TryGetValue(new ChunkPos(pos.X + 1, pos.Z), out var east);
+
+        _ = LightingEngine.PropagateCrossChunkLight(center, north, south, west, east, _blocks);
+        _publishedSnapshots[pos] = center.CreateSnapshot();
+
+        RelightSingleNeighbor(north);
+        RelightSingleNeighbor(south);
+        RelightSingleNeighbor(west);
+        RelightSingleNeighbor(east);
+    }
+
+    private void RelightSingleNeighbor(ChunkColumn? neighbor)
+    {
+        if (neighbor is null)
+        {
+            return;
+        }
+
+        var np = neighbor.Position;
+        _ = _mutableColumns.TryGetValue(new ChunkPos(np.X, np.Z - 1), out var nn);
+        _ = _mutableColumns.TryGetValue(new ChunkPos(np.X, np.Z + 1), out var ns);
+        _ = _mutableColumns.TryGetValue(new ChunkPos(np.X - 1, np.Z), out var nw);
+        _ = _mutableColumns.TryGetValue(new ChunkPos(np.X + 1, np.Z), out var ne);
+
+        LightingEngine.RefreshChunkLight(neighbor, _blocks);
+        _ = LightingEngine.PropagateCrossChunkLight(neighbor, nn, ns, nw, ne, _blocks);
+        _publishedSnapshots[np] = neighbor.CreateSnapshot();
+    }
 
     private void MarkColumnAndCardinalsDirty(ChunkPos pos)
     {

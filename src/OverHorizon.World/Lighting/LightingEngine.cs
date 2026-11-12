@@ -56,6 +56,124 @@ public static class LightingEngine
     public static void RefreshChunkLight(ChunkColumn chunk, IBlockRegistry blocks) =>
         InitializeChunkLight(chunk, blocks);
 
+    /// <summary>
+    /// Propagates sky light and emissive block light from up to four cardinal neighbor columns into <paramref name="center"/>,
+    /// eliminating dark lighting seams across chunk boundaries.
+    /// </summary>
+    /// <param name="center">Target chunk column to receive border light.</param>
+    /// <param name="north">Optional neighbor at <c>(X, Z - 1)</c>.</param>
+    /// <param name="south">Optional neighbor at <c>(X, Z + 1)</c>.</param>
+    /// <param name="west">Optional neighbor at <c>(X - 1, Z)</c>.</param>
+    /// <param name="east">Optional neighbor at <c>(X + 1, Z)</c>.</param>
+    /// <param name="blocks">Frozen block registry.</param>
+    /// <returns><see langword="true"/> if at least one light nibble in <paramref name="center"/> increased.</returns>
+    public static bool PropagateCrossChunkLight(
+        ChunkColumn center,
+        ChunkColumn? north,
+        ChunkColumn? south,
+        ChunkColumn? west,
+        ChunkColumn? east,
+        IBlockRegistry blocks)
+    {
+        ArgumentNullException.ThrowIfNull(center);
+        ArgumentNullException.ThrowIfNull(blocks);
+
+        if (north is null && south is null && west is null && east is null)
+        {
+            return false;
+        }
+
+        var queue = ArrayPool<int>.Shared.Rent(InitialQueueCapacity);
+        try
+        {
+            var changed = false;
+            for (var pass = 0; pass < 2; pass++)
+            {
+                var isSky = pass == 0;
+                var head = 0;
+                var tail = 0;
+
+                SeedSeamFromNeighbor(center, north, blocks, isSky, isZSeam: true, centerEdge: 0, neighborEdge: 15, ref queue, ref tail);
+                SeedSeamFromNeighbor(center, south, blocks, isSky, isZSeam: true, centerEdge: 15, neighborEdge: 0, ref queue, ref tail);
+                SeedSeamFromNeighbor(center, west, blocks, isSky, isZSeam: false, centerEdge: 0, neighborEdge: 15, ref queue, ref tail);
+                SeedSeamFromNeighbor(center, east, blocks, isSky, isZSeam: false, centerEdge: 15, neighborEdge: 0, ref queue, ref tail);
+
+                if (tail > 0)
+                {
+                    changed = true;
+                    PropagateLightQueue(center, blocks, isSky, ref queue, ref head, ref tail);
+                }
+            }
+
+            return changed;
+        }
+        finally
+        {
+            ArrayPool<int>.Shared.Return(queue, clearArray: false);
+        }
+    }
+
+    private static void SeedSeamFromNeighbor(
+        ChunkColumn center,
+        ChunkColumn? neighbor,
+        IBlockRegistry blocks,
+        bool isSky,
+        bool isZSeam,
+        int centerEdge,
+        int neighborEdge,
+        ref int[] queue,
+        ref int tail)
+    {
+        if (neighbor is null)
+        {
+            return;
+        }
+
+        for (var y = EngineConstants.WorldMinY; y < EngineConstants.WorldMaxY; y++)
+        {
+            for (var i = 0; i < 16; i++)
+            {
+                var nx = isZSeam ? i : neighborEdge;
+                var nz = isZSeam ? neighborEdge : i;
+                var srcLevel = isSky ? neighbor.GetSkyLight(nx, y, nz) : neighbor.GetBlockLight(nx, y, nz);
+                if (srcLevel <= 1)
+                {
+                    continue;
+                }
+
+                var cx = isZSeam ? i : centerEdge;
+                var cz = isZSeam ? centerEdge : i;
+                var meta = blocks.GetStateMetadata(center.GetBlockState(cx, y, cz));
+                if (meta.IsOpaque)
+                {
+                    continue;
+                }
+
+                var candidate = srcLevel - (meta.IsFluid ? 2 : 1);
+                var existing = isSky ? center.GetSkyLight(cx, y, cz) : center.GetBlockLight(cx, y, cz);
+                if (candidate <= existing)
+                {
+                    continue;
+                }
+
+                var nextByte = (byte)candidate;
+                if (isSky)
+                {
+                    center.SetSkyLight(cx, y, cz, nextByte);
+                }
+                else
+                {
+                    center.SetBlockLight(cx, y, cz, nextByte);
+                }
+
+                if (nextByte > 1)
+                {
+                    Enqueue(ref queue, ref tail, PackCoord(cx, y, cz));
+                }
+            }
+        }
+    }
+
     private static void SeedSkyLightColumns(ChunkColumn chunk, ref int[] queue, ref int tail)
     {
         for (var z = 0; z < 16; z++)

@@ -36,6 +36,7 @@ public static class ClientBootstrap
         ushort serverPort = 25565;
         var username = "Explorer";
         var viewDistance = 4;
+        string? externalAssetsPath = null;
 
         var i = 0;
         while (i < args.Length)
@@ -114,6 +115,17 @@ public static class ClientBootstrap
                 continue;
             }
 
+            if (string.Equals(token, "--assets", StringComparison.Ordinal) && i + 1 < args.Length)
+            {
+                if (!string.IsNullOrWhiteSpace(args[i + 1]))
+                {
+                    externalAssetsPath = args[i + 1];
+                }
+
+                i += 2;
+                continue;
+            }
+
             i++;
         }
 
@@ -125,7 +137,8 @@ public static class ClientBootstrap
             ServerPort: serverPort,
             Username: username,
             ViewDistanceChunks: viewDistance,
-            StartInWorld: startInWorld);
+            StartInWorld: startInWorld,
+            ExternalAssetsPath: externalAssetsPath);
     }
 
     /// <summary>
@@ -160,7 +173,7 @@ public static class ClientBootstrap
         var saveDir = resolvedOptions.Headless || resolvedOptions.HeadlessCheckOnly ? null : "./saves/SingleplayerWorld";
         services.AddWorldModule(worldSaveDirectory: saveDir);
         services.AddRenderingModule(new RenderingOptions(Headless: resolvedOptions.Headless));
-        services.AddAudioModule();
+        services.AddAudioModule(resolvedOptions.ExternalAssetsPath);
         services.AddSingleton<ClientSessionRunner>();
 
         return services;

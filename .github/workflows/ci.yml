@@ -87,7 +87,7 @@ jobs:
           set -euo pipefail
           mkdir -p release-zips
           for rid in win-x64 linux-x64 osx-arm64 osx-x64; do
-            pkg_name="OverHorizon-v0.2.0-alpha-${rid}"
+            pkg_name="OverHorizon-v0.3.0-alpha-${rid}"
             stage_dir="stage/${pkg_name}"
             mkdir -p "${stage_dir}"
 
@@ -116,18 +116,18 @@ jobs:
       - name: Upload Playable Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: OverHorizon-v0.2.0-alpha-playable-builds
+          name: OverHorizon-v0.3.0-alpha-playable-builds
           path: release-zips/*.zip
           retention-days: 30
 
-      - name: Publish or Update GitHub Pre-Release v0.2.0-alpha
+      - name: Publish or Update GitHub Pre-Release v0.3.0-alpha
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="v0.2.0-alpha"
-          NOTES=$'### Over-the-Horizon: C# EDITION (`v0.2.0-alpha`) — Главное меню, палитра 22 блоков, чат и игра с друзьями!\n\nГотовые самодостаточные сборки (установка .NET **не требуется** — просто скачайте архив под вашу ОС, распакуйте и запустите `Play-OverHorizon.bat` или `OverHorizon.Client`!):\n- **Windows 10/11 (x64)**: `OverHorizon-v0.2.0-alpha-win-x64.zip`\n- **Linux (x86_64)**: `OverHorizon-v0.2.0-alpha-linux-x64.zip`\n- **macOS Apple Silicon (M1–M4)**: `OverHorizon-v0.2.0-alpha-osx-arm64.zip`\n- **macOS Intel (x64)**: `OverHorizon-v0.2.0-alpha-osx-x64.zip`\n\n#### Что нового в `v0.2.0-alpha` ("C# EDITION"):\n- Главное меню **OVER THE HORIZON — C# EDITION** с живой вращающейся 3D-панорамой мира;\n- Внутриигровое меню **Multiplayer** (ввод IP/ника + запуск локального сервера на порту `25565` в **1 клик**), **Options** (FOV, Render Distance, звук, мышь) и **Pause Menu (`Esc`)**;\n- Творческая палитра из **22 блоков (`E`)**: каменные и глиняные кирпичи, прозрачное стекло, песчаник, книжные полки, угольная/железная/золотая/алмазная руды, замшелый булыжник, снег, шерсть и др.;\n- 3D-блок в руке с покачиванием при ходьбе и взмахом при ударе/установке, 3D-солнце и плывущие облака, чёткий контур выделенного блока, пиксельный шрифт 8x8, живой чат (`T`), плавающие ники над головами друзей и экран отладки `F3`.'
+          TAG="v0.3.0-alpha"
+          NOTES=$'### Over-the-Horizon: C# EDITION (`v0.3.0-alpha`) — Поддержка реальных PNG/WAV ассетов (`Download-Real-Assets.bat`), прыжок 1.27 блока, плавный мультиплеер и межчанковый свет!\n\nГотовые самодостаточные сборки (установка .NET **не требуется**):\n- **Windows 10/11 (x64)**: `OverHorizon-v0.3.0-alpha-win-x64.zip`\n- **Linux (x86_64)**: `OverHorizon-v0.3.0-alpha-linux-x64.zip`\n- **macOS Apple Silicon (M1–M4)**: `OverHorizon-v0.3.0-alpha-osx-arm64.zip`\n- **macOS Intel (x64)**: `OverHorizon-v0.3.0-alpha-osx-x64.zip`\n\n#### Что нового в `v0.3.0-alpha`:\n- **Загрузчик реальных PNG-текстур, локализаций и WAV-звуков (`ResourcePackLoader` + `PngImageDecoder` + `WavPcmDecoder`)**: запустите `Download-Real-Assets.bat` (или положите любой `.zip` ресурс-пак / `.jar` в папку `./resourcepacks/`), и движок автоматически подхватит настоящие PNG-текстуры блоков с биомным окрашиванием травы, листвы и воды!\n- **Многослойный 44.1 кГц физический синтез звуков**: хруст травы, удар по камню с минеральным откликом, гулкое дерево, разрушение блоков и всплески воды.\n- **Прыжок 1.27 блока на любом FPS (30/60/144/240 Гц) + плавание по `Пробелу`**: исправлено независимое от FPS затухание скорости в `KinematicsIntegrator`.\n- **Плавный мультиплеер без рывков**: интерполяция координат и углов друзей на 60–240 Гц, мгновенное клиентское предсказание ломания/установки блоков (0 мс задержки), защита камеры мыши от рывков и отправка движения ровно 20 раз/сек.\n- **Бесшовный свет через границы чанков + мгновенная очистка VRAM далёких чанков**.'
           if gh release view "${TAG}" >/dev/null 2>&1; then
             gh release upload "${TAG}" release-zips/*.zip --clobber
             gh release edit "${TAG}" --notes "${NOTES}"
@@ -135,6 +135,6 @@ jobs:
             gh release create "${TAG}" release-zips/*.zip \
               --target "${GITHUB_SHA}" \
               --prerelease \
-              --title "Over-the-Horizon: C# EDITION — v0.2.0-alpha" \
+              --title "Over-the-Horizon: C# EDITION — v0.3.0-alpha" \
               --notes "${NOTES}"
           fi
