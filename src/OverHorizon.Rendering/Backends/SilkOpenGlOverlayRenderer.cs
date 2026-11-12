@@ -10,8 +10,8 @@ using Silk.NET.OpenGL;
 namespace OverHorizon.Rendering.Backends;
 
 /// <summary>
-/// Renders dynamic 3D remote player avatars, targeted block selection highlights,
-/// and 2D screen-space crosshair + 9-slot block hotbar overlays in OpenGL 3.3 Core Profile.
+/// Renders 3D sky sun &amp; clouds, 3D articulated friend avatars with eyes, targeted block wireframe shell,
+/// 3D first-person swinging block viewmodel, and delegates 2D menus/HUD to <see cref="SilkOpenGlUiRenderer"/>.
 /// </summary>
 internal sealed class SilkOpenGlOverlayRenderer : IDisposable
 {
@@ -47,7 +47,8 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
     private readonly int _locTransform;
     private readonly uint _vao;
     private readonly uint _vbo;
-    private readonly List<OverlayVertex> _scratch = new(1024);
+    private readonly SilkOpenGlUiRenderer _uiRenderer;
+    private readonly List<OverlayVertex> _scratch = new(2048);
     private bool _disposed;
 
     public unsafe SilkOpenGlOverlayRenderer(GL gl)
@@ -55,6 +56,7 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
         _gl = gl;
         _program = CompileAndLink(gl);
         _locTransform = gl.GetUniformLocation(_program, "uTransform");
+        _uiRenderer = new SilkOpenGlUiRenderer(gl);
 
         _vao = gl.GenVertexArray();
         _vbo = gl.GenBuffer();
@@ -73,12 +75,15 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
     public unsafe int RenderOverlays(FirstPersonCamera camera, FrameOverlayState overlay)
     {
         var drawCalls = 0;
+        var vp = camera.BuildCameraRelativeViewProjectionMatrix();
+
         _gl.UseProgram(_program);
         _gl.BindVertexArray(_vao);
         _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _vbo);
 
-        // Pass 1: 3D camera-relative remote player avatars + targeted block highlight
+        // Pass 1: 3D Sky Sun + Drifting Voxel Clouds + Remote Friend Avatars
         _scratch.Clear();
+        AppendSkySunAndClouds(overlay.CloudDriftOffset);
         foreach (var avatar in overlay.RemotePlayers)
         {
             AppendPlayerAvatarGeometry(camera.Position, in avatar);
@@ -91,20 +96,21 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
             _gl.Disable(EnableCap.Blend);
             _gl.DepthMask(true);
 
-            var vp = camera.BuildCameraRelativeViewProjectionMatrix();
             _gl.UniformMatrix4(_locTransform, 1, false, (float*)&vp);
             UploadAndDrawTriangles();
             drawCalls++;
         }
 
-        if (overlay.TargetedBlock is { } blockPos)
+        // Pass 2: Targeted Block Selection Highlight Box (only during gameplay)
+        if (overlay.Mode == UiOverlayMode.InGame && overlay.TargetedBlock is { } blockPos)
         {
             _scratch.Clear();
             var relMin = new Vector3(
-                (float)(blockPos.X - camera.Position.X) - 0.004f,
-                (float)(blockPos.Y - camera.Position.Y) - 0.004f,
-                (float)(blockPos.Z - camera.Position.Z) - 0.004f);
-            AppendBoxTriangles(relMin, new Vector3(1.008f, 1.008f, 1.008f), Matrix4x4.Identity, new Vector4(1.0f, 0.95f, 0.55f, 0.22f));
+                (float)(blockPos.X - camera.Position.X) - 0.005f,
+                (float)(blockPos.Y - camera.Position.Y) - 0.005f,
+                (float)(blockPos.Z - camera.Position.Z) - 0.005f);
+            AppendBoxTriangles(relMin, new Vector3(1.010f, 1.010f, 1.010f), Matrix4x4.Identity, new Vector4(0.08f, 0.08f, 0.10f, 0.24f));
+            AppendWireframeEdges(relMin, new Vector3(1.012f, 1.012f, 1.012f), 0.012f, new Vector4(0.05f, 0.05f, 0.06f, 0.85f));
 
             _gl.Enable(EnableCap.DepthTest);
             _gl.Disable(EnableCap.CullFace);
@@ -112,34 +118,37 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
             _gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
             _gl.DepthMask(false);
 
-            var vp = camera.BuildCameraRelativeViewProjectionMatrix();
             _gl.UniformMatrix4(_locTransform, 1, false, (float*)&vp);
             UploadAndDrawTriangles();
             _gl.DepthMask(true);
             drawCalls++;
         }
 
-        // Pass 2: 2D Screen-Space Crosshair + 9-Slot Block Hotbar
-        _scratch.Clear();
-        AppendHudCrosshairAndHotbar(camera.AspectRatio, overlay.SelectedHotbarSlot, overlay.HotbarSlotColors.Span);
-
-        if (_scratch.Count > 0)
+        // Pass 3: 3D First-Person Held Block Viewmodel (bottom-right hand with walk-bob & swing!)
+        if (overlay.Mode != UiOverlayMode.TitleMenu)
         {
-            _gl.Disable(EnableCap.DepthTest);
-            _gl.Disable(EnableCap.CullFace);
-            _gl.Enable(EnableCap.Blend);
-            _gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
+            _scratch.Clear();
+            AppendFirstPersonHeldBlock(overlay.HeldBlockColor, overlay.WalkBobPhase, overlay.HandSwingProgress);
 
-            var identity = Matrix4x4.Identity;
-            _gl.UniformMatrix4(_locTransform, 1, false, (float*)&identity);
+            _gl.Clear((uint)ClearBufferMask.DepthBufferBit);
+            _gl.Enable(EnableCap.DepthTest);
+            _gl.Disable(EnableCap.CullFace);
+            _gl.Disable(EnableCap.Blend);
+
+            var viewProjHand = Matrix4x4.CreatePerspectiveFieldOfView(
+                62.0f * (MathF.PI / 180.0f),
+                Math.Max(0.5f, camera.AspectRatio),
+                0.05f,
+                16.0f);
+            _gl.UniformMatrix4(_locTransform, 1, false, (float*)&viewProjHand);
             UploadAndDrawTriangles();
             drawCalls++;
         }
 
-        _gl.Disable(EnableCap.Blend);
-        _gl.Enable(EnableCap.CullFace);
-        _gl.Enable(EnableCap.DepthTest);
         _gl.BindVertexArray(0);
+
+        // Pass 4: 2D Screen-Space Menus, Bitmap Font Text, Hotbar, Chat, F3 & Nametags
+        drawCalls += _uiRenderer.RenderUi(camera, overlay);
         return drawCalls;
     }
 
@@ -150,6 +159,7 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
             return;
         }
 
+        _uiRenderer.Dispose();
         if (_vao != 0)
         {
             _gl.DeleteVertexArray(_vao);
@@ -218,6 +228,62 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
         _gl.DrawArrays(PrimitiveType.Triangles, 0, (uint)span.Length);
     }
 
+    private void AppendSkySunAndClouds(float drift)
+    {
+        // Bright voxel sun high in the sky
+        AppendBoxTriangles(new Vector3(48.0f, 118.0f, -95.0f), new Vector3(16.0f, 16.0f, 16.0f), Matrix4x4.Identity, new Vector4(1.0f, 0.96f, 0.68f, 1.0f));
+        AppendBoxTriangles(new Vector3(50.0f, 120.0f, -93.0f), new Vector3(12.0f, 12.0f, 12.0f), Matrix4x4.Identity, new Vector4(1.0f, 1.0f, 0.90f, 1.0f));
+
+        // Crisp white voxel cloud puffs drifting gently overhead
+        var wrapped = (drift % 160.0f) - 80.0f;
+        var cloudCol = new Vector4(0.97f, 0.98f, 1.0f, 1.0f);
+        for (var i = -3; i <= 3; i++)
+        {
+            var cx = wrapped + (i * 42.0f);
+            var cz = ((i * 29) % 70) - 35.0f;
+            AppendBoxTriangles(new Vector3(cx, 88.0f, cz), new Vector3(22.0f, 3.2f, 14.0f), Matrix4x4.Identity, cloudCol);
+            AppendBoxTriangles(new Vector3(cx + 6.0f, 88.0f, cz - 8.0f), new Vector3(14.0f, 2.8f, 10.0f), Matrix4x4.Identity, cloudCol);
+        }
+    }
+
+    private void AppendFirstPersonHeldBlock(Vector3 blockRgb, float bobPhase, float swingProgress)
+    {
+        var color = blockRgb.LengthSquared() > 0.01f
+            ? new Vector4(blockRgb.X, blockRgb.Y, blockRgb.Z, 1.0f)
+            : new Vector4(0.55f, 0.55f, 0.58f, 1.0f);
+
+        var bobX = MathF.Cos(bobPhase * 0.5f) * 0.035f;
+        var bobY = MathF.Abs(MathF.Sin(bobPhase)) * -0.04f;
+        var swingArc = MathF.Sin(swingProgress * MathF.PI);
+
+        var model = Matrix4x4.CreateRotationY(0.68f - (swingArc * 0.45f))
+            * Matrix4x4.CreateRotationX(0.28f - (swingArc * 0.85f))
+            * Matrix4x4.CreateRotationZ(-swingArc * 0.35f)
+            * Matrix4x4.CreateTranslation(0.58f + bobX - (swingArc * 0.16f), -0.52f + bobY + (swingArc * 0.12f), -0.92f - (swingArc * 0.18f));
+
+        AppendBoxTriangles(new Vector3(-0.19f, -0.19f, -0.19f), new Vector3(0.38f, 0.38f, 0.38f), model, color);
+    }
+
+    private void AppendWireframeEdges(Vector3 min, Vector3 size, float t, Vector4 color)
+    {
+        var max = min + size;
+        // 4 bottom + 4 top + 4 vertical edge bars
+        AppendBoxTriangles(new Vector3(min.X, min.Y, min.Z), new Vector3(size.X, t, t), Matrix4x4.Identity, color);
+        AppendBoxTriangles(new Vector3(min.X, min.Y, max.Z - t), new Vector3(size.X, t, t), Matrix4x4.Identity, color);
+        AppendBoxTriangles(new Vector3(min.X, max.Y - t, min.Z), new Vector3(size.X, t, t), Matrix4x4.Identity, color);
+        AppendBoxTriangles(new Vector3(min.X, max.Y - t, max.Z - t), new Vector3(size.X, t, t), Matrix4x4.Identity, color);
+
+        AppendBoxTriangles(new Vector3(min.X, min.Y, min.Z), new Vector3(t, t, size.Z), Matrix4x4.Identity, color);
+        AppendBoxTriangles(new Vector3(max.X - t, min.Y, min.Z), new Vector3(t, t, size.Z), Matrix4x4.Identity, color);
+        AppendBoxTriangles(new Vector3(min.X, max.Y - t, min.Z), new Vector3(t, t, size.Z), Matrix4x4.Identity, color);
+        AppendBoxTriangles(new Vector3(max.X - t, max.Y - t, min.Z), new Vector3(t, t, size.Z), Matrix4x4.Identity, color);
+
+        AppendBoxTriangles(new Vector3(min.X, min.Y, min.Z), new Vector3(t, size.Y, t), Matrix4x4.Identity, color);
+        AppendBoxTriangles(new Vector3(max.X - t, min.Y, min.Z), new Vector3(t, size.Y, t), Matrix4x4.Identity, color);
+        AppendBoxTriangles(new Vector3(min.X, min.Y, max.Z - t), new Vector3(t, size.Y, t), Matrix4x4.Identity, color);
+        AppendBoxTriangles(new Vector3(max.X - t, min.Y, max.Z - t), new Vector3(t, size.Y, t), Matrix4x4.Identity, color);
+    }
+
     private void AppendPlayerAvatarGeometry(Vec3d cameraPos, in RemotePlayerAvatar avatar)
     {
         var baseOffset = new Vector3(
@@ -231,84 +297,28 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
 
         var (shirt, pants) = ComputeOutfitColors(avatar.Username);
         var skin = new Vector4(0.92f, 0.74f, 0.60f, 1.0f);
+        var hair = new Vector4(0.26f, 0.18f, 0.11f, 1.0f);
+        var eyeCol = new Vector4(0.14f, 0.22f, 0.48f, 1.0f);
 
-        // Legs (0.24 x 0.70 x 0.24)
         var leftLegXform = Matrix4x4.CreateRotationX(swing) * Matrix4x4.CreateTranslation(-0.13f, 0.70f, 0.0f) * bodyRot;
         var rightLegXform = Matrix4x4.CreateRotationX(-swing) * Matrix4x4.CreateTranslation(0.13f, 0.70f, 0.0f) * bodyRot;
         AppendBoxTriangles(new Vector3(-0.11f, -0.70f, -0.12f), new Vector3(0.22f, 0.70f, 0.24f), leftLegXform, pants);
         AppendBoxTriangles(new Vector3(-0.11f, -0.70f, -0.12f), new Vector3(0.22f, 0.70f, 0.24f), rightLegXform, pants);
 
-        // Torso (0.48 x 0.70 x 0.26)
         AppendBoxTriangles(new Vector3(-0.24f, 0.70f, -0.13f), new Vector3(0.48f, 0.70f, 0.26f), bodyRot, shirt);
 
-        // Arms (0.20 x 0.68 x 0.22)
         var leftArmXform = Matrix4x4.CreateRotationX(-swing) * Matrix4x4.CreateTranslation(-0.35f, 1.38f, 0.0f) * bodyRot;
         var rightArmXform = Matrix4x4.CreateRotationX(swing) * Matrix4x4.CreateTranslation(0.35f, 1.38f, 0.0f) * bodyRot;
         AppendBoxTriangles(new Vector3(-0.10f, -0.68f, -0.11f), new Vector3(0.20f, 0.68f, 0.22f), leftArmXform, shirt);
         AppendBoxTriangles(new Vector3(-0.10f, -0.68f, -0.11f), new Vector3(0.20f, 0.68f, 0.22f), rightArmXform, shirt);
 
-        // Head (0.46 x 0.46 x 0.46) with pitch look
         var pitchRad = avatar.PitchDegrees * (MathF.PI / 180.0f);
         var headXform = Matrix4x4.CreateRotationX(pitchRad) * Matrix4x4.CreateTranslation(0.0f, 1.40f, 0.0f) * bodyRot;
         AppendBoxTriangles(new Vector3(-0.23f, 0.0f, -0.23f), new Vector3(0.46f, 0.46f, 0.46f), headXform, skin);
-    }
-
-    private void AppendHudCrosshairAndHotbar(float aspect, int selectedSlot, ReadOnlySpan<Vector3> slotColors)
-    {
-        var safeAspect = Math.Max(0.5f, aspect);
-        var chHalfW = 0.018f / safeAspect;
-        var chThickX = 0.0032f / safeAspect;
-        var chHalfH = 0.018f;
-        var chThickY = 0.0032f;
-
-        // Crosshair (+)
-        AppendQuad2D(-chHalfW, -chThickY, chHalfW * 2.0f, chThickY * 2.0f, new Vector4(0.96f, 0.96f, 0.96f, 0.88f));
-        AppendQuad2D(-chThickX, -chHalfH, chThickX * 2.0f, chHalfH * 2.0f, new Vector4(0.96f, 0.96f, 0.96f, 0.88f));
-
-        if (slotColors.IsEmpty)
-        {
-            return;
-        }
-
-        var count = Math.Min(9, slotColors.Length);
-        var slotSizeY = 0.095f;
-        var slotSizeX = slotSizeY / safeAspect;
-        var gapX = 0.012f / safeAspect;
-        var totalW = (count * slotSizeX) + ((count - 1) * gapX);
-        var startX = -totalW * 0.5f;
-        var baseY = -0.94f;
-
-        // Dark backing bar
-        AppendQuad2D(startX - gapX, baseY - 0.015f, totalW + (gapX * 2.0f), slotSizeY + 0.03f, new Vector4(0.08f, 0.09f, 0.11f, 0.72f));
-
-        for (var i = 0; i < count; i++)
-        {
-            var sx = startX + (i * (slotSizeX + gapX));
-            if (i == selectedSlot)
-            {
-                var padX = 0.008f / safeAspect;
-                AppendQuad2D(sx - padX, baseY - 0.008f, slotSizeX + (padX * 2.0f), slotSizeY + 0.016f, new Vector4(1.0f, 0.86f, 0.22f, 0.95f));
-            }
-
-            var c = slotColors[i];
-            var padInnerX = 0.008f / safeAspect;
-            AppendQuad2D(sx + padInnerX, baseY + 0.008f, slotSizeX - (padInnerX * 2.0f), slotSizeY - 0.016f, new Vector4(c.X, c.Y, c.Z, 0.95f));
-        }
-    }
-
-    private void AppendQuad2D(float x, float y, float w, float h, Vector4 color)
-    {
-        var p0 = new Vector3(x, y, 0.0f);
-        var p1 = new Vector3(x + w, y, 0.0f);
-        var p2 = new Vector3(x + w, y + h, 0.0f);
-        var p3 = new Vector3(x, y + h, 0.0f);
-
-        _scratch.Add(new OverlayVertex(p0, color));
-        _scratch.Add(new OverlayVertex(p1, color));
-        _scratch.Add(new OverlayVertex(p2, color));
-        _scratch.Add(new OverlayVertex(p0, color));
-        _scratch.Add(new OverlayVertex(p2, color));
-        _scratch.Add(new OverlayVertex(p3, color));
+        AppendBoxTriangles(new Vector3(-0.24f, 0.34f, -0.24f), new Vector3(0.48f, 0.14f, 0.48f), headXform, hair);
+        // Eyes on the -Z front face
+        AppendBoxTriangles(new Vector3(-0.14f, 0.18f, -0.245f), new Vector3(0.08f, 0.07f, 0.02f), headXform, eyeCol);
+        AppendBoxTriangles(new Vector3(0.06f, 0.18f, -0.245f), new Vector3(0.08f, 0.07f, 0.02f), headXform, eyeCol);
     }
 
     private void AppendBoxTriangles(Vector3 min, Vector3 size, Matrix4x4 transform, Vector4 baseColor)
@@ -323,12 +333,12 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
         var c011 = Vector3.Transform(new Vector3(min.X, max.Y, max.Z), transform);
         var c111 = Vector3.Transform(new Vector3(max.X, max.Y, max.Z), transform);
 
-        EmitFace(c010, c011, c111, c110, Shade(baseColor, 1.00f)); // Up
-        EmitFace(c000, c100, c101, c001, Shade(baseColor, 0.55f)); // Down
-        EmitFace(c001, c101, c111, c011, Shade(baseColor, 0.85f)); // South
-        EmitFace(c100, c000, c010, c110, Shade(baseColor, 0.82f)); // North
-        EmitFace(c101, c100, c110, c111, Shade(baseColor, 0.70f)); // East
-        EmitFace(c000, c001, c011, c010, Shade(baseColor, 0.70f)); // West
+        EmitFace(c010, c011, c111, c110, Shade(baseColor, 1.00f));
+        EmitFace(c000, c100, c101, c001, Shade(baseColor, 0.55f));
+        EmitFace(c001, c101, c111, c011, Shade(baseColor, 0.85f));
+        EmitFace(c100, c000, c010, c110, Shade(baseColor, 0.82f));
+        EmitFace(c101, c100, c110, c111, Shade(baseColor, 0.70f));
+        EmitFace(c000, c001, c011, c010, Shade(baseColor, 0.70f));
     }
 
     private void EmitFace(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector4 color)

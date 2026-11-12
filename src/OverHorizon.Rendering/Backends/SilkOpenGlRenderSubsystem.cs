@@ -65,6 +65,11 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
     /// <summary>Gets the active Silk.NET input context while the window loop is running, or <see langword="null"/> prior to load.</summary>
     public IInputContext? InputContext => _inputContext;
 
+    /// <summary>Gets the current logical window pixel dimensions.</summary>
+    public Vector2 WindowPixelSize => _window is { } w
+        ? new Vector2(w.Size.X, w.Size.Y)
+        : new Vector2(_options.WindowWidth, _options.WindowHeight);
+
     /// <summary>Gets or sets the OS window title when a window is open.</summary>
     public string WindowTitle
     {
@@ -77,6 +82,9 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
             }
         }
     }
+
+    /// <summary>Requests graceful closure of the active OS window, if open.</summary>
+    public void RequestClose() => _window?.Close();
 
     /// <inheritdoc />
     public void UploadAtlas(TextureAtlasData atlas)

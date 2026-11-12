@@ -30,11 +30,12 @@ public static class ClientBootstrap
     {
         var headlessCheckOnly = false;
         var headless = false;
+        var startInWorld = false;
         int? maxFrames = null;
         string? serverHost = null;
         ushort serverPort = 25565;
         var username = "Explorer";
-        var viewDistance = 3;
+        var viewDistance = 4;
 
         var i = 0;
         while (i < args.Length)
@@ -50,6 +51,13 @@ public static class ClientBootstrap
             if (string.Equals(token, "--headless", StringComparison.Ordinal))
             {
                 headless = true;
+                i++;
+                continue;
+            }
+
+            if (string.Equals(token, "--singleplayer", StringComparison.Ordinal))
+            {
+                startInWorld = true;
                 i++;
                 continue;
             }
@@ -116,7 +124,8 @@ public static class ClientBootstrap
             ServerHost: serverHost,
             ServerPort: serverPort,
             Username: username,
-            ViewDistanceChunks: viewDistance);
+            ViewDistanceChunks: viewDistance,
+            StartInWorld: startInWorld);
     }
 
     /// <summary>
@@ -148,7 +157,7 @@ public static class ClientBootstrap
         services.AddNetworkingModule();
         services.AddGameplayModule();
         services.AddPhysicsModule();
-        services.AddWorldModule();
+        services.AddWorldModule(worldSaveDirectory: resolvedOptions.Headless ? null : "./saves/SingleplayerWorld");
         services.AddRenderingModule(new RenderingOptions(Headless: resolvedOptions.Headless));
         services.AddAudioModule();
         services.AddSingleton<ClientSessionRunner>();

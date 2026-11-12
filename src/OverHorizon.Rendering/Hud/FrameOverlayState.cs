@@ -4,14 +4,27 @@ using OverHorizon.Core.Math;
 namespace OverHorizon.Rendering.Hud;
 
 /// <summary>
-/// Per-frame dynamic 3D avatar, targeted block highlight, and 2D hotbar/crosshair state passed to <see cref="IRenderSubsystem"/>.
+/// Per-frame dynamic 3D world overlays (remote player avatars, targeted block box, sky sun/clouds, 1st-person held block)
+/// and 2D UI/HUD state passed to <see cref="IRenderSubsystem"/>.
 /// </summary>
-/// <param name="TargetedBlock">Currently raycast-targeted solid block, or <see langword="null"/> if none.</param>
-/// <param name="SelectedHotbarSlot">Active hotbar slot index (<c>0..8</c>).</param>
-/// <param name="HotbarSlotColors">Representative RGB colors for the 9 hotbar slots.</param>
-/// <param name="RemotePlayers">Currently visible remote multiplayer friends.</param>
 public sealed record FrameOverlayState(
     BlockPos? TargetedBlock,
     int SelectedHotbarSlot,
     ReadOnlyMemory<Vector3> HotbarSlotColors,
-    IReadOnlyList<RemotePlayerAvatar> RemotePlayers);
+    IReadOnlyList<RemotePlayerAvatar> RemotePlayers,
+    UiOverlayMode Mode = UiOverlayMode.InGame,
+    Vector2 ViewportSize = default,
+    Vector3 HeldBlockColor = default,
+    float WalkBobPhase = 0.0f,
+    float HandSwingProgress = 0.0f,
+    float CloudDriftOffset = 0.0f,
+    string ActiveBlockDisplayName = "",
+    string DebugOverlayText = "",
+    string MenuTitle = "",
+    string MenuSubtitle = "",
+    string SplashText = "",
+    string StatusMessage = "",
+    string ChatInputBuffer = "",
+    IReadOnlyList<string>? RecentChatLines = null,
+    IReadOnlyList<UiButtonItem>? Buttons = null,
+    IReadOnlyList<UiInventoryCell>? InventoryCells = null);

@@ -18,3 +18,8 @@ artifacts/
 # OS
 .DS_Store
 Thumbs.db
+
+# Runtime World Saves
+world/
+saves/
+
