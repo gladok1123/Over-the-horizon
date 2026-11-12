@@ -53,6 +53,9 @@ public sealed class ClientHotbar
         }
     }
 
+    /// <summary>Gets the 9 RGB color swatches rendered in the 2D HUD hotbar.</summary>
+    public static ReadOnlyMemory<Vector3> SlotColors => DefaultSlotColors;
+
     /// <summary>Gets the number of slots in the hotbar (<c>9</c>).</summary>
     public int SlotCount => _slotStates.Length;
 
@@ -64,9 +67,6 @@ public sealed class ClientHotbar
 
     /// <summary>Gets the default <see cref="BlockState"/> of the currently selected building block.</summary>
     public BlockState SelectedBlockState => _slotStates[_selectedSlot];
-
-    /// <summary>Gets the 9 RGB color swatches rendered in the 2D HUD hotbar.</summary>
-    public ReadOnlyMemory<Vector3> SlotColors => DefaultSlotColors;
 
     /// <summary>
     /// Selects a specific zero-based hotbar slot (<c>0..8</c>).

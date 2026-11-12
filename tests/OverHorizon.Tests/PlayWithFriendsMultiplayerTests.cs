@@ -110,7 +110,7 @@ public sealed class PlayWithFriendsMultiplayerTests
         parsed.PlayerViewDistanceChunks.Should().Be(5);
         parsed.WorldSeed.Should().Be(777L);
         parsed.WorldSaveDirectory.Should().Be("./my-world");
-        parsed.DefaultPlayerPermission.Should().Be(PermissionLevel.Operator);
+        parsed.DefaultPlayerPermission.Should().Be(PermissionLevel.Admin);
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public sealed class PlayWithFriendsMultiplayerTests
                 PlayerViewDistanceChunks: 1,
                 WorldSeed: 2026L,
                 WorldSaveDirectory: tempWorldDir,
-                DefaultPlayerPermission: PermissionLevel.Operator);
+                DefaultPlayerPermission: PermissionLevel.Admin);
 
             using var serverHost = ServerBootstrap.BuildHost([], serverOpts);
             await serverHost.StartAsync(cts.Token).ConfigureAwait(false);

@@ -313,7 +313,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         new(
             _player.CurrentTarget?.BlockPosition,
             _player.Hotbar.SelectedSlot,
-            _player.Hotbar.SlotColors,
+            ClientHotbar.SlotColors,
             _remotePlayers.BuildSnapshot());
 
     private async ValueTask StepFrameAsync(

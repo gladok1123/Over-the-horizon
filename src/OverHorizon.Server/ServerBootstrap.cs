@@ -101,7 +101,7 @@ public static class ServerBootstrap
 
             if (string.Equals(token, "--op-all", StringComparison.Ordinal))
             {
-                defaultPerm = PermissionLevel.Operator;
+                defaultPerm = PermissionLevel.Admin;
             }
 
             i++;
