@@ -97,12 +97,19 @@ public sealed class AssetsJumpMultiplayerAndLightingTests
             }
         }
 
-        // Place a 1-block step directly ahead along -Z at z=6 (occupying Y=[64, 65)).
-        _ = col.SetBlockState(8, 64, 6, stone, blocks);
+        // Build a 1-block-tall terrace ahead along -Z across z=[0..6] (occupying Y=[64, 65)).
+        for (var z = 0; z <= 6; z++)
+        {
+            for (var x = 0; x < 16; x++)
+            {
+                _ = col.SetBlockState(x, 64, z, stone, blocks);
+            }
+        }
+
         cache.UpsertColumn(col);
 
         using var audio = new OpenAlAudioSubsystem(NullLogger<OpenAlAudioSubsystem>.Instance);
-        var player = new ClientPlayerController(new Vec3d(8.5, 64.0, 7.2), blocks);
+        var player = new ClientPlayerController(new Vec3d(8.5, 64.0, 7.6), blocks);
         var dt = 1.0 / fps;
 
         // Settle onto ground for 4 frames, then jump forward onto the 1-block ledge!
