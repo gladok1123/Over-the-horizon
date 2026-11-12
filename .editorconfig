@@ -115,3 +115,10 @@ dotnet_diagnostic.S2365.severity = none
 dotnet_diagnostic.S3776.severity = none
 dotnet_diagnostic.S3881.severity = none
 dotnet_diagnostic.S4143.severity = none
+
+# Test & benchmark projects: avoid conflict between Meziantou MA0004 (require ConfigureAwait(false)) and xUnit1030 (forbid ConfigureAwait(false) in tests)
+[tests/**/*.cs]
+dotnet_diagnostic.MA0004.severity = none
+dotnet_diagnostic.CA2007.severity = none
+dotnet_diagnostic.xUnit1030.severity = none
+
