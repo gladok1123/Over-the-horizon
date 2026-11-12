@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>OverHorizon.Shared</RootNamespace>
+    <AssemblyName>OverHorizon.Shared</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OverHorizon.Core/OverHorizon.Core.csproj" />
+  </ItemGroup>
+</Project>
