@@ -225,12 +225,10 @@ public sealed class ResourcePackLoader : IDisposable
         }
 
         // Support nested unwrapped GitHub zip folder (e.g. ./resourcepacks/minecraft-assets-1.21.4/assets/...)
-        foreach (var subDir in Directory.EnumerateDirectories(rootDir))
+        foreach (var subDir in Directory.EnumerateDirectories(rootDir)
+                     .Where(static d => Directory.Exists(Path.Combine(d, "assets"))))
         {
-            if (Directory.Exists(Path.Combine(subDir, "assets")))
-            {
-                LoadFromDirectoryTree(subDir);
-            }
+            LoadFromDirectoryTree(subDir);
         }
     }
 

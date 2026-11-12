@@ -135,31 +135,19 @@ public sealed class ClientWorldCache : IVoxelCollisionReader
     {
         ArgumentNullException.ThrowIfNull(renderer);
 
-        List<ChunkPos>? toEvict = null;
-        foreach (var pos in _publishedSnapshots.Keys)
+        var evicted = 0;
+        foreach (var pos in _publishedSnapshots.Keys.Where(pos => center.ChessboardDistance(pos) > keepRadius))
         {
-            if (center.ChessboardDistance(pos) > keepRadius)
+            if (_publishedSnapshots.TryRemove(pos, out _))
             {
-                toEvict ??= [];
-                toEvict.Add(pos);
+                _ = _mutableColumns.Remove(pos);
+                _ = _dirtyMeshColumns.Remove(pos);
+                renderer.RemoveChunkMeshes(pos);
+                evicted++;
             }
         }
 
-        if (toEvict is null)
-        {
-            return 0;
-        }
-
-        for (var i = 0; i < toEvict.Count; i++)
-        {
-            var pos = toEvict[i];
-            _ = _publishedSnapshots.TryRemove(pos, out _);
-            _ = _mutableColumns.Remove(pos);
-            _ = _dirtyMeshColumns.Remove(pos);
-            renderer.RemoveChunkMeshes(pos);
-        }
-
-        return toEvict.Count;
+        return evicted;
     }
 
     /// <summary>
