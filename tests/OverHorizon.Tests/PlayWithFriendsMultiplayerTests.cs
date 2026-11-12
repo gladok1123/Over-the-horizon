@@ -9,6 +9,7 @@ using OverHorizon.Core.Registry;
 using OverHorizon.Modding.Commands;
 using OverHorizon.Networking;
 using OverHorizon.Networking.Codec;
+using OverHorizon.Networking.Packets;
 using OverHorizon.Networking.Packets.Clientbound;
 using OverHorizon.Physics;
 using OverHorizon.Rendering.Textures;
@@ -63,24 +64,25 @@ public sealed class PlayWithFriendsMultiplayerTests
     [Fact]
     public void RemotePlayerPackets_RoundTripThroughJavaProtocolCodec()
     {
+        var codec = new JavaProtocolCodec();
         var writer = new ArrayBufferWriter<byte>(256);
 
         var spawn = new RemotePlayerSpawnPacket(42L, "FriendAlex", new Vec3d(12.5, 68.0, -4.25), 90.0f, -15.0f);
-        JavaProtocolCodec.WriteClientboundPacket(writer, ConnectionState.Play, spawn);
-        var decodedSpawn = DecodeSingleClientbound(writer).Should().BeOfType<RemotePlayerSpawnPacket>().Subject;
-        decodedSpawn.Should().Be(spawn);
+        codec.EncodeClientbound(ConnectionState.Play, spawn, writer);
+        codec.DecodeClientbound(ConnectionState.Play, writer.WrittenSpan)
+            .Should().BeOfType<RemotePlayerSpawnPacket>().Which.Should().Be(spawn);
 
         writer.Clear();
         var move = new RemotePlayerMovePacket(42L, new Vec3d(13.25, 68.0, -4.25), 135.0f, 5.0f);
-        JavaProtocolCodec.WriteClientboundPacket(writer, ConnectionState.Play, move);
-        var decodedMove = DecodeSingleClientbound(writer).Should().BeOfType<RemotePlayerMovePacket>().Subject;
-        decodedMove.Should().Be(move);
+        codec.EncodeClientbound(ConnectionState.Play, move, writer);
+        codec.DecodeClientbound(ConnectionState.Play, writer.WrittenSpan)
+            .Should().BeOfType<RemotePlayerMovePacket>().Which.Should().Be(move);
 
         writer.Clear();
         var despawn = new RemotePlayerDespawnPacket(42L);
-        JavaProtocolCodec.WriteClientboundPacket(writer, ConnectionState.Play, despawn);
-        var decodedDespawn = DecodeSingleClientbound(writer).Should().BeOfType<RemotePlayerDespawnPacket>().Subject;
-        decodedDespawn.Should().Be(despawn);
+        codec.EncodeClientbound(ConnectionState.Play, despawn, writer);
+        codec.DecodeClientbound(ConnectionState.Play, writer.WrittenSpan)
+            .Should().BeOfType<RemotePlayerDespawnPacket>().Which.Should().Be(despawn);
     }
 
     [Fact]
@@ -259,12 +261,5 @@ public sealed class PlayWithFriendsMultiplayerTests
                 Directory.Delete(tempWorldDir, recursive: true);
             }
         }
-    }
-
-    private static OverHorizon.Networking.Packets.IClientboundPacket DecodeSingleClientbound(ArrayBufferWriter<byte> writer)
-    {
-        var seq = new ReadOnlySequence<byte>(writer.WrittenMemory);
-        JavaProtocolCodec.TryReadFrame(ref seq, out var payload).Should().BeTrue();
-        return JavaProtocolCodec.DecodeClientboundPacket(ConnectionState.Play, payload.ToArray());
     }
 }

@@ -24,13 +24,13 @@ public sealed class NbtTests
             .SetInt64("l", 0x1122334455667788L)
             .Set("f", new NbtFloatTag(3.25f))
             .SetDouble("d", -128.0625)
-            .Set("ba", new NbtByteArrayTag([1, 2, 3, 255]))
+            .Set("ba", new NbtByteArrayTag((ReadOnlySpan<byte>)[1, 2, 3, 255]))
             .SetString("str", "chunk_section")
             .Set("list", list)
             .Set("emptyList", new NbtListTag())
             .Set("nested", nested)
-            .Set("ia", new NbtIntArrayTag([-1, 0, 42]))
-            .Set("la", new NbtLongArrayTag([long.MinValue, 0L, long.MaxValue]));
+            .Set("ia", new NbtIntArrayTag((ReadOnlySpan<int>)[-1, 0, 42]))
+            .Set("la", new NbtLongArrayTag((ReadOnlySpan<long>)[long.MinValue, 0L, long.MaxValue]));
 
         var firstBytes = NbtWriter.WriteToBytes("LevelData", root);
         var (parsedName, parsedRoot) = NbtReader.ReadRoot(firstBytes);
