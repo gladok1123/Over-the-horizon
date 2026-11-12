@@ -23,7 +23,7 @@ public sealed class GameplaySubsystem : IGameplaySubsystem
     private const double StepJumpVelocity = 8.4;
 
     private static readonly QueryDescription AiEntityQuery =
-        default(QueryDescription).WithAll<
+        new QueryDescription().WithAll<
             EntityIdentity,
             PositionComponent,
             VelocityComponent,
@@ -32,18 +32,18 @@ public sealed class GameplaySubsystem : IGameplaySubsystem
             AiBrainComponent>();
 
     private static readonly QueryDescription PassiveEntityQuery =
-        default(QueryDescription)
+        new QueryDescription()
             .WithAll<EntityIdentity, PositionComponent, VelocityComponent, BodyDimensionsComponent, OnGroundComponent>()
             .WithNone<AiBrainComponent, PlayerControlledComponent>();
 
     private static readonly QueryDescription AllHashableEntityQuery =
-        default(QueryDescription).WithAll<EntityIdentity, PositionComponent, VelocityComponent, HealthComponent>();
+        new QueryDescription().WithAll<EntityIdentity, PositionComponent, VelocityComponent, HealthComponent>();
 
     private static readonly QueryDescription HealthLookupQuery =
-        default(QueryDescription).WithAll<EntityIdentity, HealthComponent>();
+        new QueryDescription().WithAll<EntityIdentity, HealthComponent>();
 
     private static readonly QueryDescription PositionLookupQuery =
-        default(QueryDescription).WithAll<EntityIdentity, PositionComponent>();
+        new QueryDescription().WithAll<EntityIdentity, PositionComponent>();
 
     private readonly Arch.Core.World _ecsWorld;
     private readonly IVoxelCollisionReader? _collisionWorld;
