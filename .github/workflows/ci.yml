@@ -36,7 +36,29 @@ jobs:
         run: dotnet restore OverHorizon.sln
 
       - name: Build (Release, warnings as errors)
-        run: dotnet build OverHorizon.sln --configuration Release --no-restore -warnaserror
+        shell: bash
+        run: |
+          set -o pipefail
+          dotnet build OverHorizon.sln --configuration Release --no-restore -warnaserror 2>&1 | tee build.log || {
+            echo "### Build Errors (${{ matrix.os }})" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            grep -E "error [A-Z0-9]+:" build.log | head -n 80 >> "$GITHUB_STEP_SUMMARY" || tail -n 80 build.log >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
 
       - name: Run unit & architecture tests
-        run: dotnet test tests/OverHorizon.Tests/OverHorizon.Tests.csproj --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage"
+        shell: bash
+        run: |
+          set -o pipefail
+          dotnet test tests/OverHorizon.Tests/OverHorizon.Tests.csproj --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" 2>&1 | tee test.log || {
+            echo "### Test Failures (${{ matrix.os }})" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            tail -n 120 test.log >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+          echo "### Passed (${{ matrix.os }})" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -E "Passed!|Total tests:" test.log >> "$GITHUB_STEP_SUMMARY" || tail -n 15 test.log >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
