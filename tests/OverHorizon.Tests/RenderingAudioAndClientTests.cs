@@ -43,7 +43,7 @@ public sealed class RenderingAudioAndClientTests
     [Fact]
     public void ProceduralAtlasGenerator_ProducesDeterministicTilesAndDistinctGrassFaces()
     {
-        var registries = BuiltInRegistries.CreateDefault();
+        var registries = CoreRegistries.CreateDefault();
         var atlasA = ProceduralAtlasGenerator.CreateDefault(registries.Blocks);
         var atlasB = ProceduralAtlasGenerator.CreateDefault(registries.Blocks);
 
@@ -84,7 +84,7 @@ public sealed class RenderingAudioAndClientTests
     [Fact]
     public void GreedySectionMesher_MergesUniform16x16x16SolidCubeIntoSixQuadsAndCullsCrossChunkSeam()
     {
-        var registries = BuiltInRegistries.CreateDefault();
+        var registries = CoreRegistries.CreateDefault();
         var atlas = ProceduralAtlasGenerator.CreateDefault(registries.Blocks);
         var stone = registries.Blocks.GetDefaultState(BuiltInBlocks.Stone.Key);
 
@@ -125,7 +125,7 @@ public sealed class RenderingAudioAndClientTests
     [Fact]
     public void GreedySectionMesher_RoutesWaterIntoTranslucentPassAndCullsInternalFluidSeams()
     {
-        var registries = BuiltInRegistries.CreateDefault();
+        var registries = CoreRegistries.CreateDefault();
         var atlas = ProceduralAtlasGenerator.CreateDefault(registries.Blocks);
         var water = registries.Blocks.GetDefaultState(BuiltInBlocks.Water.Key);
 
@@ -145,9 +145,9 @@ public sealed class RenderingAudioAndClientTests
     [Fact]
     public async Task ParallelChunkMesher_ProducesIdenticalDeterministicMeshesAcrossRunsAsync()
     {
-        var registries = BuiltInRegistries.CreateDefault();
+        var registries = CoreRegistries.CreateDefault();
         var atlas = ProceduralAtlasGenerator.CreateDefault(registries.Blocks);
-        var generator = new OverworldChunkGenerator(seed: 12345L, registries);
+        var generator = new OverworldGenerator(seed: 12345L, registries);
 
         var neighborhoods = new List<ChunkNeighborhood>(4);
         for (var cx = 0; cx < 2; cx++)
@@ -227,7 +227,7 @@ public sealed class RenderingAudioAndClientTests
     [Fact]
     public void RenderBackends_TrackSectionUploadsEvictionsAndVisibilityMetrics()
     {
-        var registries = BuiltInRegistries.CreateDefault();
+        var registries = CoreRegistries.CreateDefault();
         var atlas = ProceduralAtlasGenerator.CreateDefault(registries.Blocks);
         var stone = registries.Blocks.GetDefaultState(BuiltInBlocks.Stone.Key);
 

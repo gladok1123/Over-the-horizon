@@ -184,32 +184,6 @@ public sealed class BlockRegistry : IBlockRegistry
         return results;
     }
 
-    private void BuildTransitionsForBlock(
-        ImmutableArray<BlockProperty> properties,
-        List<Dictionary<string, string>> combinations,
-        BlockState[] stateByComboIndex)
-    {
-        if (properties.IsEmpty)
-        {
-            return;
-        }
-
-        for (var i = 0; i < combinations.Count; i++)
-        {
-            var sourceState = stateByComboIndex[i];
-            var sourceProps = combinations[i];
-
-            foreach (var prop in properties)
-            {
-                foreach (var candidateValue in prop.AllowedValues)
-                {
-                    var targetIndex = FindMatchingCombination(combinations, sourceProps, prop.Name, candidateValue);
-                    _mutableTransitions[(sourceState.Id, prop.Name, candidateValue)] = stateByComboIndex[targetIndex];
-                }
-            }
-        }
-    }
-
     private static int FindMatchingCombination(
         List<Dictionary<string, string>> combinations,
         Dictionary<string, string> baseline,
@@ -238,5 +212,31 @@ public sealed class BlockRegistry : IBlockRegistry
         }
 
         throw new InvalidOperationException("Unreachable: missing state combination.");
+    }
+
+    private void BuildTransitionsForBlock(
+        ImmutableArray<BlockProperty> properties,
+        List<Dictionary<string, string>> combinations,
+        BlockState[] stateByComboIndex)
+    {
+        if (properties.IsEmpty)
+        {
+            return;
+        }
+
+        for (var i = 0; i < combinations.Count; i++)
+        {
+            var sourceState = stateByComboIndex[i];
+            var sourceProps = combinations[i];
+
+            foreach (var prop in properties)
+            {
+                foreach (var candidateValue in prop.AllowedValues)
+                {
+                    var targetIndex = FindMatchingCombination(combinations, sourceProps, prop.Name, candidateValue);
+                    _mutableTransitions[(sourceState.Id, prop.Name, candidateValue)] = stateByComboIndex[targetIndex];
+                }
+            }
+        }
     }
 }

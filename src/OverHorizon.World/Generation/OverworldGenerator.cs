@@ -163,6 +163,20 @@ public sealed class OverworldGenerator : IWorldGenerator
         }
     }
 
+    private static int FindTopSolidGround(ChunkColumn chunk, int lx, int lz)
+    {
+        for (var y = 135; y >= SeaLevel; y--)
+        {
+            var state = chunk.GetBlockState(lx, y, lz);
+            if (!state.IsAir)
+            {
+                return y;
+            }
+        }
+
+        return -1;
+    }
+
     private void CarveUndergroundCaves(ChunkColumn chunk)
     {
         var minX = chunk.Position.MinBlockX;
@@ -276,20 +290,6 @@ public sealed class OverworldGenerator : IWorldGenerator
             var trunkHeight = 4 + rng.NextInt32(2);
             PlaceTree(chunk, tx, groundY + 1, tz, trunkHeight);
         }
-    }
-
-    private static int FindTopSolidGround(ChunkColumn chunk, int lx, int lz)
-    {
-        for (var y = 135; y >= SeaLevel; y--)
-        {
-            var state = chunk.GetBlockState(lx, y, lz);
-            if (!state.IsAir)
-            {
-                return y;
-            }
-        }
-
-        return -1;
     }
 
     private void PlaceTree(ChunkColumn chunk, int x, int baseY, int z, int trunkHeight)

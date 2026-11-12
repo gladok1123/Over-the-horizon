@@ -5,7 +5,7 @@ namespace OverHorizon.Core.Nbt;
 /// </summary>
 public abstract class NbtTag
 {
-    internal NbtTag()
+    private protected NbtTag()
     {
     }
 

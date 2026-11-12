@@ -27,9 +27,9 @@ public class RenderingBenchmarks
     [GlobalSetup]
     public void Setup()
     {
-        _registries = BuiltInRegistries.CreateDefault();
+        _registries = CoreRegistries.CreateDefault();
         _atlas = ProceduralAtlasGenerator.CreateDefault(_registries.Blocks);
-        var generator = new OverworldChunkGenerator(seed: 20261112L, _registries);
+        var generator = new OverworldGenerator(seed: 20261112L, _registries);
 
         var snapshots = new Dictionary<ChunkPos, OverHorizon.World.Storage.ChunkSnapshot>(9);
         for (var z = -1; z <= 1; z++)
