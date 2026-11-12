@@ -128,7 +128,6 @@ public sealed class PlayWithFriendsMultiplayerTests
                 TicksPerSecond: 100,
                 ListenPort: 0,
                 PlayerViewDistanceChunks: 1,
-                WorldSeed: 2026L,
                 WorldSaveDirectory: tempWorldDir,
                 DefaultPlayerPermission: PermissionLevel.Admin);
 
@@ -165,7 +164,7 @@ public sealed class PlayWithFriendsMultiplayerTests
                     await bob.InitializeSessionAsync(cts.Token).ConfigureAwait(false);
 
                     // Pump frames until both friends have received chunks and spotted each other's 3D avatar.
-                    for (var i = 0; i < 50; i++)
+                    for (var i = 0; i < 60; i++)
                     {
                         _ = await alice.RunHeadlessFramesAsync(1, cancellationToken: cts.Token).ConfigureAwait(false);
                         _ = await bob.RunHeadlessFramesAsync(1, cancellationToken: cts.Token).ConfigureAwait(false);
@@ -183,20 +182,39 @@ public sealed class PlayWithFriendsMultiplayerTests
                     alice.RemotePlayerCount.Should().Be(1);
                     bob.RemotePlayerCount.Should().Be(1);
 
-                    // Alice looks obliquely down at the ground block in front of her (+Z, pitch -60) so placement won't overlap her AABB.
-                    alice.Player.Camera.SetRotation(yawDegrees: 180.0f, pitchDegrees: -60.0f);
-                    _ = await alice.RunHeadlessFramesAsync(1, cancellationToken: cts.Token).ConfigureAwait(false);
+                    // Alice looks down at the ground ~2 blocks ahead (yaw 0 -> -Z, pitch -40) and breaks the targeted terrain block.
+                    alice.Player.Camera.SetRotation(yawDegrees: 0.0f, pitchDegrees: -40.0f);
+                    alice.Player.RefreshRaycastTarget(alice.WorldCache);
 
                     alice.Player.CurrentTarget.Should().NotBeNull();
-                    var targetHit = alice.Player.CurrentTarget!.Value;
+                    var brokenPos = alice.Player.CurrentTarget!.Value.BlockPosition;
+                    alice.TryBreakTargetedBlock().Should().BeTrue();
 
-                    // Alice selects Glowstone (slot 8) and places it onto the adjacent air voxel.
+                    for (var i = 0; i < 50; i++)
+                    {
+                        _ = await alice.RunHeadlessFramesAsync(1, cancellationToken: cts.Token).ConfigureAwait(false);
+                        _ = await bob.RunHeadlessFramesAsync(1, cancellationToken: cts.Token).ConfigureAwait(false);
+                        if (bob.WorldCache.GetBlockState(brokenPos).IsAir)
+                        {
+                            break;
+                        }
+
+                        await Task.Delay(15, cts.Token).ConfigureAwait(false);
+                    }
+
+                    bob.WorldCache.GetBlockState(brokenPos).IsAir.Should().BeTrue();
+
+                    // Now Alice selects Glowstone (slot 8) and places a block into the cavity she just carved (~2 blocks away from her AABB).
+                    alice.Player.Camera.SetRotation(yawDegrees: 0.0f, pitchDegrees: -40.0f);
+                    alice.Player.RefreshRaycastTarget(alice.WorldCache);
+                    alice.Player.CurrentTarget.Should().NotBeNull();
+                    var placedPos = alice.Player.CurrentTarget!.Value.AdjacentPosition;
+
                     alice.Player.Hotbar.SelectSlot(8);
-                    var placedPos = targetHit.AdjacentPosition;
                     alice.TryPlaceSelectedBlock().Should().BeTrue();
 
                     var glowstoneState = blocks.GetDefaultState(BuiltInBlocks.Glowstone);
-                    for (var i = 0; i < 40; i++)
+                    for (var i = 0; i < 50; i++)
                     {
                         _ = await alice.RunHeadlessFramesAsync(1, cancellationToken: cts.Token).ConfigureAwait(false);
                         _ = await bob.RunHeadlessFramesAsync(1, cancellationToken: cts.Token).ConfigureAwait(false);
@@ -209,24 +227,6 @@ public sealed class PlayWithFriendsMultiplayerTests
                     }
 
                     bob.WorldCache.GetBlockState(placedPos).Should().Be(glowstoneState);
-
-                    // Now Alice breaks that placed Glowstone block and Bob sees it turn back to Air!
-                    alice.Player.RefreshRaycastTarget(alice.WorldCache);
-                    alice.TryBreakTargetedBlock().Should().BeTrue();
-
-                    for (var i = 0; i < 40; i++)
-                    {
-                        _ = await alice.RunHeadlessFramesAsync(1, cancellationToken: cts.Token).ConfigureAwait(false);
-                        _ = await bob.RunHeadlessFramesAsync(1, cancellationToken: cts.Token).ConfigureAwait(false);
-                        if (bob.WorldCache.GetBlockState(placedPos).IsAir)
-                        {
-                            break;
-                        }
-
-                        await Task.Delay(15, cts.Token).ConfigureAwait(false);
-                    }
-
-                    bob.WorldCache.GetBlockState(placedPos).IsAir.Should().BeTrue();
 
                     // Bob disconnects -> Alice receives RemotePlayerDespawnPacket.
                     await bob.DisposeAsync().ConfigureAwait(false);

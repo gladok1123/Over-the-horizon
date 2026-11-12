@@ -52,6 +52,9 @@ jobs:
         run: |
           set -o pipefail
           dotnet test tests/OverHorizon.Tests/OverHorizon.Tests.csproj --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" 2>&1 | tee test.log || {
+            grep -E "Failed |Error Message:|Expected |Stack Trace:|at OverHorizon" test.log | head -n 20 | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
             echo "### Test Failures (${{ matrix.os }})" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             tail -n 120 test.log >> "$GITHUB_STEP_SUMMARY"
