@@ -8,11 +8,11 @@ namespace OverHorizon.Client;
 
 /// <summary>
 /// Tracks active remote multiplayer avatars with frame-rate-independent position, shortest-angle yaw/pitch,
-/// and limb-swing interpolation between 20 TPS server movement packets.
+/// limb-swing interpolation, PvP hurt-flash feedback, and 3D melee raycast hit-testing.
 /// </summary>
 internal sealed class ClientRemotePlayerTracker
 {
-    private const double SnapTeleportDistanceSq = 144.0; // Snap immediately when > 12 blocks (e.g. /tp)
+    private const double SnapTeleportDistanceSq = 144.0;
     private const double InterpolationSharpness = 16.0;
 
     private readonly Dictionary<long, InterpolatedPeerState> _peers = [];
@@ -38,7 +38,9 @@ internal sealed class ClientRemotePlayerTracker
                     spawnPkt.PitchDegrees,
                     spawnPkt.PitchDegrees,
                     WalkPhase: 0.0f,
-                    HorizontalSpeed: 0.0f);
+                    HorizontalSpeed: 0.0f,
+                    HurtFlash: 0.0f,
+                    Health: 20.0f);
                 ClientLog.RemotePlayerJoined(_logger, spawnPkt.Username, spawnPkt.EntityId);
                 return true;
 
@@ -70,6 +72,53 @@ internal sealed class ClientRemotePlayerTracker
             default:
                 return false;
         }
+    }
+
+    public bool TryApplyCombatFeedback(long targetEntityId, float newHealth, bool wasRespawned, out Vec3d peerPos)
+    {
+        if (!_peers.TryGetValue(targetEntityId, out var peer))
+        {
+            peerPos = Vec3d.Zero;
+            return false;
+        }
+
+        peerPos = peer.RenderPosition;
+        _peers[targetEntityId] = peer with
+        {
+            HurtFlash = wasRespawned ? 0.0f : 1.0f,
+            Health = wasRespawned ? 20.0f : Math.Clamp(newHealth, 0.0f, 20.0f),
+        };
+        return true;
+    }
+
+    public bool TryRaycastPeer(Vec3d eyePos, Vec3d forward, double maxReach, out long hitEntityId, out double hitDistance)
+    {
+        hitEntityId = 0;
+        hitDistance = maxReach + 1.0;
+
+        var dirLen = forward.Length;
+        if (dirLen < 1e-6 || _peers.Count == 0)
+        {
+            return false;
+        }
+
+        var dir = new Vec3d(forward.X / dirLen, forward.Y / dirLen, forward.Z / dirLen);
+        var found = false;
+
+        foreach (var peer in _peers.Values)
+        {
+            var min = new Vec3d(peer.RenderPosition.X - 0.42, peer.RenderPosition.Y - 0.05, peer.RenderPosition.Z - 0.42);
+            var max = new Vec3d(peer.RenderPosition.X + 0.42, peer.RenderPosition.Y + 1.90, peer.RenderPosition.Z + 0.42);
+
+            if (IntersectRayAabb(eyePos, dir, min, max, maxReach, out var dist) && dist < hitDistance)
+            {
+                hitDistance = dist;
+                hitEntityId = peer.EntityId;
+                found = true;
+            }
+        }
+
+        return found;
     }
 
     public void StepInterpolation(double deltaSeconds)
@@ -107,6 +156,7 @@ internal sealed class ClientRemotePlayerTracker
             var nextWalkPhase = stepHoriz > 1e-4f
                 ? s.WalkPhase + (stepHoriz * 3.1f)
                 : DecayPhaseToRest(s.WalkPhase, (float)dt * 10.0f);
+            var nextHurt = MathF.Max(0.0f, s.HurtFlash - ((float)dt * 2.4f));
 
             _peers[key] = s with
             {
@@ -115,6 +165,7 @@ internal sealed class ClientRemotePlayerTracker
                 RenderPitch = nextPitch,
                 WalkPhase = nextWalkPhase,
                 HorizontalSpeed = s.HorizontalSpeed * (float)Math.Exp(-8.0 * dt),
+                HurtFlash = nextHurt,
             };
         }
     }
@@ -130,10 +181,49 @@ internal sealed class ClientRemotePlayerTracker
                 s.RenderPosition,
                 s.RenderYaw,
                 s.RenderPitch,
-                s.WalkPhase));
+                s.WalkPhase,
+                s.HurtFlash,
+                s.Health));
         }
 
         return _snapshot;
+    }
+
+    private static bool IntersectRayAabb(Vec3d origin, Vec3d dir, Vec3d min, Vec3d max, double maxDist, out double tHit)
+    {
+        var tMin = 0.0;
+        var tMax = maxDist;
+
+        if (!SlabAxis(origin.X, dir.X, min.X, max.X, ref tMin, ref tMax) ||
+            !SlabAxis(origin.Y, dir.Y, min.Y, max.Y, ref tMin, ref tMax) ||
+            !SlabAxis(origin.Z, dir.Z, min.Z, max.Z, ref tMin, ref tMax))
+        {
+            tHit = 0.0;
+            return false;
+        }
+
+        tHit = Math.Max(0.0, tMin);
+        return tHit <= maxDist;
+    }
+
+    private static bool SlabAxis(double o, double d, double min, double max, ref double tMin, ref double tMax)
+    {
+        if (Math.Abs(d) < 1e-9)
+        {
+            return o >= min && o <= max;
+        }
+
+        var inv = 1.0 / d;
+        var t1 = (min - o) * inv;
+        var t2 = (max - o) * inv;
+        if (t1 > t2)
+        {
+            (t1, t2) = (t2, t1);
+        }
+
+        tMin = Math.Max(tMin, t1);
+        tMax = Math.Min(tMax, t2);
+        return tMin <= tMax;
     }
 
     private static float LerpAngleDegrees(float current, float target, float t)
@@ -172,5 +262,7 @@ internal sealed class ClientRemotePlayerTracker
         float RenderPitch,
         float TargetPitch,
         float WalkPhase,
-        float HorizontalSpeed);
+        float HorizontalSpeed,
+        float HurtFlash,
+        float Health);
 }

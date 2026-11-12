@@ -4,6 +4,8 @@ using OverHorizon.Audio;
 using OverHorizon.Core.Biomes;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
+using OverHorizon.Core.Registry;
+using OverHorizon.Gameplay;
 using OverHorizon.Networking.Packets;
 using OverHorizon.Networking.Packets.Serverbound;
 using OverHorizon.Rendering;
@@ -17,14 +19,15 @@ using OverHorizon.World.Storage;
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Drives the voxel client runtime across Title Screen ("C# EDITION"), Singleplayer, and Multiplayer sessions,
-/// supporting interactive Silk.NET OpenGL windowing and headless simulation frames.
+/// Drives the voxel client runtime across Title Screen ("C# EDITION"), Redesigned Creative Mode, Survival &amp; Crafting,
+/// and Multiplayer PvP sessions over Silk.NET OpenGL or headless simulation frames.
 /// </summary>
 public sealed class ClientSessionRunner : IAsyncDisposable
 {
     private const long LocalTicketOwnerId = 1L;
 
     private readonly ClientOptions _options;
+    private readonly CoreRegistries _registries;
     private readonly IBlockRegistry _blocks;
     private readonly IWorldSubsystem _localWorld;
     private readonly IRenderSubsystem _renderer;
@@ -38,6 +41,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
     private readonly ClientMenuSessionActions _menuActions;
     private readonly ClientInputBinder _inputBinder;
     private readonly ClientRemotePlayerTracker _remotePlayers;
+    private readonly ClientSurvivalCombatController _survivalCombat;
     private readonly ClientAsyncMeshQueue _meshQueue;
 
     private ClientMultiplayerTransport _transport = new();
@@ -57,6 +61,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
     /// </summary>
     public ClientSessionRunner(
         ClientOptions options,
+        CoreRegistries registries,
         IBlockRegistry blocks,
         IWorldSubsystem localWorld,
         IRenderSubsystem renderer,
@@ -64,6 +69,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         ILogger<ClientSessionRunner> logger)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(registries);
         ArgumentNullException.ThrowIfNull(blocks);
         ArgumentNullException.ThrowIfNull(localWorld);
         ArgumentNullException.ThrowIfNull(renderer);
@@ -71,6 +77,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(logger);
 
         _options = options;
+        _registries = registries;
         _blocks = blocks;
         _localWorld = localWorld;
         _renderer = renderer;
@@ -83,13 +90,16 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         _atlas = ProceduralAtlasGenerator.CreateDefault(blocks, options.ExternalAssetsPath);
         _renderer.UploadAtlas(_atlas);
         _worldCache = new ClientWorldCache(blocks, _atlas);
-        _player = new ClientPlayerController(new Vec3d(0.5, 80.0, 0.5), blocks);
+        _player = new ClientPlayerController(new Vec3d(0.5, 80.0, 0.5), blocks, registries.Items);
+        _player.Hotbar.BindAtlas(_atlas);
         _player.Camera.SetAspectRatio(1280, 720);
-        _menu = new ClientMenuController(options, initialMode);
+
+        _menu = new ClientMenuController(options, initialMode, registries.Items);
         _menuActions = new ClientMenuSessionActions(_menu, _chatHistory, _localWorld, _logger);
         _inputBinder = new ClientInputBinder(
             _player, _menu, _audio, _logger, () => _latestDebugText, () => _renderer is SilkOpenGlRenderSubsystem s ? s.WindowPixelSize : new Vector2(1280, 720));
         _remotePlayers = new ClientRemotePlayerTracker(_logger);
+        _survivalCombat = new ClientSurvivalCombatController(blocks, registries.Items, _audio);
         _meshQueue = new ClientAsyncMeshQueue(blocks, _atlas);
     }
 
@@ -99,7 +109,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
     /// <summary>Gets the local first-person player controller.</summary>
     public ClientPlayerController Player => _player;
 
-    /// <summary>Gets the procedural texture atlas uploaded to the renderer.</summary>
+    /// <summary>Gets the block &amp; item texture atlas uploaded to the renderer.</summary>
     public TextureAtlasData Atlas => _atlas;
 
     /// <summary>Gets the number of remote multiplayer friends currently visible to this client.</summary>
@@ -108,10 +118,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
     /// <summary>Gets the most recently formatted F3 debug telemetry text.</summary>
     public string LatestDebugOverlayText => _latestDebugText;
 
-    /// <summary>
-    /// Connects to a remote TCP multiplayer server (when <see cref="ClientOptions.ServerHost"/> is set)
-    /// or primes the local world around spawn.
-    /// </summary>
+    /// <summary>Connects to a remote TCP multiplayer server or primes the local world around spawn.</summary>
     public async ValueTask InitializeSessionAsync(CancellationToken cancellationToken = default)
     {
         _ = _audio.TryInitializeDevice();
@@ -137,13 +144,11 @@ public sealed class ClientSessionRunner : IAsyncDisposable
 
         if (!_options.Headless && _menu.Mode == UiOverlayMode.InGame)
         {
-            _chatHistory.AddMessage("Welcome to Over-the-Horizon: C# Edition! Press E for Blocks, T for Chat.");
+            _chatHistory.AddMessage("Welcome to Over-the-Horizon: C# Edition v0.4.0! Press E for Inventory, F4 for Survival/Creative.");
         }
     }
 
-    /// <summary>
-    /// Breaks the block currently targeted by the player's crosshair (singleplayer or multiplayer).
-    /// </summary>
+    /// <summary>Breaks the block currently targeted by the player's crosshair.</summary>
     public bool TryBreakTargetedBlock()
     {
         if (_player.CurrentTarget is not { } target)
@@ -158,78 +163,57 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         }
 
         _player.TriggerHandSwing();
-        if (_transport.IsConnected)
-        {
-            _ = _worldCache.ApplyBlockUpdate(target.BlockPosition, BlockState.Air);
-            _transport.EnqueueOutbound(
-                new PlayerBlockActionPacket(PlayerBlockActionKind.BreakBlock, target.BlockPosition, target.HitFace, 0));
-        }
-        else if (!_localWorld.SetBlockState(target.BlockPosition, BlockState.Air))
-        {
-            return false;
-        }
-        else
-        {
-            SyncLocalSnapshots();
-        }
-
-        var center = new Vec3d(target.BlockPosition.X + 0.5, target.BlockPosition.Y + 0.5, target.BlockPosition.Z + 0.5);
-        _audio.PlayPositional(SoundCue.BlockBreak, center, gain: 0.7f * _player.MasterVolume);
-        _player.RefreshRaycastTarget(_worldCache);
-        return true;
+        return ApplyWorldBlockChange(target.BlockPosition, target.HitFace, BlockState.Air);
     }
 
-    /// <summary>
-    /// Places the currently selected hotbar block onto the adjacent face of <see cref="ClientPlayerController.CurrentTarget"/>.
-    /// </summary>
+    /// <summary>Uses the selected item (food, bucket, flint &amp; steel) or places the selected block.</summary>
     public bool TryPlaceSelectedBlock()
     {
-        if (_player.CurrentTarget is not { } target)
+        var used = _survivalCombat.HandleRightClickUseOrPlace(
+            _player,
+            _worldCache,
+            ApplyWorldBlockChange,
+            out var openCrafting);
+
+        if (openCrafting)
         {
-            return false;
+            _menu.Mode = UiOverlayMode.SurvivalInventory;
         }
 
-        var placePos = target.AdjacentPosition;
-        var playerBox = BoundingBox.FromEntityFeet(
-            _player.FeetPosition,
-            ClientPlayerController.PlayerWidth,
-            ClientPlayerController.PlayerHeight).Inflate(-1e-4, -1e-4, -1e-4);
-
-        if (playerBox.Intersects(BoundingBox.FromBlock(placePos)))
-        {
-            return false;
-        }
-
-        _player.TriggerHandSwing();
-        var stateToPlace = _player.Hotbar.SelectedBlockState;
-        if (_transport.IsConnected)
-        {
-            _ = _worldCache.ApplyBlockUpdate(placePos, stateToPlace);
-            _transport.EnqueueOutbound(
-                new PlayerBlockActionPacket(PlayerBlockActionKind.PlaceBlock, placePos, target.HitFace, stateToPlace.Id));
-        }
-        else if (!_localWorld.SetBlockState(placePos, stateToPlace))
-        {
-            return false;
-        }
-        else
-        {
-            SyncLocalSnapshots();
-        }
-
-        var center = new Vec3d(placePos.X + 0.5, placePos.Y + 0.5, placePos.Z + 0.5);
-        _audio.PlayPositional(SoundCue.BlockPlace, center, gain: 0.7f * _player.MasterVolume);
-        _player.RefreshRaycastTarget(_worldCache);
-        return true;
+        return used;
     }
 
-    /// <summary>
-    /// Sends a chat message or slash command (in multiplayer or local singleplayer chat log).
-    /// </summary>
+    /// <summary>Sends a chat message or slash command (handling local <c>/gamemode</c> toggle + multiplayer forwarding).</summary>
     public void SendChatOrCommand(string message)
     {
         if (string.IsNullOrWhiteSpace(message))
         {
+            return;
+        }
+
+        var trimmed = message.Trim();
+        if (trimmed.StartsWith("/gamemode", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("/gm", StringComparison.OrdinalIgnoreCase))
+        {
+            var toSurvival = trimmed.Contains("survival", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.EndsWith(" s", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.EndsWith(" 0", StringComparison.Ordinal);
+            var toCreative = trimmed.Contains("creative", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.EndsWith(" c", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.EndsWith(" 1", StringComparison.Ordinal);
+
+            var nextMode = _player.Mode == GameMode.Creative ? GameMode.Survival : GameMode.Creative;
+            if (toSurvival)
+            {
+                nextMode = GameMode.Survival;
+            }
+            else if (toCreative)
+            {
+                nextMode = GameMode.Creative;
+            }
+
+            _player.SetGameMode(nextMode);
+            _chatHistory.AddMessage($"[System] Set own game mode to {nextMode} Mode.");
             return;
         }
 
@@ -242,10 +226,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         _chatHistory.AddMessage($"<{_menu.UsernameInput}> {message}");
     }
 
-    /// <summary>
-    /// Executes <paramref name="frameCount"/> deterministic client update, parallel chunk-meshing, and render frames
-    /// without opening an OS window.
-    /// </summary>
+    /// <summary>Executes <paramref name="frameCount"/> deterministic headless simulation and render frames.</summary>
     public async ValueTask<RenderFrameMetrics> RunHeadlessFramesAsync(
         int frameCount,
         double deltaSeconds = 1.0 / 60.0,
@@ -265,9 +246,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         return lastMetrics;
     }
 
-    /// <summary>
-    /// Runs the interactive Silk.NET OpenGL 3.3 window loop (or falls back to headless frames when configured headless).
-    /// </summary>
+    /// <summary>Runs the interactive Silk.NET OpenGL 3.3 window loop.</summary>
     public async ValueTask RunAsync(CancellationToken cancellationToken = default)
     {
         if (_options.Headless || _renderer is not SilkOpenGlRenderSubsystem silkRenderer)
@@ -287,8 +266,8 @@ public sealed class ClientSessionRunner : IAsyncDisposable
                 var metrics = silkRenderer.RenderFrame(_player.Camera, overlay: BuildOverlayState(silkRenderer.WindowPixelSize));
                 RefreshDebugTelemetry(metrics, dt);
                 silkRenderer.WindowTitle = _menu.Mode == UiOverlayMode.TitleMenu
-                    ? "Over-the-Horizon: C# EDITION (v0.3.0-alpha)"
-                    : $"Over-the-Horizon: C# EDITION | {_lastFps:F0} FPS | [{_player.Hotbar.SelectedSlot + 1}: {_player.Hotbar.SelectedBlockDisplayName}] | Friends: {_remotePlayers.Count}";
+                    ? "Over-the-Horizon: C# EDITION (v0.4.0-alpha)"
+                    : $"Over-the-Horizon: C# EDITION | {_lastFps:F0} FPS | {_player.Mode} | [{_player.Hotbar.SelectedSlot + 1}: {_player.Hotbar.SelectedBlockDisplayName}] | Friends: {_remotePlayers.Count}";
             },
             onResize: (w, h) => _player.Camera.SetAspectRatio(w, h),
             cancellationToken: cancellationToken);
@@ -323,6 +302,29 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         _sessionCts = null;
     }
 
+    private bool ApplyWorldBlockChange(BlockPos targetPos, Direction face, BlockState newState)
+    {
+        if (_transport.IsConnected)
+        {
+            _ = _worldCache.ApplyBlockUpdate(targetPos, newState);
+            var actionKind = newState.IsAir ? PlayerBlockActionKind.BreakBlock : PlayerBlockActionKind.PlaceBlock;
+            _transport.EnqueueOutbound(new PlayerBlockActionPacket(actionKind, targetPos, face, newState.Id));
+        }
+        else if (!_localWorld.SetBlockState(targetPos, newState))
+        {
+            return false;
+        }
+        else
+        {
+            SyncLocalSnapshots();
+        }
+
+        var center = new Vec3d(targetPos.X + 0.5, targetPos.Y + 0.5, targetPos.Z + 0.5);
+        _audio.PlayPositional(newState.IsAir ? SoundCue.BlockBreak : SoundCue.BlockPlace, center, gain: 0.7f * _player.MasterVolume);
+        _player.RefreshRaycastTarget(_worldCache);
+        return true;
+    }
+
     private void UpdateInteractiveFrame(SilkOpenGlRenderSubsystem silkRenderer, double dt, CancellationToken sessionToken)
     {
         _inputBinder.EnsureBoundAndSyncCursor(silkRenderer.InputContext);
@@ -330,7 +332,9 @@ public sealed class ClientSessionRunner : IAsyncDisposable
             _inputBinder, silkRenderer, _player, _localSpawnY, SendChatOrCommand, () => _transport, t => _transport = t, sessionToken);
         DrainInboundPackets();
 
-        _menu.AdvanceAnimations(dt);
+        _menu.AdvanceAnimations(dt, _player);
+        _survivalCombat.StepTimers(dt);
+
         if (_menu.Mode == UiOverlayMode.TitleMenu)
         {
             _player.Camera.Position = new Vec3d(0.5, _localSpawnY + 14.0, 0.5);
@@ -351,18 +355,25 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         _player.StepMovement(_worldCache, _blocks, _audio, movement, dt);
         _remotePlayers.StepInterpolation(dt);
 
-        var (brk, plc) = _inputBinder.ConsumeBlockActionRequests();
+        var (leftClicked, rightClicked) = _inputBinder.ConsumeActionRequests();
+        var leftHeld = _inputBinder.IsLeftMouseHeld(silkRenderer.InputContext);
+
         if (_menu.IsGameplayActive)
         {
-            if (brk)
+            var swungPvp = leftClicked && _survivalCombat.TryExecutePvpAttack(_player, _remotePlayers, _transport);
+            if (!swungPvp)
             {
-                _ = TryBreakTargetedBlock();
+                _survivalCombat.StepMining(dt, leftClicked, leftHeld, _player, _worldCache, ApplyWorldBlockChange);
             }
 
-            if (plc)
+            if (rightClicked)
             {
                 _ = TryPlaceSelectedBlock();
             }
+        }
+        else
+        {
+            _player.MiningProgress = 0.0f;
         }
 
         EnqueueOutboundMovementIfChanged(dt);
@@ -383,6 +394,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
             await StreamLocalWorldStepAsync(maxChunks: 8, ct).ConfigureAwait(false);
         }
 
+        _survivalCombat.StepTimers(deltaSeconds);
         _player.StepMovement(_worldCache, _blocks, _audio, movement, deltaSeconds);
         _remotePlayers.StepInterpolation(deltaSeconds);
         EnqueueOutboundMovementIfChanged(deltaSeconds);
@@ -423,8 +435,8 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         while (_transport.TryReadInbound(out var packet))
         {
             ClientInboundPacketApplier.Apply(
-                packet, _remotePlayers, _player, _worldCache, _blocks, _audio, _renderer, _chatHistory, _logger,
-                _menu.ActiveViewDistance, ref _receivedInitialSpawnSync, ref _lastSentFeetPosition);
+                packet, _transport.AssignedEntityId, _remotePlayers, _player, _worldCache, _blocks, _audio, _renderer,
+                _chatHistory, _logger, _menu.ActiveViewDistance, ref _receivedInitialSpawnSync, ref _lastSentFeetPosition);
         }
     }
 

@@ -82,6 +82,21 @@ public static class BuiltInBlocks
     /// <summary>Key for <c>overhorizon:crimson_wool</c>.</summary>
     public static readonly ResourceKey CrimsonWool = ResourceKey.OverHorizon("crimson_wool");
 
+    /// <summary>Key for <c>overhorizon:gravel</c>.</summary>
+    public static readonly ResourceKey Gravel = ResourceKey.OverHorizon("gravel");
+
+    /// <summary>Key for <c>overhorizon:obsidian</c>.</summary>
+    public static readonly ResourceKey Obsidian = ResourceKey.OverHorizon("obsidian");
+
+    /// <summary>Key for <c>overhorizon:tnt</c>.</summary>
+    public static readonly ResourceKey Tnt = ResourceKey.OverHorizon("tnt");
+
+    /// <summary>Key for <c>overhorizon:white_wool</c>.</summary>
+    public static readonly ResourceKey WhiteWool = ResourceKey.OverHorizon("white_wool");
+
+    /// <summary>Key for <c>overhorizon:blue_wool</c>.</summary>
+    public static readonly ResourceKey BlueWool = ResourceKey.OverHorizon("blue_wool");
+
     /// <summary>
     /// Registers all built-in blocks into an unfrozen <see cref="BlockRegistry"/>.
     /// </summary>
@@ -123,6 +138,11 @@ public static class BuiltInBlocks
         _ = registry.Register(new BlockDefinition(MossyCobblestone, hardness: 2.0f));
         _ = registry.Register(new BlockDefinition(SnowBlock, hardness: 0.2f));
         _ = registry.Register(new BlockDefinition(CrimsonWool, hardness: 0.8f));
+        _ = registry.Register(new BlockDefinition(Gravel, hardness: 0.6f));
+        _ = registry.Register(new BlockDefinition(Obsidian, hardness: 12.0f));
+        _ = registry.Register(new BlockDefinition(Tnt, hardness: 0.1f));
+        _ = registry.Register(new BlockDefinition(WhiteWool, hardness: 0.8f));
+        _ = registry.Register(new BlockDefinition(BlueWool, hardness: 0.8f));
     }
 
     /// <summary>

@@ -225,7 +225,9 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         var gl = _gl;
         var prog = _program;
         var clampedSky = Math.Clamp(skyBrightness, 0.08f, 1.0f);
-        var skyColor = DaySkyColor * clampedSky;
+        var underwater = overlay?.IsUnderwater == true;
+        var baseSky = underwater ? new Vector3(0.03f, 0.21f, 0.44f) : DaySkyColor;
+        var skyColor = baseSky * clampedSky;
 
         gl.ClearColor(skyColor.X, skyColor.Y, skyColor.Z, 1.0f);
         gl.Clear((uint)(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit));
@@ -242,9 +244,10 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         gl.UniformMatrix4(prog.LocViewProjection, 1, false, (float*)&viewProj);
         gl.Uniform1(prog.LocAtlas, 0);
         gl.Uniform1(prog.LocSkyBrightness, clampedSky);
-        gl.Uniform1(prog.LocFogStart, camera.FarPlane * 0.65f);
-        gl.Uniform1(prog.LocFogEnd, camera.FarPlane * 0.98f);
+        gl.Uniform1(prog.LocFogStart, underwater ? 1.5f : camera.FarPlane * 0.65f);
+        gl.Uniform1(prog.LocFogEnd, underwater ? 24.0f : camera.FarPlane * 0.98f);
         gl.Uniform3(prog.LocSkyColor, skyColor.X, skyColor.Y, skyColor.Z);
+        gl.Uniform1(prog.LocUnderwater, underwater ? 1.0f : 0.0f);
 
         gl.ActiveTexture(TextureUnit.Texture0);
         gl.BindTexture(TextureTarget.Texture2D, prog.AtlasTexture);
@@ -252,7 +255,7 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         var (visible, culled, drawCalls, triangles) = DrawOpaqueAndCollectTranslucent(gl, prog, in frustum, camera.Position);
         var (transCalls, transTris) = DrawTranslucentPass(gl, prog, camera.Position);
         var overlayCalls = (overlay is not null && _overlayRenderer is not null)
-            ? _overlayRenderer.RenderOverlays(camera, overlay)
+            ? _overlayRenderer.RenderOverlays(camera, overlay, prog.AtlasTexture)
             : 0;
 
         gl.BindVertexArray(0);
@@ -365,6 +368,7 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
 
         _translucentSortScratch.Sort(static (a, b) => b.DistanceSq.CompareTo(a.DistanceSq));
 
+        gl.Disable(EnableCap.CullFace);
         gl.Enable(EnableCap.Blend);
         gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
         gl.DepthMask(false);
@@ -384,6 +388,7 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
 
         gl.DepthMask(true);
         gl.Disable(EnableCap.Blend);
+        gl.Enable(EnableCap.CullFace);
         return (drawCalls, triangles);
     }
 

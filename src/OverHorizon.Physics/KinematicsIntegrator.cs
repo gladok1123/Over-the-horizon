@@ -17,6 +17,7 @@ public static class KinematicsIntegrator
     /// <param name="width">Horizontal entity width.</param>
     /// <param name="height">Vertical entity height.</param>
     /// <param name="deltaSeconds">Simulation step duration in seconds (typically <c>0.05</c>).</param>
+    /// <param name="swimUp">When <see langword="true"/> in fluid, applies upward swimming propulsion instead of gentle sinking.</param>
     /// <returns>Resolved <see cref="PhysicsStepResult"/>.</returns>
     public static PhysicsStepResult StepEntity(
         IVoxelCollisionReader world,
@@ -24,7 +25,8 @@ public static class KinematicsIntegrator
         Vec3d velocity,
         double width,
         double height,
-        double deltaSeconds)
+        double deltaSeconds,
+        bool swimUp = false)
     {
         ArgumentNullException.ThrowIfNull(world);
 
@@ -44,8 +46,16 @@ public static class KinematicsIntegrator
 
         if (inFluid)
         {
-            // Reduced gravity + upward buoyancy + horizontal current push.
-            vy += (PhysicsConstants.GravityAcceleration * 0.25 + PhysicsConstants.FluidBuoyancyAcceleration) * deltaSeconds;
+            // Authentic water physics: gentle downward sink by default; smooth upward swim only when holding Jump.
+            if (swimUp)
+            {
+                vy = Math.Min(PhysicsConstants.MaxWaterSwimUpSpeed, vy + (PhysicsConstants.WaterSwimUpAcceleration * deltaSeconds));
+            }
+            else
+            {
+                vy = Math.Max(PhysicsConstants.MaxWaterSinkSpeed, vy + (PhysicsConstants.WaterGravityAcceleration * deltaSeconds));
+            }
+
             vx += currentPush.X * PhysicsConstants.FluidCurrentAcceleration * deltaSeconds;
             vz += currentPush.Z * PhysicsConstants.FluidCurrentAcceleration * deltaSeconds;
         }

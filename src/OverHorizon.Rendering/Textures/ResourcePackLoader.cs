@@ -4,31 +4,32 @@ using System.Text.Json;
 namespace OverHorizon.Rendering.Textures;
 
 /// <summary>
-/// Loads external <c>16x16</c> block PNG textures and <c>lang/*.json</c> translations from unpacked directories,
-/// <c>.zip</c> resource packs, <c>minecraft-assets</c> GitHub archives, or <c>.jar</c> files.
+/// Loads external <c>16x16</c> block &amp; item PNG textures and <c>lang/*.json</c> translations from unpacked directories,
+/// <c>.zip</c> resource packs, <c>minecraft-assets</c> (<c>23w13a__or__b</c>) caches, or <c>.jar</c> files.
 /// </summary>
 public sealed class ResourcePackLoader : IDisposable
 {
     private readonly Dictionary<string, byte[]> _blockTextures = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, byte[]> _itemTextures = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _translations = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Gets the number of block PNG textures discovered in external asset sources.</summary>
     public int LoadedBlockTextureCount => _blockTextures.Count;
 
-    /// <summary>Gets the parsed localization entries (<c>block.minecraft.*</c>), if any.</summary>
+    /// <summary>Gets the number of item PNG textures discovered in external asset sources.</summary>
+    public int LoadedItemTextureCount => _itemTextures.Count;
+
+    /// <summary>Gets the parsed localization entries (<c>block.minecraft.*</c>, <c>item.minecraft.*</c>), if any.</summary>
     public IReadOnlyDictionary<string, string> Translations => _translations;
 
     /// <summary>
-    /// Scans an optional explicit path plus standard local <c>./assets</c>, <c>./minecraft-assets</c>,
-    /// and <c>./resourcepacks</c> locations for block textures and language JSON files.
+    /// Scans <paramref name="explicitPath"/> (if provided) plus standard <c>./resourcepacks</c>, <c>./assets</c>,
+    /// and <c>./minecraft-assets</c> locations for block/item PNGs and <c>lang/*.json</c> files.
     /// </summary>
-    /// <param name="explicitPath">Optional user-specified directory, <c>.zip</c>, or <c>.jar</c> path.</param>
-    /// <returns>Populated <see cref="ResourcePackLoader"/>.</returns>
     public static ResourcePackLoader Discover(string? explicitPath = null)
     {
         var loader = new ResourcePackLoader();
-        var candidates = new List<string>(8);
-
+        var candidates = new List<string>();
         if (!string.IsNullOrWhiteSpace(explicitPath))
         {
             candidates.Add(explicitPath);
@@ -36,9 +37,10 @@ public sealed class ResourcePackLoader : IDisposable
 
         foreach (var baseDir in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
         {
+            candidates.Add(Path.Combine(baseDir, "resourcepacks"));
+            candidates.Add(Path.Combine(baseDir, "resourcepacks", "23w13a__or__b"));
             candidates.Add(Path.Combine(baseDir, "assets"));
             candidates.Add(Path.Combine(baseDir, "minecraft-assets"));
-            candidates.Add(Path.Combine(baseDir, "resourcepacks"));
         }
 
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -50,28 +52,18 @@ public sealed class ResourcePackLoader : IDisposable
             }
 
             var full = Path.GetFullPath(candidate);
-            if (!visited.Add(full))
+            if (visited.Add(full))
             {
-                continue;
+                loader.LoadFromPath(full);
             }
-
-            loader.LoadFromPath(full);
         }
 
         return loader;
     }
 
     /// <summary>
-    /// Attempts to overwrite a <c>16x16</c> tile in <paramref name="atlas"/> using an external PNG texture.
+    /// Attempts to overwrite a <c>16x16</c> block tile in <paramref name="atlas"/> using an external block PNG texture.
     /// </summary>
-    /// <param name="atlas">Destination <c>256x256</c> RGBA8 atlas buffer.</param>
-    /// <param name="tileIndex">Destination tile index (<c>0..255</c>).</param>
-    /// <param name="textureStem">Block texture filename stem (e.g. <c>"stone"</c> or <c>"cobblestone"</c>).</param>
-    /// <param name="tintR">Multiplicative red tint (<c>255</c> = neutral).</param>
-    /// <param name="tintG">Multiplicative green tint (<c>255</c> = neutral).</param>
-    /// <param name="tintB">Multiplicative blue tint (<c>255</c> = neutral).</param>
-    /// <param name="alphaOverride">Optional alpha multiplier (<c>255</c> = preserve PNG alpha).</param>
-    /// <returns><see langword="true"/> if an external PNG texture was decoded and written.</returns>
     public bool TryBlitTile(
         byte[] atlas,
         ushort tileIndex,
@@ -100,10 +92,28 @@ public sealed class ResourcePackLoader : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Attempts to overwrite a <c>16x16</c> item sprite tile in <paramref name="atlas"/> using an external item PNG texture.
+    /// </summary>
+    public bool TryBlitItemTile(byte[] atlas, ushort tileIndex, string itemStem)
+    {
+        ArgumentNullException.ThrowIfNull(atlas);
+
+        if (!_itemTextures.TryGetValue(itemStem, out var pngBytes) ||
+            !PngImageDecoder.TryDecodeTo16x16Rgba(pngBytes, out var rgba))
+        {
+            return false;
+        }
+
+        WriteTileToAtlas(atlas, tileIndex, rgba, 255, 255, 255, 255);
+        return true;
+    }
+
     /// <inheritdoc />
     public void Dispose()
     {
         _blockTextures.Clear();
+        _itemTextures.Clear();
         _translations.Clear();
     }
 
@@ -157,6 +167,25 @@ public sealed class ResourcePackLoader : IDisposable
         }
     }
 
+    private static byte[] ReadEntryBytes(ZipArchiveEntry entry)
+    {
+        var buffer = new byte[entry.Length];
+        using var stream = entry.Open();
+        var total = 0;
+        while (total < buffer.Length)
+        {
+            var n = stream.Read(buffer, total, buffer.Length - total);
+            if (n <= 0)
+            {
+                break;
+            }
+
+            total += n;
+        }
+
+        return buffer;
+    }
+
     private void LoadFromPath(string fullPath)
     {
         if (File.Exists(fullPath))
@@ -177,14 +206,12 @@ public sealed class ResourcePackLoader : IDisposable
         }
 
         LoadFromDirectoryTree(fullPath);
-        foreach (var archive in Directory.EnumerateFiles(fullPath))
+        foreach (var archive in Directory.EnumerateFiles(fullPath)
+                     .Where(static f =>
+                         f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ||
+                         f.EndsWith(".jar", StringComparison.OrdinalIgnoreCase)))
         {
-            var ext = Path.GetExtension(archive);
-            if (string.Equals(ext, ".zip", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(ext, ".jar", StringComparison.OrdinalIgnoreCase))
-            {
-                LoadFromArchive(archive);
-            }
+            LoadFromArchive(archive);
         }
     }
 
@@ -194,20 +221,10 @@ public sealed class ResourcePackLoader : IDisposable
         {
             foreach (var relPrefix in new[] { Path.Combine(rootDir, "assets", ns), Path.Combine(rootDir, ns) })
             {
-                var blockDir = Path.Combine(relPrefix, "textures", "block");
-                if (!Directory.Exists(blockDir))
-                {
-                    blockDir = Path.Combine(relPrefix, "textures", "blocks");
-                }
-
-                if (Directory.Exists(blockDir))
-                {
-                    foreach (var pngFile in Directory.EnumerateFiles(blockDir, "*.png"))
-                    {
-                        var stem = Path.GetFileNameWithoutExtension(pngFile);
-                        _blockTextures[stem] = File.ReadAllBytes(pngFile);
-                    }
-                }
+                LoadPngFolder(Path.Combine(relPrefix, "textures", "block"), _blockTextures);
+                LoadPngFolder(Path.Combine(relPrefix, "textures", "blocks"), _blockTextures);
+                LoadPngFolder(Path.Combine(relPrefix, "textures", "item"), _itemTextures);
+                LoadPngFolder(Path.Combine(relPrefix, "textures", "items"), _itemTextures);
 
                 var langDir = Path.Combine(relPrefix, "lang");
                 if (Directory.Exists(langDir))
@@ -224,11 +241,23 @@ public sealed class ResourcePackLoader : IDisposable
             }
         }
 
-        // Support nested unwrapped GitHub zip folder (e.g. ./resourcepacks/minecraft-assets-1.21.4/assets/...)
         foreach (var subDir in Directory.EnumerateDirectories(rootDir)
                      .Where(static d => Directory.Exists(Path.Combine(d, "assets"))))
         {
             LoadFromDirectoryTree(subDir);
+        }
+    }
+
+    private static void LoadPngFolder(string dir, Dictionary<string, byte[]> sink)
+    {
+        if (!Directory.Exists(dir))
+        {
+            return;
+        }
+
+        foreach (var pngFile in Directory.EnumerateFiles(dir, "*.png"))
+        {
+            sink[Path.GetFileNameWithoutExtension(pngFile)] = File.ReadAllBytes(pngFile);
         }
     }
 
@@ -245,14 +274,22 @@ public sealed class ResourcePackLoader : IDisposable
                 }
 
                 var norm = entry.FullName.Replace('\\', '/');
-                if (norm.EndsWith(".png", StringComparison.OrdinalIgnoreCase) &&
-                    (norm.Contains("/textures/block/", StringComparison.OrdinalIgnoreCase) ||
-                     norm.Contains("/textures/blocks/", StringComparison.OrdinalIgnoreCase) ||
-                     norm.StartsWith("assets/minecraft/textures/block/", StringComparison.OrdinalIgnoreCase) ||
-                     norm.StartsWith("assets/overhorizon/textures/block/", StringComparison.OrdinalIgnoreCase)))
+                if (norm.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
                 {
-                    var stem = Path.GetFileNameWithoutExtension(norm);
-                    _blockTextures[stem] = ReadEntryBytes(entry);
+                    if (norm.Contains("/textures/block/", StringComparison.OrdinalIgnoreCase) ||
+                        norm.Contains("/textures/blocks/", StringComparison.OrdinalIgnoreCase) ||
+                        norm.StartsWith("assets/minecraft/textures/block/", StringComparison.OrdinalIgnoreCase) ||
+                        norm.StartsWith("assets/overhorizon/textures/block/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _blockTextures[Path.GetFileNameWithoutExtension(norm)] = ReadEntryBytes(entry);
+                    }
+                    else if (norm.Contains("/textures/item/", StringComparison.OrdinalIgnoreCase) ||
+                             norm.Contains("/textures/items/", StringComparison.OrdinalIgnoreCase) ||
+                             norm.StartsWith("assets/minecraft/textures/item/", StringComparison.OrdinalIgnoreCase) ||
+                             norm.StartsWith("assets/overhorizon/textures/item/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _itemTextures[Path.GetFileNameWithoutExtension(norm)] = ReadEntryBytes(entry);
+                    }
                 }
                 else if (norm.EndsWith("/lang/en_us.json", StringComparison.OrdinalIgnoreCase) ||
                          norm.EndsWith("/lang/ru_ru.json", StringComparison.OrdinalIgnoreCase) ||
@@ -267,25 +304,6 @@ public sealed class ResourcePackLoader : IDisposable
         {
             // Ignore unreadable or corrupted archives gracefully.
         }
-    }
-
-    private static byte[] ReadEntryBytes(ZipArchiveEntry entry)
-    {
-        var buffer = new byte[entry.Length];
-        using var stream = entry.Open();
-        var total = 0;
-        while (total < buffer.Length)
-        {
-            var n = stream.Read(buffer, total, buffer.Length - total);
-            if (n <= 0)
-            {
-                break;
-            }
-
-            total += n;
-        }
-
-        return buffer;
     }
 
     private void ParseLangJson(ReadOnlySpan<byte> utf8Json)
@@ -308,7 +326,7 @@ public sealed class ResourcePackLoader : IDisposable
         }
         catch (JsonException)
         {
-            // Ignore malformed localization files.
+            // Ignore malformed external language JSON.
         }
     }
 }

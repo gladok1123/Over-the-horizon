@@ -13,6 +13,7 @@
 
     <!-- Runtime & Hosting -->
     <PackageVersion Include="Arch" Version="2.1.0" />
+    <PackageVersion Include="NVorbis" Version="0.10.5" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.0" />

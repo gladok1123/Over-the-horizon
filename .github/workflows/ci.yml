@@ -108,7 +108,7 @@ jobs:
           set -euo pipefail
           mkdir -p release-zips
           for rid in win-x64 linux-x64 osx-arm64 osx-x64; do
-            pkg_name="OverHorizon-v0.3.0-alpha-${rid}"
+            pkg_name="OverHorizon-v0.4.0-alpha-${rid}"
             stage_dir="stage/${pkg_name}"
             mkdir -p "${stage_dir}"
 
@@ -124,7 +124,7 @@ jobs:
 
             cp scripts/HOW-TO-PLAY-RU.txt "${stage_dir}/"
             if [[ "${rid}" == "win-x64" ]]; then
-              cp scripts/*.bat "${stage_dir}/"
+              cp scripts/*.bat scripts/*.ps1 "${stage_dir}/"
             else
               cp scripts/*.sh "${stage_dir}/"
               chmod +x "${stage_dir}"/*.sh "${stage_dir}/OverHorizon.Server" "${stage_dir}/OverHorizon.Client"
@@ -137,18 +137,18 @@ jobs:
       - name: Upload Playable Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: OverHorizon-v0.3.0-alpha-playable-builds
+          name: OverHorizon-v0.4.0-alpha-playable-builds
           path: release-zips/*.zip
           retention-days: 30
 
-      - name: Publish or Update GitHub Pre-Release v0.3.0-alpha
+      - name: Publish or Update GitHub Pre-Release v0.4.0-alpha
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="v0.3.0-alpha"
-          NOTES=$'### Over-the-Horizon: C# EDITION (`v0.3.0-alpha`) — Поддержка реальных PNG/WAV ассетов (`Download-Real-Assets.bat`), прыжок 1.27 блока, плавный мультиплеер и межчанковый свет!\n\nГотовые самодостаточные сборки (установка .NET **не требуется**):\n- **Windows 10/11 (x64)**: `OverHorizon-v0.3.0-alpha-win-x64.zip`\n- **Linux (x86_64)**: `OverHorizon-v0.3.0-alpha-linux-x64.zip`\n- **macOS Apple Silicon (M1–M4)**: `OverHorizon-v0.3.0-alpha-osx-arm64.zip`\n- **macOS Intel (x64)**: `OverHorizon-v0.3.0-alpha-osx-x64.zip`\n\n#### Что нового в `v0.3.0-alpha`:\n- **Загрузчик реальных PNG-текстур, локализаций и WAV-звуков (`ResourcePackLoader` + `PngImageDecoder` + `WavPcmDecoder`)**: запустите `Download-Real-Assets.bat` (или положите любой `.zip` ресурс-пак / `.jar` в папку `./resourcepacks/`), и движок автоматически подхватит настоящие PNG-текстуры блоков с биомным окрашиванием травы, листвы и воды!\n- **Многослойный 44.1 кГц физический синтез звуков**: хруст травы, удар по камню с минеральным откликом, гулкое дерево, разрушение блоков и всплески воды.\n- **Прыжок 1.27 блока на любом FPS (30/60/144/240 Гц) + плавание по `Пробелу`**: исправлено независимое от FPS затухание скорости в `KinematicsIntegrator`.\n- **Плавный мультиплеер без рывков**: интерполяция координат и углов друзей на 60–240 Гц, мгновенное клиентское предсказание ломания/установки блоков (0 мс задержки), защита камеры мыши от рывков и отправка движения ровно 20 раз/сек.\n- **Бесшовный свет через границы чанков + мгновенная очистка VRAM далёких чанков**.'
+          TAG="v0.4.0-alpha"
+          NOTES=$'### Over-the-Horizon: C# EDITION (`v0.4.0-alpha`) — Текстуры `23w13a__or__b`, переработанный Креатив, Выживание + Крафт, PvP, оригинальная вода/подводный мир и 100% реальные OGG/WAV звуки!\n\nГотовые самодостаточные сборки (установка .NET **не требуется**):\n- **Windows 10/11 (x64)**: `OverHorizon-v0.4.0-alpha-win-x64.zip`\n- **Linux (x86_64)**: `OverHorizon-v0.4.0-alpha-linux-x64.zip`\n- **macOS Apple Silicon (M1–M4)**: `OverHorizon-v0.4.0-alpha-osx-arm64.zip`\n- **macOS Intel (x64)**: `OverHorizon-v0.4.0-alpha-osx-x64.zip`\n\n#### Что нового в `v0.4.0-alpha`:\n- **Все текстуры блоков и предметов из `InventivetalentDev/minecraft-assets` (`23w13a__or__b`)**: при первом запуске клиент автоматически скачивает и кэширует `textures/block/*.png`, `textures/item/*.png`, `lang/en_us.json` и реальные `.ogg`-звуки в локальную папку `./resourcepacks/23w13a__or__b/` (без включения проприетарных файлов Mojang в Git и `.zip`-архивы релиза).\n- **Переработанное меню Креатива (`E`)**: оконный интерфейс с 6 вкладками категорий (`ALL`, `BUILDING`, `NATURAL`, `FUNCTIONAL`, `COMBAT & TOOLS`, `FOOD & MATS`), живым поиском с клавиатуры, скроллом колесом мыши, настоящими `16x16` PNG-иконками в ячейках и хотбаре, подсказками характеристик и быстрым назначением клавишами `1..9`.\n- **Режим Выживания (`F4` / `/gamemode`), все предметы и крафт**: 10 сердец здоровья, 10 единиц сытости, пузырьки кислорода под водой, прогрессивная добыча блоков по уровням кирок/топоров/лопат/ножниц, честный дроп руд и блоков, 22 рецепта крафта и плавки в 1 клик, еда (`Яблоко`, `Хлеб`, `Стейк`, `Золотое яблоко`), `Ведро` / `Ведро воды` (зачерпывание и разлитие воды) и `Огниво` (подрыв TNT, обсидиан).\n- **Мультиплеерный PvP и `/pvp`**: серверная проверка дистанции удара, урон от мечей (`Wooden`..`Netherite`) + `1.5x` крит в прыжке, отбрасывание (knockback), красная вспышка урона, полоски HP над игроками, анонс смерти в чате и респаун.\n- **Оригинальная физика воды и подводный вид**: убрано авто-выталкивание вверх — в воде игрок плавно погружается (`-3.2 бл/с²`), всплывает при удержании `Пробела`, легко выходит на берег, а при погружении камеры включаются глубоководный сине-бирюзовый туман, двусторонняя поверхность воды сверху и виньетка.\n- **100% реальные записанные звуки из интернета (`NVorbis`, НОЛЬ процедурной генерации)**: встроенные CC0 1.0 `.ogg`/`.wav` фоли-записи + декодирование реальных `.ogg` звуков из `23w13a__or__b`.'
           if gh release view "${TAG}" >/dev/null 2>&1; then
             gh release upload "${TAG}" release-zips/*.zip --clobber
             gh release edit "${TAG}" --notes "${NOTES}"
@@ -156,6 +156,6 @@ jobs:
             gh release create "${TAG}" release-zips/*.zip \
               --target "${GITHUB_SHA}" \
               --prerelease \
-              --title "Over-the-Horizon: C# EDITION — v0.3.0-alpha" \
+              --title "Over-the-Horizon: C# EDITION — v0.4.0-alpha" \
               --notes "${NOTES}"
           fi

@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using OverHorizon.Core.Blocks;
+using OverHorizon.Core.Items;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
 using OverHorizon.Shared.Hashing;
@@ -7,14 +8,15 @@ using OverHorizon.Shared.Hashing;
 namespace OverHorizon.Rendering.Textures;
 
 /// <summary>
-/// Clean-room procedural 16x16 RGBA8 block texture atlas generator (zero proprietary assets).
+/// Generates the <c>256x256</c> RGBA8 block &amp; item texture atlas, automatically overlaying real
+/// <c>16x16</c> block and item PNGs discovered in <c>minecraft-assets</c> (<c>23w13a__or__b</c>) or user packs.
 /// </summary>
 public static class ProceduralAtlasGenerator
 {
     /// <summary>Atlas width and height in pixels (<c>16 * 16 = 256</c>).</summary>
     public const int AtlasDimension = 256;
 
-    /// <summary>Edge size of each block tile in pixels.</summary>
+    /// <summary>Edge size of each block/item tile in pixels.</summary>
     public const int TileDimension = 16;
 
     /// <summary>Number of <c>16x16</c> tiles along each row of the atlas (<c>16</c>).</summary>
@@ -47,30 +49,137 @@ public static class ProceduralAtlasGenerator
     private const ushort TileMossyCobblestone = 24;
     private const ushort TileSnowBlock = 25;
     private const ushort TileCrimsonWool = 26;
-    private const ushort FirstCustomTile = 32;
+    private const ushort TileGravel = 27;
+    private const ushort TileObsidian = 28;
+    private const ushort TileTntSide = 29;
+    private const ushort TileTntTop = 30;
+    private const ushort TileWhiteWool = 31;
+    private const ushort TileBlueWool = 32;
+    private const ushort FirstCustomTile = 40;
+    private const ushort FirstItemSpriteTile = 128;
+
+    private static readonly (ResourceKey ItemKey, ushort Tile, string PngStem)[] BuiltInItemTiles =
+    [
+        (BuiltInItems.Stick, 128, "stick"),
+        (BuiltInItems.Coal, 129, "coal"),
+        (BuiltInItems.IronIngot, 130, "iron_ingot"),
+        (BuiltInItems.GoldIngot, 131, "gold_ingot"),
+        (BuiltInItems.Diamond, 132, "diamond"),
+        (BuiltInItems.WoodenSword, 133, "wooden_sword"),
+        (BuiltInItems.StoneSword, 134, "stone_sword"),
+        (BuiltInItems.GoldenSword, 135, "golden_sword"),
+        (BuiltInItems.IronSword, 136, "iron_sword"),
+        (BuiltInItems.DiamondSword, 137, "diamond_sword"),
+        (BuiltInItems.NetheriteSword, 138, "netherite_sword"),
+        (BuiltInItems.WoodenPickaxe, 139, "wooden_pickaxe"),
+        (BuiltInItems.StonePickaxe, 140, "stone_pickaxe"),
+        (BuiltInItems.IronPickaxe, 141, "iron_pickaxe"),
+        (BuiltInItems.DiamondPickaxe, 142, "diamond_pickaxe"),
+        (BuiltInItems.IronAxe, 143, "iron_axe"),
+        (BuiltInItems.DiamondAxe, 144, "diamond_axe"),
+        (BuiltInItems.IronShovel, 145, "iron_shovel"),
+        (BuiltInItems.DiamondShovel, 146, "diamond_shovel"),
+        (BuiltInItems.Shears, 147, "shears"),
+        (BuiltInItems.FlintAndSteel, 148, "flint_and_steel"),
+        (BuiltInItems.Bucket, 149, "bucket"),
+        (BuiltInItems.WaterBucket, 150, "water_bucket"),
+        (BuiltInItems.Apple, 151, "apple"),
+        (BuiltInItems.Bread, 152, "bread"),
+        (BuiltInItems.CookedBeef, 153, "cooked_beef"),
+        (BuiltInItems.GoldenApple, 154, "golden_apple"),
+    ];
 
     /// <summary>
-    /// Alias for <see cref="Generate"/> creating the block texture atlas with optional external resource pack overrides.
+    /// Alias for <see cref="Generate"/> creating the block &amp; item texture atlas.
     /// </summary>
-    /// <param name="blocks">Frozen block registry.</param>
-    /// <param name="externalAssetsPath">Optional directory, <c>.zip</c>, or <c>.jar</c> containing <c>assets/*/textures/block/*.png</c>.</param>
-    /// <returns>Constructed <see cref="TextureAtlasData"/>.</returns>
     public static TextureAtlasData CreateDefault(IBlockRegistry blocks, string? externalAssetsPath = null) =>
         Generate(blocks, externalAssetsPath);
 
     /// <summary>
-    /// Generates a deterministic 256x256 RGBA8 texture atlas covering all built-in and mod-registered blocks in <paramref name="blocks"/>,
-    /// overlaying real PNG block textures whenever discovered by <see cref="ResourcePackLoader"/>.
+    /// Generates a deterministic <c>256x256</c> RGBA8 texture atlas covering all blocks and items,
+    /// overlaying real <c>16x16</c> PNG block &amp; item textures from <see cref="ResourcePackLoader"/>.
     /// </summary>
-    /// <param name="blocks">Frozen block registry.</param>
-    /// <param name="externalAssetsPath">Optional directory, <c>.zip</c>, or <c>.jar</c> path.</param>
-    /// <returns>Constructed <see cref="TextureAtlasData"/>.</returns>
     public static TextureAtlasData Generate(IBlockRegistry blocks, string? externalAssetsPath = null)
     {
         ArgumentNullException.ThrowIfNull(blocks);
 
         var pixels = new byte[AtlasDimension * AtlasDimension * 4];
+        PaintFallbackBlocksAndItems(pixels);
 
+        using (var resourcePack = ResourcePackLoader.Discover(externalAssetsPath))
+        {
+            if (resourcePack.LoadedBlockTextureCount > 0)
+            {
+                ApplyBlockPackOverrides(pixels, resourcePack);
+            }
+
+            if (resourcePack.LoadedItemTextureCount > 0)
+            {
+                for (var i = 0; i < BuiltInItemTiles.Length; i++)
+                {
+                    var (_, tile, stem) = BuiltInItemTiles[i];
+                    _ = resourcePack.TryBlitItemTile(pixels, tile, stem);
+                }
+            }
+        }
+
+        var lookup = BuildFaceLookup();
+        var nextCustomTile = FirstCustomTile;
+        var entries = blocks.Entries;
+        for (var i = 0; i < entries.Count && nextCustomTile < FirstItemSpriteTile; i++)
+        {
+            var def = entries[i];
+            if (def.Key == BuiltInBlocks.Air || lookup.ContainsKey((def.Key, Direction.Up)))
+            {
+                continue;
+            }
+
+            var hasher = Fnv1a64.Create();
+            hasher.AppendString(def.Key.ToString());
+            var h = hasher.Value;
+
+            ProceduralBlockTilePainter.PaintNoiseTile(
+                pixels,
+                nextCustomTile,
+                (byte)(64 + ((h >> 0) & 0x7F)),
+                (byte)(64 + ((h >> 8) & 0x7F)),
+                (byte)(64 + ((h >> 16) & 0x7F)),
+                variation: 24,
+                alpha: def.IsOpaque ? (byte)255 : (byte)200);
+            MapAllFaces(lookup, def.Key, nextCustomTile);
+            nextCustomTile++;
+        }
+
+        for (var t = nextCustomTile; t < FirstItemSpriteTile; t++)
+        {
+            ProceduralBlockTilePainter.PaintNoiseTile(
+                pixels,
+                t,
+                (byte)(80 + ((t * 37) & 127)),
+                (byte)(80 + ((t * 73) & 127)),
+                (byte)(80 + ((t * 109) & 127)),
+                variation: 18,
+                alpha: 255);
+        }
+
+        var itemLookup = new Dictionary<ResourceKey, ushort>();
+        for (var i = 0; i < BuiltInItemTiles.Length; i++)
+        {
+            itemLookup[BuiltInItemTiles[i].ItemKey] = BuiltInItemTiles[i].Tile;
+        }
+
+        return new TextureAtlasData(
+            AtlasDimension,
+            AtlasDimension,
+            TileDimension,
+            pixels,
+            lookup.ToFrozenDictionary(),
+            itemLookup.ToFrozenDictionary(),
+            FirstCustomTile);
+    }
+
+    private static void PaintFallbackBlocksAndItems(byte[] pixels)
+    {
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileStone, 124, 124, 128, variation: 18, alpha: 255);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileDirt, 134, 96, 67, variation: 20, alpha: 255);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileGrassTop, 91, 158, 58, variation: 22, alpha: 255);
@@ -98,15 +207,45 @@ public static class ProceduralAtlasGenerator
         ProceduralBlockTilePainter.PaintCobblestoneTile(pixels, TileMossyCobblestone, mossy: true);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileSnowBlock, 240, 246, 250, variation: 8, alpha: 255);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileCrimsonWool, 178, 42, 52, variation: 16, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileGravel, 132, 126, 124, variation: 28, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileObsidian, 26, 18, 38, variation: 18, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileTntSide, 206, 48, 38, variation: 20, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileTntTop, 188, 52, 42, variation: 18, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileWhiteWool, 236, 238, 240, variation: 10, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileBlueWool, 48, 72, 182, variation: 14, alpha: 255);
 
-        using (var resourcePack = ResourcePackLoader.Discover(externalAssetsPath))
-        {
-            if (resourcePack.LoadedBlockTextureCount > 0)
-            {
-                ApplyResourcePackOverrides(pixels, resourcePack);
-            }
-        }
+        // Baseline item sprites (tiles 128..154)
+        ProceduralItemTilePainter.PaintStick(pixels, 128);
+        ProceduralItemTilePainter.PaintDiscOrGem(pixels, 129, 44, 44, 48);
+        ProceduralItemTilePainter.PaintIngot(pixels, 130, 214, 218, 224);
+        ProceduralItemTilePainter.PaintIngot(pixels, 131, 248, 212, 58);
+        ProceduralItemTilePainter.PaintDiscOrGem(pixels, 132, 74, 236, 228);
+        ProceduralItemTilePainter.PaintSword(pixels, 133, 168, 126, 74);
+        ProceduralItemTilePainter.PaintSword(pixels, 134, 148, 148, 154);
+        ProceduralItemTilePainter.PaintSword(pixels, 135, 248, 214, 62);
+        ProceduralItemTilePainter.PaintSword(pixels, 136, 218, 222, 228);
+        ProceduralItemTilePainter.PaintSword(pixels, 137, 74, 238, 228);
+        ProceduralItemTilePainter.PaintSword(pixels, 138, 76, 68, 78);
+        ProceduralItemTilePainter.PaintPickaxe(pixels, 139, 168, 126, 74);
+        ProceduralItemTilePainter.PaintPickaxe(pixels, 140, 148, 148, 154);
+        ProceduralItemTilePainter.PaintPickaxe(pixels, 141, 218, 222, 228);
+        ProceduralItemTilePainter.PaintPickaxe(pixels, 142, 74, 238, 228);
+        ProceduralItemTilePainter.PaintAxe(pixels, 143, 218, 222, 228);
+        ProceduralItemTilePainter.PaintAxe(pixels, 144, 74, 238, 228);
+        ProceduralItemTilePainter.PaintShovel(pixels, 145, 218, 222, 228);
+        ProceduralItemTilePainter.PaintShovel(pixels, 146, 74, 238, 228);
+        ProceduralItemTilePainter.PaintSword(pixels, 147, 198, 204, 210);
+        ProceduralItemTilePainter.PaintIngot(pixels, 148, 128, 132, 138);
+        ProceduralItemTilePainter.PaintBucket(pixels, 149, filledWithWater: false);
+        ProceduralItemTilePainter.PaintBucket(pixels, 150, filledWithWater: true);
+        ProceduralItemTilePainter.PaintDiscOrGem(pixels, 151, 218, 44, 42);
+        ProceduralItemTilePainter.PaintIngot(pixels, 152, 204, 152, 76);
+        ProceduralItemTilePainter.PaintIngot(pixels, 153, 136, 68, 44);
+        ProceduralItemTilePainter.PaintDiscOrGem(pixels, 154, 250, 214, 54);
+    }
 
+    private static Dictionary<(ResourceKey, Direction), ushort> BuildFaceLookup()
+    {
         var lookup = new Dictionary<(ResourceKey, Direction), ushort>();
         MapAllFaces(lookup, BuiltInBlocks.Stone, TileStone);
         MapAllFaces(lookup, BuiltInBlocks.Dirt, TileDirt);
@@ -132,53 +271,15 @@ public static class ProceduralAtlasGenerator
         MapAllFaces(lookup, BuiltInBlocks.MossyCobblestone, TileMossyCobblestone);
         MapAllFaces(lookup, BuiltInBlocks.SnowBlock, TileSnowBlock);
         MapAllFaces(lookup, BuiltInBlocks.CrimsonWool, TileCrimsonWool);
-
-        var nextCustomTile = FirstCustomTile;
-        var entries = blocks.Entries;
-        for (var i = 0; i < entries.Count && nextCustomTile < 256; i++)
-        {
-            var def = entries[i];
-            if (def.Key == BuiltInBlocks.Air || lookup.ContainsKey((def.Key, Direction.Up)))
-            {
-                continue;
-            }
-
-            var hasher = Fnv1a64.Create();
-            hasher.AppendString(def.Key.ToString());
-            var h = hasher.Value;
-
-            var r = (byte)(64 + ((h >> 0) & 0x7F));
-            var g = (byte)(64 + ((h >> 8) & 0x7F));
-            var b = (byte)(64 + ((h >> 16) & 0x7F));
-            var a = def.IsOpaque ? (byte)255 : (byte)200;
-
-            ProceduralBlockTilePainter.PaintNoiseTile(pixels, nextCustomTile, r, g, b, variation: 24, alpha: a);
-            MapAllFaces(lookup, def.Key, nextCustomTile);
-            nextCustomTile++;
-        }
-
-        for (var t = nextCustomTile; t < 256; t++)
-        {
-            ProceduralBlockTilePainter.PaintNoiseTile(
-                pixels,
-                t,
-                (byte)(80 + ((t * 37) & 127)),
-                (byte)(80 + ((t * 73) & 127)),
-                (byte)(80 + ((t * 109) & 127)),
-                variation: 18,
-                alpha: 255);
-        }
-
-        return new TextureAtlasData(
-            AtlasDimension,
-            AtlasDimension,
-            TileDimension,
-            pixels,
-            lookup.ToFrozenDictionary(),
-            FirstCustomTile);
+        MapAllFaces(lookup, BuiltInBlocks.Gravel, TileGravel);
+        MapAllFaces(lookup, BuiltInBlocks.Obsidian, TileObsidian);
+        MapBlockTopBottomSide(lookup, BuiltInBlocks.Tnt, TileTntTop, TileTntTop, TileTntSide);
+        MapAllFaces(lookup, BuiltInBlocks.WhiteWool, TileWhiteWool);
+        MapAllFaces(lookup, BuiltInBlocks.BlueWool, TileBlueWool);
+        return lookup;
     }
 
-    private static void ApplyResourcePackOverrides(byte[] pixels, ResourcePackLoader pack)
+    private static void ApplyBlockPackOverrides(byte[] pixels, ResourcePackLoader pack)
     {
         _ = pack.TryBlitTile(pixels, TileStone, "stone");
         _ = pack.TryBlitTile(pixels, TileDirt, "dirt");
@@ -218,6 +319,13 @@ public static class ProceduralAtlasGenerator
         {
             _ = pack.TryBlitTile(pixels, TileCrimsonWool, "crimson_wool");
         }
+
+        _ = pack.TryBlitTile(pixels, TileGravel, "gravel");
+        _ = pack.TryBlitTile(pixels, TileObsidian, "obsidian");
+        _ = pack.TryBlitTile(pixels, TileTntSide, "tnt_side");
+        _ = pack.TryBlitTile(pixels, TileTntTop, "tnt_top");
+        _ = pack.TryBlitTile(pixels, TileWhiteWool, "white_wool");
+        _ = pack.TryBlitTile(pixels, TileBlueWool, "blue_wool");
     }
 
     private static void MapAllFaces(Dictionary<(ResourceKey, Direction), ushort> map, ResourceKey key, ushort tile)

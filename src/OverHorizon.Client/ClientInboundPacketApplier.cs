@@ -10,12 +10,13 @@ using OverHorizon.World.Serialization;
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Applies inbound authoritative server packets to the client world cache, player pose, remote avatars, and chat log.
+/// Applies inbound authoritative server packets to the client world cache, player pose, PvP combat state, remote avatars, and chat log.
 /// </summary>
 internal static class ClientInboundPacketApplier
 {
     public static void Apply(
         IClientboundPacket packet,
+        long localEntityId,
         ClientRemotePlayerTracker remotePlayers,
         ClientPlayerController player,
         ClientWorldCache worldCache,
@@ -47,6 +48,19 @@ internal static class ClientInboundPacketApplier
                 }
 
                 lastSentFeetPosition = syncPos.Position;
+                break;
+
+            case EntityCombatEventPacket combatPkt:
+                if (combatPkt.TargetEntityId == localEntityId)
+                {
+                    player.ApplyAuthoritativeCombatHit(combatPkt.NewHealth, combatPkt.KnockbackVelocity, combatPkt.TargetDied);
+                    audio.PlayPositional(SoundCue.PlayerHurt, player.Camera.Position, gain: 0.85f * player.MasterVolume);
+                }
+                else if (remotePlayers.TryApplyCombatFeedback(combatPkt.TargetEntityId, combatPkt.NewHealth, combatPkt.TargetDied, out var peerPos))
+                {
+                    audio.PlayPositional(SoundCue.PlayerHit, peerPos + new Vec3d(0.0, 1.0, 0.0), gain: 0.85f * player.MasterVolume);
+                }
+
                 break;
 
             case ChunkDataPacket chunkPkt:

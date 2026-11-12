@@ -72,7 +72,7 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
         gl.BindVertexArray(0);
     }
 
-    public unsafe int RenderOverlays(FirstPersonCamera camera, FrameOverlayState overlay)
+    public unsafe int RenderOverlays(FirstPersonCamera camera, FrameOverlayState overlay, uint itemAtlasTexture = 0)
     {
         var drawCalls = 0;
         var vp = camera.BuildCameraRelativeViewProjectionMatrix();
@@ -83,7 +83,11 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
 
         // Pass 1: 3D Sky Sun + Drifting Voxel Clouds + Remote Friend Avatars
         _scratch.Clear();
-        AppendSkySunAndClouds(overlay.CloudDriftOffset);
+        if (!overlay.IsUnderwater)
+        {
+            AppendSkySunAndClouds(overlay.CloudDriftOffset);
+        }
+
         foreach (var avatar in overlay.RemotePlayers)
         {
             AppendPlayerAvatarGeometry(camera.Position, in avatar);
@@ -124,11 +128,16 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
             drawCalls++;
         }
 
-        // Pass 3: 3D First-Person Held Block Viewmodel (bottom-right hand with walk-bob & swing!)
-        if (overlay.Mode != UiOverlayMode.TitleMenu)
+        // Pass 3: 3D First-Person Held Block / Sword / Tool / Hand Viewmodel
+        if (overlay.Mode is not (UiOverlayMode.TitleMenu or UiOverlayMode.DeathScreen))
         {
             _scratch.Clear();
-            AppendFirstPersonHeldBlock(overlay.HeldBlockColor, overlay.WalkBobPhase, overlay.HandSwingProgress);
+            AppendFirstPersonHeldItem(
+                overlay.HeldBlockColor,
+                overlay.WalkBobPhase,
+                overlay.HandSwingProgress,
+                overlay.HeldIsToolOrWeapon,
+                overlay.HeldIsEmpty);
 
             _gl.Clear((uint)ClearBufferMask.DepthBufferBit);
             _gl.Enable(EnableCap.DepthTest);
@@ -147,8 +156,8 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
 
         _gl.BindVertexArray(0);
 
-        // Pass 4: 2D Screen-Space Menus, Bitmap Font Text, Hotbar, Chat, F3 & Nametags
-        drawCalls += _uiRenderer.RenderUi(camera, overlay);
+        // Pass 4: 2D Screen-Space Menus, Bitmap Font Text, Real Sprite Hotbar, Survival HUD, Chat, F3 & Nametags
+        drawCalls += _uiRenderer.RenderUi(camera, overlay, itemAtlasTexture);
         return drawCalls;
     }
 
@@ -246,15 +255,43 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
         }
     }
 
-    private void AppendFirstPersonHeldBlock(Vector3 blockRgb, float bobPhase, float swingProgress)
+    private void AppendFirstPersonHeldItem(
+        Vector3 itemRgb,
+        float bobPhase,
+        float swingProgress,
+        bool isToolOrWeapon,
+        bool isEmptyHand)
     {
-        var color = blockRgb.LengthSquared() > 0.01f
-            ? new Vector4(blockRgb.X, blockRgb.Y, blockRgb.Z, 1.0f)
-            : new Vector4(0.55f, 0.55f, 0.58f, 1.0f);
-
         var bobX = MathF.Cos(bobPhase * 0.5f) * 0.035f;
         var bobY = MathF.Abs(MathF.Sin(bobPhase)) * -0.04f;
         var swingArc = MathF.Sin(swingProgress * MathF.PI);
+
+        if (isEmptyHand)
+        {
+            var armSkin = new Vector4(0.90f, 0.72f, 0.58f, 1.0f);
+            var armModel = Matrix4x4.CreateRotationX(0.62f - (swingArc * 0.75f))
+                * Matrix4x4.CreateRotationY(-0.35f + (swingArc * 0.30f))
+                * Matrix4x4.CreateTranslation(0.54f + bobX - (swingArc * 0.14f), -0.58f + bobY + (swingArc * 0.14f), -0.78f - (swingArc * 0.16f));
+            AppendBoxTriangles(new Vector3(-0.10f, -0.26f, -0.10f), new Vector3(0.20f, 0.52f, 0.20f), armModel, armSkin);
+            return;
+        }
+
+        var color = itemRgb.LengthSquared() > 0.01f
+            ? new Vector4(itemRgb.X, itemRgb.Y, itemRgb.Z, 1.0f)
+            : new Vector4(0.55f, 0.55f, 0.58f, 1.0f);
+
+        if (isToolOrWeapon)
+        {
+            var bladeModel = Matrix4x4.CreateRotationZ(-0.22f - (swingArc * 0.55f))
+                * Matrix4x4.CreateRotationX(0.32f - (swingArc * 1.15f))
+                * Matrix4x4.CreateRotationY(0.28f - (swingArc * 0.35f))
+                * Matrix4x4.CreateTranslation(0.56f + bobX - (swingArc * 0.22f), -0.48f + bobY + (swingArc * 0.08f), -0.92f - (swingArc * 0.22f));
+            var handleWood = new Vector4(0.52f, 0.35f, 0.19f, 1.0f);
+            AppendBoxTriangles(new Vector3(-0.035f, -0.24f, -0.035f), new Vector3(0.07f, 0.24f, 0.07f), bladeModel, handleWood);
+            AppendBoxTriangles(new Vector3(-0.13f, -0.02f, -0.045f), new Vector3(0.26f, 0.06f, 0.09f), bladeModel, Shade(color, 0.78f));
+            AppendBoxTriangles(new Vector3(-0.045f, 0.04f, -0.025f), new Vector3(0.09f, 0.52f, 0.05f), bladeModel, color);
+            return;
+        }
 
         var model = Matrix4x4.CreateRotationY(0.68f - (swingArc * 0.45f))
             * Matrix4x4.CreateRotationX(0.28f - (swingArc * 0.85f))
@@ -298,6 +335,15 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
         var (shirt, pants) = ComputeOutfitColors(avatar.Username);
         var skin = new Vector4(0.92f, 0.74f, 0.60f, 1.0f);
         var hair = new Vector4(0.26f, 0.18f, 0.11f, 1.0f);
+        if (avatar.HurtFlash > 0.01f)
+        {
+            var hurtTint = new Vector4(1.0f, 0.22f, 0.20f, 1.0f);
+            var f = Math.Clamp(avatar.HurtFlash, 0.0f, 1.0f) * 0.78f;
+            shirt = Vector4.Lerp(shirt, hurtTint, f);
+            pants = Vector4.Lerp(pants, hurtTint, f);
+            skin = Vector4.Lerp(skin, hurtTint, f);
+            hair = Vector4.Lerp(hair, hurtTint, f);
+        }
         var eyeCol = new Vector4(0.14f, 0.22f, 0.48f, 1.0f);
 
         var leftLegXform = Matrix4x4.CreateRotationX(swing) * Matrix4x4.CreateTranslation(-0.13f, 0.70f, 0.0f) * bodyRot;

@@ -152,5 +152,34 @@ public static class BuiltInServerCommands
                 ctx.Sender.Reply($"Made {targetName} a server operator.");
                 return ValueTask.FromResult(true);
             }));
+
+        dispatcher.Register(new CommandRegistration(
+            Name: "pvp",
+            Description: "Enables or disables multiplayer PvP combat.",
+            Usage: "/pvp <on|off>",
+            RequiredPermission: PermissionLevel.Everyone,
+            Executor: (ctx, _) =>
+            {
+                if (ctx.Arguments.Count == 1)
+                {
+                    var arg = ctx.Arguments[0].ToUpperInvariant();
+                    if (arg is "ON" or "TRUE" or "1")
+                    {
+                        playBridge.IsPvpEnabled = true;
+                    }
+                    else if (arg is "OFF" or "FALSE" or "0")
+                    {
+                        playBridge.IsPvpEnabled = false;
+                    }
+                }
+                else
+                {
+                    playBridge.IsPvpEnabled = !playBridge.IsPvpEnabled;
+                }
+
+                var stateLabel = playBridge.IsPvpEnabled ? "ENABLED" : "DISABLED";
+                broadcasterResolver().BroadcastToPlaySessions(new SystemChatPacket($"[Server] PvP combat is now {stateLabel}."));
+                return ValueTask.FromResult(true);
+            }));
     }
 }

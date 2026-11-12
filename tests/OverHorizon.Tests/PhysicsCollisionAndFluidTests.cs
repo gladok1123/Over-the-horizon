@@ -64,7 +64,7 @@ public sealed class PhysicsCollisionAndFluidTests
     }
 
     [Fact]
-    public void KinematicsIntegrator_AppliesFluidBuoyancyAndHorizontalCurrentPush()
+    public void KinematicsIntegrator_AppliesAuthenticWaterSinkSwimAndHorizontalCurrentPush()
     {
         var world = new TestCollisionWorld();
         world.FillBox(new BlockPos(-4, 60, -4), new BlockPos(4, 60, 4), isSolid: true);
@@ -74,17 +74,32 @@ public sealed class PhysicsCollisionAndFluidTests
         world.SetFluid(new BlockPos(0, 61, 0), 2);
         world.SetFluid(new BlockPos(1, 61, 0), 3);
 
-        var step = KinematicsIntegrator.StepEntity(
+        // Without holding Jump (swimUp: false), water gently sinks the player instead of auto-ejecting upward!
+        var passiveStep = KinematicsIntegrator.StepEntity(
             world,
             new Vec3d(0.5, 61.1, 0.5),
             Vec3d.Zero,
             width: 0.6,
             height: 1.8,
-            deltaSeconds: 0.05);
+            deltaSeconds: 0.05,
+            swimUp: false);
 
-        step.InFluid.Should().BeTrue();
-        step.Velocity.Y.Should().BeGreaterThan(0.0);
-        step.Velocity.X.Should().BeGreaterThan(0.0);
+        passiveStep.InFluid.Should().BeTrue();
+        passiveStep.Velocity.Y.Should().BeLessThan(0.0);
+        passiveStep.Velocity.X.Should().BeGreaterThan(0.0);
+
+        // Holding Jump (swimUp: true) swims smoothly upward!
+        var swimStep = KinematicsIntegrator.StepEntity(
+            world,
+            new Vec3d(0.5, 61.1, 0.5),
+            Vec3d.Zero,
+            width: 0.6,
+            height: 1.8,
+            deltaSeconds: 0.05,
+            swimUp: true);
+
+        swimStep.InFluid.Should().BeTrue();
+        swimStep.Velocity.Y.Should().BeGreaterThan(0.0);
     }
 
     [Fact]

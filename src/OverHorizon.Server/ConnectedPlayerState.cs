@@ -10,9 +10,13 @@ internal sealed class ConnectedPlayerState(
     Vec3d initialPosition,
     PermissionLevel initialPermission)
 {
+    public const float MaxPlayerHealth = 20.0f;
+
     public long EntityId { get; } = entityId;
 
     public string Username { get; } = username;
+
+    public Vec3d SpawnPosition { get; } = initialPosition;
 
     public ChunkPos CenterChunk { get; set; } = initialChunk;
 
@@ -21,6 +25,10 @@ internal sealed class ConnectedPlayerState(
     public float YawDegrees { get; set; }
 
     public float PitchDegrees { get; set; }
+
+    public float Health { get; set; } = MaxPlayerHealth;
+
+    public long LastHurtTick { get; set; } = -100L;
 
     public PermissionLevel Permission { get; set; } = initialPermission;
 

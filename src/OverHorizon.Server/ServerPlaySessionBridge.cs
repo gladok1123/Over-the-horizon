@@ -41,6 +41,9 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
     private readonly Func<INetworkBroadcaster>? _getBroadcaster;
     private readonly ConcurrentDictionary<long, ConnectedPlayerState> _players = new();
 
+    /// <summary>Gets or sets a value indicating whether multiplayer PvP damage is enabled on this server.</summary>
+    public bool IsPvpEnabled { get; set; } = true;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="ServerPlaySessionBridge"/> class.
     /// </summary>
@@ -236,6 +239,19 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
                     chat,
                     broadcaster,
                     cancellationToken).ConfigureAwait(false);
+                break;
+
+            case PlayerAttackEntityPacket attack:
+                ServerPvpCombatHandler.HandleAttack(
+                    session,
+                    playerState,
+                    attack,
+                    tickNumber,
+                    IsPvpEnabled,
+                    _players,
+                    _registries,
+                    _gameplay,
+                    broadcaster);
                 break;
         }
     }

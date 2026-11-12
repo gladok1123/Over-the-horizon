@@ -24,6 +24,8 @@ internal sealed class ClientMultiplayerTransport : IAsyncDisposable
 
     public bool IsConnected => _client is not null;
 
+    public long AssignedEntityId { get; private set; }
+
     public async ValueTask<LoginSuccessPacket> ConnectAndLoginAsync(
         string host,
         ushort port,
@@ -35,6 +37,7 @@ internal sealed class ClientMultiplayerTransport : IAsyncDisposable
         var client = await JavaProtocolClient.ConnectTcpAsync(endpoint, cancellationToken).ConfigureAwait(false);
         var login = await client.LoginAsync(username, cancellationToken: cancellationToken).ConfigureAwait(false);
 
+        AssignedEntityId = login.AssignedEntityId;
         _client = client;
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _readTask = PumpServerPacketsAsync(client, _cts.Token);

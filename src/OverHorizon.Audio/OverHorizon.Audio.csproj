@@ -8,8 +8,14 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="NVorbis" />
     <PackageReference Include="Silk.NET.OpenAL" />
     <PackageReference Include="Silk.NET.OpenAL.Soft.Native" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="EmbeddedSfx\*.ogg" LogicalName="OverHorizon.Audio.EmbeddedSfx.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="EmbeddedSfx\*.wav" LogicalName="OverHorizon.Audio.EmbeddedSfx.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

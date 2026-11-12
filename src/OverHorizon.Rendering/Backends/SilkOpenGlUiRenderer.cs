@@ -7,7 +7,7 @@ using Silk.NET.OpenGL;
 namespace OverHorizon.Rendering.Backends;
 
 /// <summary>
-/// Batched OpenGL 3.3 Core pixel-space 2D UI &amp; bitmap-font renderer uploading geometry produced by <see cref="UiGeometryBuilder"/>.
+/// Batched OpenGL 3.3 Core pixel-space 2D UI, bitmap-font, and <c>16x16</c> item/block atlas sprite renderer.
 /// </summary>
 internal sealed class SilkOpenGlUiRenderer : IDisposable
 {
@@ -37,16 +37,28 @@ internal sealed class SilkOpenGlUiRenderer : IDisposable
         in vec4 vColor;
 
         uniform sampler2D uFontAtlas;
+        uniform sampler2D uItemAtlas;
 
         out vec4 FragColor;
 
         void main()
         {
-            vec4 sampleCol = texture(uFontAtlas, vUv);
-            if (sampleCol.a < 0.1)
+            vec4 sampleCol;
+            if (vUv.x <= -0.5)
+            {
+                vec2 itemUv = -vUv - vec2(1.0);
+                sampleCol = texture(uItemAtlas, itemUv);
+            }
+            else
+            {
+                sampleCol = texture(uFontAtlas, vUv);
+            }
+
+            if (sampleCol.a < 0.08)
             {
                 discard;
             }
+
             FragColor = sampleCol * vColor;
         }
         """;
@@ -55,10 +67,11 @@ internal sealed class SilkOpenGlUiRenderer : IDisposable
     private readonly uint _program;
     private readonly int _locViewport;
     private readonly int _locFontAtlas;
+    private readonly int _locItemAtlas;
     private readonly uint _fontTexture;
     private readonly uint _vao;
     private readonly uint _vbo;
-    private readonly List<TexturedUiVertex> _vertices = new(4096);
+    private readonly List<TexturedUiVertex> _vertices = new(8192);
     private bool _disposed;
 
     public unsafe SilkOpenGlUiRenderer(GL gl)
@@ -67,6 +80,7 @@ internal sealed class SilkOpenGlUiRenderer : IDisposable
         _program = CompileAndLink(gl);
         _locViewport = gl.GetUniformLocation(_program, "uViewport");
         _locFontAtlas = gl.GetUniformLocation(_program, "uFontAtlas");
+        _locItemAtlas = gl.GetUniformLocation(_program, "uItemAtlas");
         _fontTexture = UploadFontTexture(gl);
 
         _vao = gl.GenVertexArray();
@@ -85,7 +99,7 @@ internal sealed class SilkOpenGlUiRenderer : IDisposable
         gl.BindVertexArray(0);
     }
 
-    public unsafe int RenderUi(FirstPersonCamera camera, FrameOverlayState state)
+    public unsafe int RenderUi(FirstPersonCamera camera, FrameOverlayState state, uint itemAtlasTexture)
     {
         var width = state.ViewportSize.X > 64.0f ? state.ViewportSize.X : 1280.0f;
         var height = state.ViewportSize.Y > 64.0f ? state.ViewportSize.Y : 720.0f;
@@ -104,9 +118,13 @@ internal sealed class SilkOpenGlUiRenderer : IDisposable
         _gl.UseProgram(_program);
         _gl.Uniform2(_locViewport, width, height);
         _gl.Uniform1(_locFontAtlas, 0);
+        _gl.Uniform1(_locItemAtlas, 1);
 
         _gl.ActiveTexture(TextureUnit.Texture0);
         _gl.BindTexture(TextureTarget.Texture2D, _fontTexture);
+
+        _gl.ActiveTexture(TextureUnit.Texture1);
+        _gl.BindTexture(TextureTarget.Texture2D, itemAtlasTexture != 0 ? itemAtlasTexture : _fontTexture);
 
         _gl.BindVertexArray(_vao);
         _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _vbo);
@@ -123,6 +141,7 @@ internal sealed class SilkOpenGlUiRenderer : IDisposable
 
         _gl.DrawArrays(PrimitiveType.Triangles, 0, (uint)span.Length);
 
+        _gl.ActiveTexture(TextureUnit.Texture0);
         _gl.BindVertexArray(0);
         _gl.Disable(EnableCap.Blend);
         _gl.Enable(EnableCap.CullFace);
@@ -160,6 +179,32 @@ internal sealed class SilkOpenGlUiRenderer : IDisposable
         _disposed = true;
     }
 
+    private static unsafe uint UploadFontTexture(GL gl)
+    {
+        var tex = gl.GenTexture();
+        gl.BindTexture(TextureTarget.Texture2D, tex);
+        var rgba = PixelFontGlyphs.CreateRgbaAtlas();
+        fixed (byte* ptr = rgba)
+        {
+            gl.TexImage2D(
+                TextureTarget.Texture2D,
+                0,
+                InternalFormat.Rgba8,
+                PixelFontGlyphs.AtlasWidth,
+                PixelFontGlyphs.AtlasHeight,
+                0,
+                PixelFormat.Rgba,
+                PixelType.UnsignedByte,
+                ptr);
+        }
+
+        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Nearest);
+        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Nearest);
+        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToEdge);
+        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.ClampToEdge);
+        return tex;
+    }
+
     private static uint CompileAndLink(GL gl)
     {
         var vs = gl.CreateShader(ShaderType.VertexShader);
@@ -179,31 +224,5 @@ internal sealed class SilkOpenGlUiRenderer : IDisposable
         gl.DeleteShader(vs);
         gl.DeleteShader(fs);
         return prog;
-    }
-
-    private static unsafe uint UploadFontTexture(GL gl)
-    {
-        var tex = gl.GenTexture();
-        gl.BindTexture(TextureTarget.Texture2D, tex);
-        var pixels = PixelFontGlyphs.CreateRgbaAtlas();
-        fixed (byte* ptr = pixels)
-        {
-            gl.TexImage2D(
-                TextureTarget.Texture2D,
-                0,
-                InternalFormat.Rgba8,
-                PixelFontGlyphs.AtlasWidth,
-                PixelFontGlyphs.AtlasHeight,
-                0,
-                PixelFormat.Rgba,
-                PixelType.UnsignedByte,
-                ptr);
-        }
-
-        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
-        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
-        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
-        gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
-        return tex;
     }
 }

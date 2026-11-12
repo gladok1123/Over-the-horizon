@@ -198,6 +198,35 @@ public sealed class PlayerInventory
     }
 
     /// <summary>
+    /// Counts the total quantity of <paramref name="itemId"/> across all 41 slots.
+    /// </summary>
+    /// <param name="itemId">Target item ID.</param>
+    /// <returns>Total item count.</returns>
+    public int CountItem(ushort itemId)
+    {
+        if (itemId == 0)
+        {
+            return 0;
+        }
+
+        var sum = 0;
+        for (var i = 0; i < TotalSlotCount; i++)
+        {
+            if (!_slots[i].IsEmpty && _slots[i].ItemId == itemId)
+            {
+                sum += _slots[i].Count;
+            }
+        }
+
+        return sum;
+    }
+
+    /// <summary>
+    /// Clears all 41 slots to <see cref="ItemStack.Empty"/>.
+    /// </summary>
+    public void Clear() => Array.Clear(_slots, 0, _slots.Length);
+
+    /// <summary>
     /// Computes a deterministic 64-bit FNV-1a hash of all 41 slots and selected hotbar index.
     /// </summary>
     /// <returns>64-bit state hash.</returns>

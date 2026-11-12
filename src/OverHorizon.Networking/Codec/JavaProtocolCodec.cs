@@ -83,6 +83,13 @@ public sealed class JavaProtocolCodec : IProtocolCodec
                 PacketBufferWriter.WriteUtf8(destination, chat.Message, maxChars: 256);
                 break;
 
+            case PlayerAttackEntityPacket attack:
+                PacketBufferWriter.WriteVarInt(destination, 0x04);
+                PacketBufferWriter.WriteVarLong(destination, attack.TargetEntityId);
+                PacketBufferWriter.WriteVarInt(destination, attack.HeldItemId);
+                PacketBufferWriter.WriteBool(destination, attack.IsCriticalHit);
+                break;
+
             default:
                 throw new ProtocolException($"Unsupported serverbound packet type '{packet.GetType().Name}'.");
         }
@@ -104,6 +111,7 @@ public sealed class JavaProtocolCodec : IProtocolCodec
             (ConnectionState.Play, 0x01) => DecodeMovePlayer(ref reader),
             (ConnectionState.Play, 0x02) => DecodeBlockAction(ref reader),
             (ConnectionState.Play, 0x03) => DecodeChat(ref reader),
+            (ConnectionState.Play, 0x04) => DecodeAttackEntity(ref reader),
             _ => throw new ProtocolException($"Unknown serverbound packet ID 0x{packetId:X2} in state {state}."),
         };
 
@@ -211,6 +219,17 @@ public sealed class JavaProtocolCodec : IProtocolCodec
                 PacketBufferWriter.WriteVarLong(destination, remoteDespawn.EntityId);
                 break;
 
+            case EntityCombatEventPacket combat:
+                PacketBufferWriter.WriteVarInt(destination, 0x09);
+                PacketBufferWriter.WriteVarLong(destination, combat.TargetEntityId);
+                PacketBufferWriter.WriteVarLong(destination, combat.AttackerEntityId);
+                PacketBufferWriter.WriteFloat32(destination, combat.NewHealth);
+                PacketBufferWriter.WriteFloat64(destination, combat.KnockbackVelocity.X);
+                PacketBufferWriter.WriteFloat64(destination, combat.KnockbackVelocity.Y);
+                PacketBufferWriter.WriteFloat64(destination, combat.KnockbackVelocity.Z);
+                PacketBufferWriter.WriteBool(destination, combat.TargetDied);
+                break;
+
             default:
                 throw new ProtocolException($"Unsupported clientbound packet type '{packet.GetType().Name}'.");
         }
@@ -258,6 +277,7 @@ public sealed class JavaProtocolCodec : IProtocolCodec
                 reader.ReadFloat32(),
                 reader.ReadFloat32()),
             (ConnectionState.Play, 0x08) => new RemotePlayerDespawnPacket(reader.ReadVarLong()),
+            (ConnectionState.Play, 0x09) => DecodeCombatEvent(ref reader),
             _ => throw new ProtocolException($"Unknown clientbound packet ID 0x{packetId:X2} in state {state}."),
         };
 
@@ -360,5 +380,35 @@ public sealed class JavaProtocolCodec : IProtocolCodec
         }
 
         return new BlockUpdatePacket(pos, (ushort)stateId);
+    }
+
+    private static PlayerAttackEntityPacket DecodeAttackEntity(ref PacketSpanReader reader)
+    {
+        var targetId = reader.ReadVarLong();
+        var itemId = reader.ReadVarInt();
+        if ((uint)itemId > ushort.MaxValue)
+        {
+            throw new ProtocolException($"Invalid HeldItemId {itemId} in PlayerAttackEntityPacket.");
+        }
+
+        var crit = reader.ReadBool();
+        return new PlayerAttackEntityPacket(targetId, (ushort)itemId, crit);
+    }
+
+    private static EntityCombatEventPacket DecodeCombatEvent(ref PacketSpanReader reader)
+    {
+        var targetId = reader.ReadVarLong();
+        var attackerId = reader.ReadVarLong();
+        var health = reader.ReadFloat32();
+        var kx = reader.ReadFloat64();
+        var ky = reader.ReadFloat64();
+        var kz = reader.ReadFloat64();
+        var died = reader.ReadBool();
+        if (!float.IsFinite(health) || !double.IsFinite(kx) || !double.IsFinite(ky) || !double.IsFinite(kz))
+        {
+            throw new ProtocolException("Non-finite float in EntityCombatEventPacket.");
+        }
+
+        return new EntityCombatEventPacket(targetId, attackerId, health, new Vec3d(kx, ky, kz), died);
     }
 }

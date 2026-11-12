@@ -23,7 +23,13 @@ internal static class Program
         Console.CancelKeyPress += cancelHandler;
         try
         {
-            using var host = ClientBootstrap.BuildHost(args);
+            var parsedOptions = ClientBootstrap.ParseOptions(args);
+            if (!parsedOptions.Headless && !parsedOptions.HeadlessCheckOnly)
+            {
+                await Minecraft23w13aAssetSyncer.EnsureAssetsCachedAsync(parsedOptions.ExternalAssetsPath, cts.Token).ConfigureAwait(false);
+            }
+
+            using var host = ClientBootstrap.BuildHost(args, parsedOptions);
             await host.StartAsync(cts.Token).ConfigureAwait(false);
 
             var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("OverHorizon.Client");

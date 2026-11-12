@@ -3,8 +3,8 @@ using System.Buffers.Binary;
 namespace OverHorizon.Audio;
 
 /// <summary>
-/// Clean-room RIFF/WAVE uncompressed PCM audio decoder converting 8-bit or 16-bit mono/stereo <c>.wav</c> files
-/// into 16-bit signed mono <see cref="PcmSoundClip"/> buffers for OpenAL 3D spatialization.
+/// Clean-room RIFF/WAVE PCM audio decoder converting 8/16/24-bit PCM or 32-bit IEEE float mono/stereo <c>.wav</c>
+/// files into 16-bit signed mono <see cref="PcmSoundClip"/> buffers for OpenAL 3D spatialization.
 /// </summary>
 public static class WavPcmDecoder
 {
@@ -58,8 +58,9 @@ public static class WavPcmDecoder
             offset += 8 + size + (size & 1);
         }
 
-        if (audioFormat != 1 || channels is < 1 or > 2 || sampleRate is < 4000 or > 192000 ||
-            bitsPerSample is not (8 or 16) || dataChunk.IsEmpty)
+        var supportedFormat = (audioFormat == 1 && bitsPerSample is 8 or 16 or 24) ||
+            (audioFormat == 3 && bitsPerSample == 32);
+        if (!supportedFormat || channels is < 1 or > 2 || sampleRate is < 4000 or > 192000 || dataChunk.IsEmpty)
         {
             return false;
         }
@@ -76,35 +77,36 @@ public static class WavPcmDecoder
         for (var i = 0; i < frameCount; i++)
         {
             var fOff = i * frameStride;
-            if (bitsPerSample == 16)
+            var left = ReadSampleAsInt16(dataChunk.Slice(fOff, bytesPerSample), audioFormat, bitsPerSample);
+            if (channels == 2)
             {
-                var left = BinaryPrimitives.ReadInt16LittleEndian(dataChunk.Slice(fOff, 2));
-                if (channels == 2)
-                {
-                    var right = BinaryPrimitives.ReadInt16LittleEndian(dataChunk.Slice(fOff + 2, 2));
-                    mono[i] = (short)((left + right) / 2);
-                }
-                else
-                {
-                    mono[i] = left;
-                }
+                var right = ReadSampleAsInt16(dataChunk.Slice(fOff + bytesPerSample, bytesPerSample), audioFormat, bitsPerSample);
+                mono[i] = (short)((left + right) / 2);
             }
             else
             {
-                var left = (dataChunk[fOff] - 128) << 8;
-                if (channels == 2)
-                {
-                    var right = (dataChunk[fOff + 1] - 128) << 8;
-                    mono[i] = (short)((left + right) / 2);
-                }
-                else
-                {
-                    mono[i] = (short)left;
-                }
+                mono[i] = left;
             }
         }
 
         clip = new PcmSoundClip(cue, sampleRate, mono);
         return true;
+    }
+
+    private static short ReadSampleAsInt16(ReadOnlySpan<byte> sampleBytes, ushort audioFormat, ushort bitsPerSample)
+    {
+        if (audioFormat == 3 && bitsPerSample == 32)
+        {
+            var f = BinaryPrimitives.ReadSingleLittleEndian(sampleBytes);
+            var scaled = Math.Clamp(f, -1.0f, 1.0f) * 32767.0f;
+            return (short)MathF.Round(scaled);
+        }
+
+        return bitsPerSample switch
+        {
+            16 => BinaryPrimitives.ReadInt16LittleEndian(sampleBytes),
+            24 => BinaryPrimitives.ReadInt16LittleEndian(sampleBytes.Slice(1, 2)),
+            _ => (short)((sampleBytes[0] - 128) << 8),
+        };
     }
 }

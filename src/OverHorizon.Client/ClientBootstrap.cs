@@ -171,9 +171,15 @@ public static class ClientBootstrap
         services.AddGameplayModule();
         services.AddPhysicsModule();
         var saveDir = resolvedOptions.Headless || resolvedOptions.HeadlessCheckOnly ? null : "./saves/SingleplayerWorld";
+        var effectiveAssets = resolvedOptions.ExternalAssetsPath;
+        if (string.IsNullOrWhiteSpace(effectiveAssets) && Directory.Exists(Minecraft23w13aAssetSyncer.DefaultPackDirectory))
+        {
+            effectiveAssets = Minecraft23w13aAssetSyncer.DefaultPackDirectory;
+        }
+
         services.AddWorldModule(worldSaveDirectory: saveDir);
         services.AddRenderingModule(new RenderingOptions(Headless: resolvedOptions.Headless));
-        services.AddAudioModule(resolvedOptions.ExternalAssetsPath);
+        services.AddAudioModule(effectiveAssets);
         services.AddSingleton<ClientSessionRunner>();
 
         return services;

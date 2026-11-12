@@ -1,14 +1,16 @@
 using System.Numerics;
 using Microsoft.Extensions.Logging;
 using OverHorizon.Audio;
+using OverHorizon.Gameplay;
 using OverHorizon.Rendering.Hud;
 using Silk.NET.Input;
 
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Binds Silk.NET keyboard &amp; mouse input for first-person gameplay, the "C# EDITION" Title/Multiplayer/Options/Pause
-/// menus, the 22-block Creative Palette (<c>E</c>), live Chat (<c>T</c> / <c>/</c>), and <c>F3</c> debug telemetry.
+/// Binds Silk.NET keyboard &amp; mouse input for first-person gameplay, PvP melee, progressive Survival mining,
+/// the "C# EDITION" menus, Redesigned Tabbed Creative Catalog (<c>E</c>), Survival Inventory &amp; Crafting (<c>E</c>),
+/// <c>F4</c> GameMode toggle, live Chat (<c>T</c> / <c>/</c>), and <c>F3</c> debug telemetry.
 /// </summary>
 internal sealed class ClientInputBinder
 {
@@ -24,8 +26,8 @@ internal sealed class ClientInputBinder
     private bool _hasLastMousePos;
     private bool _wasRawCursor;
     private bool _suppressNextKeyChar;
-    private bool _pendingBreakBlock;
-    private bool _pendingPlaceBlock;
+    private bool _pendingLeftClick;
+    private bool _pendingRightClick;
     private bool _bound;
 
     public ClientInputBinder(
@@ -59,13 +61,31 @@ internal sealed class ClientInputBinder
         return (fwd, strafe, jump, sprint);
     }
 
-    public (bool BreakRequested, bool PlaceRequested) ConsumeBlockActionRequests()
+    public bool IsLeftMouseHeld(IInputContext? input)
     {
-        var brk = _pendingBreakBlock;
-        var plc = _pendingPlaceBlock;
-        _pendingBreakBlock = false;
-        _pendingPlaceBlock = false;
-        return (brk, plc);
+        if (!_menu.IsGameplayActive || input is null)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < input.Mice.Count; i++)
+        {
+            if (input.Mice[i].IsButtonPressed(MouseButton.Left))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public (bool LeftClickRequested, bool RightClickRequested) ConsumeActionRequests()
+    {
+        var lmb = _pendingLeftClick;
+        var rmb = _pendingRightClick;
+        _pendingLeftClick = false;
+        _pendingRightClick = false;
+        return (lmb, rmb);
     }
 
     public bool TryDequeueUiAction(out string actionId)
@@ -149,7 +169,20 @@ internal sealed class ClientInputBinder
             return;
         }
 
-        if (_menu.Mode is UiOverlayMode.ChatInput or UiOverlayMode.MultiplayerMenu)
+        if (key == Key.F4 && _menu.Mode is UiOverlayMode.InGame or UiOverlayMode.BlockInventory or UiOverlayMode.SurvivalInventory)
+        {
+            var next = _player.Mode == GameMode.Creative ? GameMode.Survival : GameMode.Creative;
+            _player.SetGameMode(next);
+            if (_menu.Mode is UiOverlayMode.BlockInventory or UiOverlayMode.SurvivalInventory)
+            {
+                _menu.Mode = next == GameMode.Survival ? UiOverlayMode.SurvivalInventory : UiOverlayMode.BlockInventory;
+            }
+
+            _audio.PlayPositional(SoundCue.UiClick, _player.Camera.Position, gain: 0.35f * _player.MasterVolume);
+            return;
+        }
+
+        if (_menu.Mode is UiOverlayMode.ChatInput or UiOverlayMode.MultiplayerMenu or UiOverlayMode.BlockInventory)
         {
             if ((kb.IsKeyPressed(Key.ControlLeft) || kb.IsKeyPressed(Key.ControlRight)) && key == Key.V)
             {
@@ -169,7 +202,7 @@ internal sealed class ClientInputBinder
                 return;
             }
 
-            if (key is Key.Enter or Key.KeypadEnter)
+            if (key is Key.Enter or Key.KeypadEnter && _menu.Mode != UiOverlayMode.BlockInventory)
             {
                 _pendingUiActions.Enqueue(_menu.Mode == UiOverlayMode.ChatInput ? "submit_chat" : "join_server");
                 return;
@@ -181,7 +214,7 @@ internal sealed class ClientInputBinder
             _menu.Mode = _menu.Mode switch
             {
                 UiOverlayMode.InGame => UiOverlayMode.PauseMenu,
-                UiOverlayMode.PauseMenu or UiOverlayMode.BlockInventory or UiOverlayMode.ChatInput => UiOverlayMode.InGame,
+                UiOverlayMode.PauseMenu or UiOverlayMode.BlockInventory or UiOverlayMode.SurvivalInventory or UiOverlayMode.ChatInput => UiOverlayMode.InGame,
                 UiOverlayMode.MultiplayerMenu or UiOverlayMode.OptionsMenu => UiOverlayMode.TitleMenu,
                 _ => _menu.Mode,
             };
@@ -189,8 +222,26 @@ internal sealed class ClientInputBinder
             return;
         }
 
-        if (_menu.Mode == UiOverlayMode.BlockInventory && key == Key.E)
+        if (_menu.Mode == UiOverlayMode.BlockInventory && key is >= Key.Number1 and <= Key.Number9)
         {
+            var slot = (int)key - (int)Key.Number1;
+            if (_menu.TryAssignHoveredCreativeItemToSlot(_getViewportSize(), _player, slot))
+            {
+                _suppressNextKeyChar = true;
+                _audio.PlayPositional(SoundCue.ItemPop, _player.Camera.Position, gain: 0.45f * _player.MasterVolume);
+                return;
+            }
+        }
+
+        if (_menu.Mode == UiOverlayMode.SurvivalInventory && key == Key.E)
+        {
+            _menu.Mode = UiOverlayMode.InGame;
+            return;
+        }
+
+        if (_menu.Mode == UiOverlayMode.BlockInventory && key == Key.E && string.IsNullOrEmpty(_menu.CreativeSearchQuery))
+        {
+            _suppressNextKeyChar = true;
             _menu.Mode = UiOverlayMode.InGame;
             return;
         }
@@ -202,7 +253,8 @@ internal sealed class ClientInputBinder
 
         if (key == Key.E)
         {
-            _menu.Mode = UiOverlayMode.BlockInventory;
+            _suppressNextKeyChar = true;
+            _menu.OpenOrCloseInventory(_player);
             _audio.PlayPositional(SoundCue.UiClick, _player.Camera.Position, gain: 0.25f * _player.MasterVolume);
             return;
         }
@@ -232,7 +284,8 @@ internal sealed class ClientInputBinder
                 var action = _menu.HandleLeftClick(mouse.Position, _getViewportSize(), _player);
                 if (!string.IsNullOrEmpty(action))
                 {
-                    _audio.PlayPositional(SoundCue.UiClick, _player.Camera.Position, gain: 0.30f * _player.MasterVolume);
+                    var cue = action is "crafted_item" or "equip_creative" ? SoundCue.ItemPop : SoundCue.UiClick;
+                    _audio.PlayPositional(cue, _player.Camera.Position, gain: 0.38f * _player.MasterVolume);
                     _pendingUiActions.Enqueue(action);
                 }
             }
@@ -242,20 +295,29 @@ internal sealed class ClientInputBinder
 
         if (button == MouseButton.Left)
         {
-            _player.TriggerHandSwing();
-            _pendingBreakBlock = true;
+            _pendingLeftClick = true;
         }
         else if (button == MouseButton.Right)
         {
-            _player.TriggerHandSwing();
-            _pendingPlaceBlock = true;
+            _pendingRightClick = true;
         }
     }
 
     private void OnMouseScroll(IMouse mouse, ScrollWheel wheel)
     {
         _ = mouse;
-        if (!_menu.IsGameplayActive || MathF.Abs(wheel.Y) < 0.01f)
+        if (MathF.Abs(wheel.Y) < 0.01f)
+        {
+            return;
+        }
+
+        if (_menu.Mode is UiOverlayMode.BlockInventory or UiOverlayMode.SurvivalInventory)
+        {
+            _menu.ScrollInventory(wheel.Y > 0.0f ? 1 : -1);
+            return;
+        }
+
+        if (!_menu.IsGameplayActive)
         {
             return;
         }

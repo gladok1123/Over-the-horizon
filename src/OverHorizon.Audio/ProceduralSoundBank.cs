@@ -1,354 +1,292 @@
+using System.Collections.Frozen;
 using System.IO.Compression;
-using OverHorizon.Shared.Random;
 
 namespace OverHorizon.Audio;
 
 /// <summary>
-/// Multi-layered physical-modeling 44.1 kHz foley sound bank with automatic <c>.wav</c> override loading
-/// from <c>./assets</c>, <c>./minecraft-assets</c>, or <c>./resourcepacks</c> (<c>.zip</c>, <c>.jar</c>, or directory).
+/// Builds the OpenAL sound bank exclusively from real recorded <c>.ogg</c> and <c>.wav</c> audio:
+/// embedded CC0 Public-Domain foley recordings by default, automatically overridden by external
+/// <c>minecraft-assets</c> (<c>23w13a__or__b</c>) or user resource-pack <c>.ogg</c>/<c>.wav</c> files.
 /// </summary>
 public static class ProceduralSoundBank
 {
-    /// <summary>Default synthesis sample rate in Hz (<c>44,100</c>).</summary>
-    public const int DefaultSampleRate = 44_100;
+    private static readonly (SoundCue Cue, string ResourceName)[] EmbeddedRealClips =
+    [
+        (SoundCue.FootstepStone, "OverHorizon.Audio.EmbeddedSfx.footstep_stone.ogg"),
+        (SoundCue.FootstepGrass, "OverHorizon.Audio.EmbeddedSfx.footstep_grass.ogg"),
+        (SoundCue.FootstepWood, "OverHorizon.Audio.EmbeddedSfx.footstep_wood.ogg"),
+        (SoundCue.BlockBreak, "OverHorizon.Audio.EmbeddedSfx.block_break.ogg"),
+        (SoundCue.BlockPlace, "OverHorizon.Audio.EmbeddedSfx.block_place.ogg"),
+        (SoundCue.WaterSplash, "OverHorizon.Audio.EmbeddedSfx.water_splash.wav"),
+        (SoundCue.UiClick, "OverHorizon.Audio.EmbeddedSfx.ui_click.ogg"),
+        (SoundCue.SwordSwing, "OverHorizon.Audio.EmbeddedSfx.sword_swing.wav"),
+        (SoundCue.PlayerHit, "OverHorizon.Audio.EmbeddedSfx.player_hit.ogg"),
+        (SoundCue.PlayerHurt, "OverHorizon.Audio.EmbeddedSfx.player_hurt.ogg"),
+        (SoundCue.EatFood, "OverHorizon.Audio.EmbeddedSfx.eat_food.ogg"),
+        (SoundCue.ItemPop, "OverHorizon.Audio.EmbeddedSfx.item_pop.wav"),
+        (SoundCue.UnderwaterEnter, "OverHorizon.Audio.EmbeddedSfx.underwater_enter.wav"),
+    ];
 
     /// <summary>
-    /// Creates the sound bank, loading external <c>.wav</c> sound overrides if present and synthesizing
-    /// realistic multi-layered physical-modeling foley waveforms for all remaining cues.
+    /// Creates a frozen bank containing real decoded <see cref="PcmSoundClip"/>s for every <see cref="SoundCue"/>,
+    /// overriding defaults with <c>.ogg</c> or <c>.wav</c> files from <paramref name="externalAssetsPath"/> or <c>./resourcepacks</c>.
     /// </summary>
-    /// <param name="externalAssetsPath">Optional explicit directory, <c>.zip</c>, or <c>.jar</c> path.</param>
-    /// <returns>Dictionary mapping each <see cref="SoundCue"/> to its <see cref="PcmSoundClip"/>.</returns>
-    public static IReadOnlyDictionary<SoundCue, PcmSoundClip> CreateDefaultBank(string? externalAssetsPath = null)
+    /// <param name="externalAssetsPath">Optional resource pack directory, <c>.zip</c>, or <c>.jar</c> path.</param>
+    /// <returns>Frozen lookup dictionary from <see cref="SoundCue"/> to <see cref="PcmSoundClip"/>.</returns>
+    public static FrozenDictionary<SoundCue, PcmSoundClip> CreateDefaultBank(string? externalAssetsPath = null)
     {
-        var cues = Enum.GetValues<SoundCue>();
-        var bank = new Dictionary<SoundCue, PcmSoundClip>(cues.Length);
-        foreach (var cue in cues)
+        var bank = new Dictionary<SoundCue, PcmSoundClip>();
+        var asm = typeof(ProceduralSoundBank).Assembly;
+
+        for (var i = 0; i < EmbeddedRealClips.Length; i++)
         {
-            bank[cue] = Synthesize(cue);
-        }
-
-        ApplyExternalWavOverrides(bank, externalAssetsPath);
-        return bank;
-    }
-
-    /// <summary>
-    /// Synthesizes a multi-layered 44.1 kHz 16-bit mono physical-modeling foley clip for <paramref name="cue"/>.
-    /// </summary>
-    /// <param name="cue">Sound cue to synthesize.</param>
-    /// <returns>Synthesized <see cref="PcmSoundClip"/>.</returns>
-    public static PcmSoundClip Synthesize(SoundCue cue) => cue switch
-    {
-        SoundCue.FootstepStone => SynthesizeStoneStep(),
-        SoundCue.FootstepGrass => SynthesizeGrassStep(),
-        SoundCue.FootstepWood => SynthesizeWoodStep(),
-        SoundCue.BlockBreak => SynthesizeBlockBreak(),
-        SoundCue.BlockPlace => SynthesizeBlockPlace(),
-        SoundCue.WaterSplash => SynthesizeWaterSplash(),
-        _ => SynthesizeUiClick(),
-    };
-
-    private static PcmSoundClip SynthesizeStoneStep()
-    {
-        var count = (int)(DefaultSampleRate * 0.115);
-        var buf = new short[count];
-        var rng = new Xoroshiro128PlusPlus(0x5704_E101UL);
-        var lp = 0.0;
-        var phase = 0.0;
-        var tapPhase = 0.0;
-
-        for (var i = 0; i < count; i++)
-        {
-            var t = (double)i / DefaultSampleRate;
-            var thudFreq = 195.0 * Math.Exp(-22.0 * t) + 58.0;
-            phase += (2.0 * Math.PI * thudFreq) / DefaultSampleRate;
-            tapPhase += (2.0 * Math.PI * 880.0) / DefaultSampleRate;
-
-            var noise = (rng.NextDouble() * 2.0) - 1.0;
-            lp += 0.36 * (noise - lp);
-            var grit = (noise - lp) * Math.Exp(-42.0 * t);
-            var heel = Math.Sin(phase) * Math.Exp(-28.0 * t);
-            var mineralTap = Math.Sin(tapPhase) * Math.Exp(-95.0 * t) * 0.35;
-            var secondScuff = t > 0.038 ? lp * Math.Exp(-48.0 * (t - 0.038)) * 0.42 : 0.0;
-
-            var mix = (heel * 0.52) + (grit * 0.55) + mineralTap + secondScuff;
-            buf[i] = ToPcm16(mix * Math.Min(1.0, i / 28.0));
-        }
-
-        return new PcmSoundClip(SoundCue.FootstepStone, DefaultSampleRate, buf);
-    }
-
-    private static PcmSoundClip SynthesizeGrassStep()
-    {
-        var count = (int)(DefaultSampleRate * 0.145);
-        var buf = new short[count];
-        var rng = new Xoroshiro128PlusPlus(0x6BA5_5202UL);
-        var lpSlow = 0.0;
-        var lpFast = 0.0;
-        var thudPhase = 0.0;
-
-        for (var i = 0; i < count; i++)
-        {
-            var t = (double)i / DefaultSampleRate;
-            thudPhase += (2.0 * Math.PI * (96.0 * Math.Exp(-18.0 * t) + 42.0)) / DefaultSampleRate;
-
-            var raw = (rng.NextDouble() * 2.0) - 1.0;
-            lpFast += 0.55 * (raw - lpFast);
-            lpSlow += 0.08 * (raw - lpSlow);
-            var crispRustle = lpFast - lpSlow;
-
-            var burst1 = Math.Exp(-34.0 * t);
-            var burst2 = t > 0.028 ? Math.Exp(-38.0 * (t - 0.028)) * 0.75 : 0.0;
-            var burst3 = t > 0.062 ? Math.Exp(-44.0 * (t - 0.062)) * 0.48 : 0.0;
-            var earthThud = Math.Sin(thudPhase) * Math.Exp(-32.0 * t) * 0.38;
-
-            var mix = (crispRustle * (burst1 + burst2 + burst3) * 0.68) + earthThud;
-            buf[i] = ToPcm16(mix * Math.Min(1.0, i / 40.0));
-        }
-
-        return new PcmSoundClip(SoundCue.FootstepGrass, DefaultSampleRate, buf);
-    }
-
-    private static PcmSoundClip SynthesizeWoodStep()
-    {
-        var count = (int)(DefaultSampleRate * 0.110);
-        var buf = new short[count];
-        var rng = new Xoroshiro128PlusPlus(0x900D_3030UL);
-        var p1 = 0.0;
-        var p2 = 0.0;
-        var p3 = 0.0;
-        var lp = 0.0;
-
-        for (var i = 0; i < count; i++)
-        {
-            var t = (double)i / DefaultSampleRate;
-            p1 += (2.0 * Math.PI * 158.0) / DefaultSampleRate;
-            p2 += (2.0 * Math.PI * 312.0) / DefaultSampleRate;
-            p3 += (2.0 * Math.PI * 498.0) / DefaultSampleRate;
-
-            var noise = (rng.NextDouble() * 2.0) - 1.0;
-            lp += 0.25 * (noise - lp);
-
-            var hollow = (Math.Sin(p1) * 0.58 + Math.Sin(p2) * 0.28 + Math.Sin(p3) * 0.14) * Math.Exp(-32.0 * t);
-            var knock = lp * Math.Exp(-65.0 * t) * 0.45;
-            buf[i] = ToPcm16((hollow + knock) * Math.Min(1.0, i / 20.0));
-        }
-
-        return new PcmSoundClip(SoundCue.FootstepWood, DefaultSampleRate, buf);
-    }
-
-    private static PcmSoundClip SynthesizeBlockBreak()
-    {
-        var count = (int)(DefaultSampleRate * 0.240);
-        var buf = new short[count];
-        var rng = new Xoroshiro128PlusPlus(0xBB4E_A404UL);
-        var pLow = 0.0;
-        var pMid = 0.0;
-        var lp = 0.0;
-        ReadOnlySpan<double> cracks = [0.0, 0.036, 0.079, 0.128];
-
-        for (var i = 0; i < count; i++)
-        {
-            var t = (double)i / DefaultSampleRate;
-            pLow += (2.0 * Math.PI * (220.0 * Math.Exp(-14.0 * t) + 55.0)) / DefaultSampleRate;
-            pMid += (2.0 * Math.PI * (540.0 * Math.Exp(-18.0 * t) + 140.0)) / DefaultSampleRate;
-
-            var noise = (rng.NextDouble() * 2.0) - 1.0;
-            lp += 0.42 * (noise - lp);
-
-            var crackEnv = 0.0;
-            for (var c = 0; c < cracks.Length; c++)
+            var (cue, resourceName) = EmbeddedRealClips[i];
+            using var stream = asm.GetManifestResourceStream(resourceName);
+            if (stream is null)
             {
-                if (t >= cracks[c])
-                {
-                    crackEnv += Math.Exp(-36.0 * (t - cracks[c])) * (1.0 - (c * 0.16));
-                }
+                continue;
             }
 
-            var body = (Math.Sin(pLow) * 0.48 + Math.Sin(pMid) * 0.24) * Math.Exp(-13.0 * t);
-            var debris = lp * crackEnv * 0.56;
-            buf[i] = ToPcm16((body + debris) * Math.Min(1.0, i / 24.0));
+            using var ms = new MemoryStream();
+            stream.CopyTo(ms);
+            var bytes = ms.ToArray();
+
+            if (resourceName.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase) &&
+                OggVorbisDecoder.TryDecode(cue, bytes, out var oggClip))
+            {
+                bank[cue] = oggClip;
+            }
+            else if (WavPcmDecoder.TryDecode(cue, bytes, out var wavClip))
+            {
+                bank[cue] = wavClip;
+            }
         }
 
-        return new PcmSoundClip(SoundCue.BlockBreak, DefaultSampleRate, buf);
+        ApplyExternalAudioOverrides(bank, externalAssetsPath);
+        return bank.ToFrozenDictionary();
     }
 
-    private static PcmSoundClip SynthesizeBlockPlace()
+    private static void ApplyExternalAudioOverrides(Dictionary<SoundCue, PcmSoundClip> bank, string? externalAssetsPath)
     {
-        var count = (int)(DefaultSampleRate * 0.125);
-        var buf = new short[count];
-        var rng = new Xoroshiro128PlusPlus(0x91AC_E505UL);
-        var p1 = 0.0;
-        var pClick = 0.0;
-        var lp = 0.0;
-
-        for (var i = 0; i < count; i++)
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(externalAssetsPath))
         {
-            var t = (double)i / DefaultSampleRate;
-            p1 += (2.0 * Math.PI * (185.0 * Math.Exp(-20.0 * t) + 78.0)) / DefaultSampleRate;
-            pClick += (2.0 * Math.PI * 430.0) / DefaultSampleRate;
-
-            var noise = (rng.NextDouble() * 2.0) - 1.0;
-            lp += 0.30 * (noise - lp);
-
-            var thock = Math.Sin(p1) * Math.Exp(-24.0 * t) * 0.65;
-            var snap = (Math.Sin(pClick) * 0.25 + lp * 0.40) * Math.Exp(-58.0 * t);
-            buf[i] = ToPcm16((thock + snap) * Math.Min(1.0, i / 18.0));
-        }
-
-        return new PcmSoundClip(SoundCue.BlockPlace, DefaultSampleRate, buf);
-    }
-
-    private static PcmSoundClip SynthesizeWaterSplash()
-    {
-        var count = (int)(DefaultSampleRate * 0.300);
-        var buf = new short[count];
-        var rng = new Xoroshiro128PlusPlus(0x591A_5606UL);
-        var lp = 0.0;
-        var bubblePhase = 0.0;
-
-        for (var i = 0; i < count; i++)
-        {
-            var t = (double)i / DefaultSampleRate;
-            var bubbleFreq = 340.0 + (520.0 * ((t * 7.0) % 1.0));
-            bubblePhase += (2.0 * Math.PI * bubbleFreq) / DefaultSampleRate;
-
-            var noise = (rng.NextDouble() * 2.0) - 1.0;
-            lp += 0.28 * (noise - lp);
-
-            var spray = lp * Math.Exp(-9.5 * t) * 0.68;
-            var bubbles = Math.Sin(bubblePhase) * Math.Exp(-11.0 * t) * 0.24;
-            buf[i] = ToPcm16((spray + bubbles) * Math.Min(1.0, i / 48.0));
-        }
-
-        return new PcmSoundClip(SoundCue.WaterSplash, DefaultSampleRate, buf);
-    }
-
-    private static PcmSoundClip SynthesizeUiClick()
-    {
-        var count = (int)(DefaultSampleRate * 0.036); // 1,587 samples (> 500)
-        var buf = new short[count];
-        var pHi = 0.0;
-        var pLo = 0.0;
-
-        for (var i = 0; i < count; i++)
-        {
-            var t = (double)i / DefaultSampleRate;
-            pHi += (2.0 * Math.PI * 1080.0) / DefaultSampleRate;
-            pLo += (2.0 * Math.PI * 540.0) / DefaultSampleRate;
-            var env = Math.Exp(-95.0 * t) * Math.Min(1.0, i / 12.0);
-            buf[i] = ToPcm16((Math.Sin(pHi) * 0.55 + Math.Sin(pLo) * 0.45) * env);
-        }
-
-        return new PcmSoundClip(SoundCue.UiClick, DefaultSampleRate, buf);
-    }
-
-    private static short ToPcm16(double sample) =>
-        (short)Math.Clamp(sample * 28_000.0, short.MinValue, short.MaxValue);
-
-    private static void ApplyExternalWavOverrides(Dictionary<SoundCue, PcmSoundClip> bank, string? explicitPath)
-    {
-        var candidates = new List<string>(6);
-        if (!string.IsNullOrWhiteSpace(explicitPath))
-        {
-            candidates.Add(explicitPath);
+            candidates.Add(externalAssetsPath);
         }
 
         foreach (var baseDir in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
         {
-            candidates.Add(Path.Combine(baseDir, "assets"));
             candidates.Add(Path.Combine(baseDir, "resourcepacks"));
+            candidates.Add(Path.Combine(baseDir, "assets"));
+            candidates.Add(Path.Combine(baseDir, "minecraft-assets"));
         }
 
-        foreach (var path in candidates)
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < candidates.Count; i++)
         {
-            if (Directory.Exists(path))
+            var candidate = candidates[i];
+            if (string.IsNullOrWhiteSpace(candidate))
             {
-                TryLoadWavsFromDirectory(bank, path);
-                foreach (var file in Directory.EnumerateFiles(path))
+                continue;
+            }
+
+            var full = Path.GetFullPath(candidate);
+            if (!visited.Add(full))
+            {
+                continue;
+            }
+
+            if (File.Exists(full))
+            {
+                TryLoadFromArchive(bank, full);
+            }
+            else if (Directory.Exists(full))
+            {
+                TryLoadFromDirectory(bank, full);
+                var files = Directory.GetFiles(full);
+                for (var f = 0; f < files.Length; f++)
                 {
-                    var ext = Path.GetExtension(file);
+                    var ext = Path.GetExtension(files[f]);
                     if (string.Equals(ext, ".zip", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(ext, ".jar", StringComparison.OrdinalIgnoreCase))
                     {
-                        TryLoadWavsFromArchive(bank, file);
+                        TryLoadFromArchive(bank, files[f]);
                     }
                 }
             }
-            else if (File.Exists(path))
-            {
-                TryLoadWavsFromArchive(bank, path);
-            }
         }
     }
 
-    private static void TryLoadWavsFromDirectory(Dictionary<SoundCue, PcmSoundClip> bank, string dir)
+    private static void TryLoadFromDirectory(Dictionary<SoundCue, PcmSoundClip> bank, string dir)
     {
-        foreach (var wavFile in Directory.EnumerateFiles(dir, "*.wav", SearchOption.AllDirectories))
+        try
         {
-            if (TryMapStemToCue(Path.GetFileNameWithoutExtension(wavFile), out var cue) &&
-                WavPcmDecoder.TryDecode(cue, File.ReadAllBytes(wavFile), out var clip))
+            foreach (var file in Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories))
             {
-                bank[cue] = clip;
+                var ext = Path.GetExtension(file);
+                var isOgg = string.Equals(ext, ".ogg", StringComparison.OrdinalIgnoreCase);
+                var isWav = string.Equals(ext, ".wav", StringComparison.OrdinalIgnoreCase);
+                if (!isOgg && !isWav)
+                {
+                    continue;
+                }
+
+                if (!TryMapPathToCue(file.Replace('\\', '/'), out var cue))
+                {
+                    continue;
+                }
+
+                var bytes = File.ReadAllBytes(file);
+                if (isOgg && OggVorbisDecoder.TryDecode(cue, bytes, out var oggClip))
+                {
+                    bank[cue] = oggClip;
+                }
+                else if (isWav && WavPcmDecoder.TryDecode(cue, bytes, out var wavClip))
+                {
+                    bank[cue] = wavClip;
+                }
             }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Ignore unreadable external directories gracefully.
         }
     }
 
-    private static void TryLoadWavsFromArchive(Dictionary<SoundCue, PcmSoundClip> bank, string archivePath)
+    private static void TryLoadFromArchive(Dictionary<SoundCue, PcmSoundClip> bank, string archivePath)
     {
         try
         {
             using var zip = ZipFile.OpenRead(archivePath);
             foreach (var entry in zip.Entries)
             {
-                if (!entry.FullName.EndsWith(".wav", StringComparison.OrdinalIgnoreCase) || entry.Length is <= 44 or > 8_388_608)
+                if (entry.Length is <= 32 or > 4_194_304)
                 {
                     continue;
                 }
 
-                if (!TryMapStemToCue(Path.GetFileNameWithoutExtension(entry.FullName), out var cue))
+                var norm = entry.FullName.Replace('\\', '/');
+                var isOgg = norm.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase);
+                var isWav = norm.EndsWith(".wav", StringComparison.OrdinalIgnoreCase);
+                if ((!isOgg && !isWav) || !TryMapPathToCue(norm, out var cue))
                 {
                     continue;
                 }
 
-                var bytes = new byte[entry.Length];
-                using var s = entry.Open();
-                if (s.ReadAtLeast(bytes, bytes.Length, throwOnEndOfStream: false) == bytes.Length &&
-                    WavPcmDecoder.TryDecode(cue, bytes, out var clip))
+                var buf = new byte[entry.Length];
+                using (var s = entry.Open())
                 {
-                    bank[cue] = clip;
+                    var total = 0;
+                    while (total < buf.Length)
+                    {
+                        var n = s.Read(buf, total, buf.Length - total);
+                        if (n <= 0)
+                        {
+                            break;
+                        }
+
+                        total += n;
+                    }
+                }
+
+                if (isOgg && OggVorbisDecoder.TryDecode(cue, buf, out var oggClip))
+                {
+                    bank[cue] = oggClip;
+                }
+                else if (isWav && WavPcmDecoder.TryDecode(cue, buf, out var wavClip))
+                {
+                    bank[cue] = wavClip;
                 }
             }
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
         {
-            // Ignore unreadable sound archives.
+            // Ignore corrupted external archives gracefully.
         }
     }
 
-    private static bool TryMapStemToCue(string stem, out SoundCue cue)
+    private static bool TryMapPathToCue(string normalizedPath, out SoundCue cue)
     {
-        switch (stem.ToUpperInvariant())
+        var stem = Path.GetFileNameWithoutExtension(normalizedPath).ToUpperInvariant();
+        var inStep = normalizedPath.Contains("/step/", StringComparison.OrdinalIgnoreCase);
+        var inDig = normalizedPath.Contains("/dig/", StringComparison.OrdinalIgnoreCase);
+
+        if (inStep)
         {
-            case "STONE" or "STONE1" or "FOOTSTEP_STONE":
+            if (stem.StartsWith("STONE", StringComparison.Ordinal))
+            {
                 cue = SoundCue.FootstepStone;
                 return true;
-            case "GRASS" or "GRASS1" or "FOOTSTEP_GRASS":
+            }
+
+            if (stem.StartsWith("GRASS", StringComparison.Ordinal))
+            {
                 cue = SoundCue.FootstepGrass;
                 return true;
-            case "WOOD" or "WOOD1" or "FOOTSTEP_WOOD":
+            }
+
+            if (stem.StartsWith("WOOD", StringComparison.Ordinal))
+            {
                 cue = SoundCue.FootstepWood;
                 return true;
-            case "BREAK" or "BLOCK_BREAK" or "DIG_STONE":
+            }
+        }
+
+        if (inDig)
+        {
+            if (stem.StartsWith("STONE", StringComparison.Ordinal) || stem.StartsWith("GRAVEL", StringComparison.Ordinal))
+            {
                 cue = SoundCue.BlockBreak;
                 return true;
-            case "PLACE" or "BLOCK_PLACE":
+            }
+
+            if (stem.StartsWith("WOOD", StringComparison.Ordinal))
+            {
                 cue = SoundCue.BlockPlace;
                 return true;
-            case "SPLASH" or "WATER_SPLASH":
+            }
+        }
+
+        switch (stem)
+        {
+            case "STONE1" or "FOOTSTEP_STONE":
+                cue = SoundCue.FootstepStone;
+                return true;
+            case "GRASS1" or "FOOTSTEP_GRASS":
+                cue = SoundCue.FootstepGrass;
+                return true;
+            case "WOOD1" or "FOOTSTEP_WOOD":
+                cue = SoundCue.FootstepWood;
+                return true;
+            case "BREAK" or "BLOCK_BREAK":
+                cue = SoundCue.BlockBreak;
+                return true;
+            case "BLOCK_PLACE":
+                cue = SoundCue.BlockPlace;
+                return true;
+            case "SPLASH" or "SPLASH1" or "WATER_SPLASH":
                 cue = SoundCue.WaterSplash;
                 return true;
             case "CLICK" or "UI_CLICK":
                 cue = SoundCue.UiClick;
+                return true;
+            case "SWEEP1" or "SWING" or "SWORD_SWING":
+                cue = SoundCue.SwordSwing;
+                return true;
+            case "STRONG1" or "CRIT1" or "PLAYER_HIT":
+                cue = SoundCue.PlayerHit;
+                return true;
+            case "HIT1" or "CLASSIC_HURT" or "FALLSMALL" or "PLAYER_HURT":
+                cue = SoundCue.PlayerHurt;
+                return true;
+            case "EAT1" or "EAT2" or "EAT_FOOD":
+                cue = SoundCue.EatFood;
+                return true;
+            case "POP" or "ORB" or "ITEM_POP":
+                cue = SoundCue.ItemPop;
+                return true;
+            case "ENTER1" or "UNDERWATER_ENTER":
+                cue = SoundCue.UnderwaterEnter;
                 return true;
             default:
                 cue = default;

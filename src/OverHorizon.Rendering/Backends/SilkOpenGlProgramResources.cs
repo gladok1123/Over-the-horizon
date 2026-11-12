@@ -26,6 +26,7 @@ internal sealed class SilkOpenGlProgramResources : IDisposable
         LocFogStart = gl.GetUniformLocation(ProgramHandle, "uFogStart");
         LocFogEnd = gl.GetUniformLocation(ProgramHandle, "uFogEnd");
         LocSkyColor = gl.GetUniformLocation(ProgramHandle, "uSkyColor");
+        LocUnderwater = gl.GetUniformLocation(ProgramHandle, "uUnderwater");
     }
 
     public uint ProgramHandle { get; }
@@ -45,6 +46,8 @@ internal sealed class SilkOpenGlProgramResources : IDisposable
     public int LocFogEnd { get; }
 
     public int LocSkyColor { get; }
+
+    public int LocUnderwater { get; }
 
     public static unsafe (uint Vao, uint Vbo, uint Ebo, int IndexCount) CreatePassBuffers(
         GL gl,

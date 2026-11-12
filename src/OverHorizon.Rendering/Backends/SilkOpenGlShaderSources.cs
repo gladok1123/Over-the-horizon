@@ -2,7 +2,7 @@ namespace OverHorizon.Rendering.Backends;
 
 /// <summary>
 /// Embedded GLSL 330 core vertex and fragment shaders for greedy-meshed voxel terrain rendering
-/// with camera-relative anti-jitter coordinates, tile-local UV wrapping, smooth AO, and distance fog.
+/// with camera-relative anti-jitter coordinates, tile-local UV wrapping, smooth AO, underwater absorption, and fog.
 /// </summary>
 public static class SilkOpenGlShaderSources
 {
@@ -36,7 +36,7 @@ public static class SilkOpenGlShaderSources
         }
         """;
 
-    /// <summary>GLSL 330 core chunk fragment shader.</summary>
+    /// <summary>GLSL 330 core chunk fragment shader with authentic underwater light absorption and fog.</summary>
     public const string ChunkFragmentShader = """
         #version 330 core
         in vec2 vUv;
@@ -50,6 +50,7 @@ public static class SilkOpenGlShaderSources
         uniform float uFogStart;
         uniform float uFogEnd;
         uniform vec3 uSkyColor;
+        uniform float uUnderwater;
 
         out vec4 FragColor;
 
@@ -68,8 +69,10 @@ public static class SilkOpenGlShaderSources
                 discard;
             }
 
-            float illumination = clamp(vLightLevel * uSkyBrightness, 0.06, 1.0) * vShadeAndAo;
+            float minAmbient = mix(0.06, 0.22, uUnderwater);
+            float illumination = clamp(vLightLevel * uSkyBrightness, minAmbient, 1.0) * vShadeAndAo;
             vec3 litColor = texel.rgb * illumination;
+            litColor = mix(litColor, litColor * vec3(0.54, 0.84, 1.05), uUnderwater * 0.72);
 
             float fogFactor = clamp((vDistance - uFogStart) / max(1.0, uFogEnd - uFogStart), 0.0, 1.0);
             vec3 finalRgb = mix(litColor, uSkyColor, fogFactor);
