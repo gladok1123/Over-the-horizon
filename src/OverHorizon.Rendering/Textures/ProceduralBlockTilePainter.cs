@@ -84,7 +84,8 @@ internal static class ProceduralBlockTilePainter
             {
                 var mortar = (py % 8 == 0) || (((px + offsetX) % 16) == 0);
                 var highlight = (py % 8 == 1) || (((px + offsetX) % 16) == 1);
-                var baseVal = mortar ? 74 : (highlight ? 156 : 132) + (rng.NextInt32(15) - 7);
+                var stoneTone = highlight ? 156 : 132;
+                var baseVal = mortar ? 74 : stoneTone + (rng.NextInt32(15) - 7);
                 var c = ClampByte(baseVal);
                 WritePixel(atlas, tileIndex, px, py, c, c, ClampByte(baseVal + 3), 255);
             }
@@ -144,7 +145,12 @@ internal static class ProceduralBlockTilePainter
         var rng = new Xoroshiro128PlusPlus(0x5A4D_5704UL);
         for (var py = 0; py < TileDimension; py++)
         {
-            var band = py < 3 ? 12 : (py is 3 or 11 ? -14 : 0);
+            var band = py switch
+            {
+                < 3 => 12,
+                3 or 11 => -14,
+                _ => 0,
+            };
             for (var px = 0; px < TileDimension; px++)
             {
                 var j = rng.NextInt32(13) - 6 + band;
