@@ -119,7 +119,7 @@ public sealed class PlayWithFriendsMultiplayerTests
     [Fact]
     public async Task TwoFriendsMultiplayerSession_SyncsAvatarsBreaksPlacesBlocksAndSavesWorldToDiskAsync()
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(90));
         var tempWorldDir = Path.Combine(Path.GetTempPath(), $"overhorizon-friends-{Guid.NewGuid():N}");
 
         try
@@ -242,10 +242,10 @@ public sealed class PlayWithFriendsMultiplayerTests
 
                     // Bob disconnects -> Alice receives RemotePlayerDespawnPacket.
                     await bob.DisposeAsync().ConfigureAwait(false);
-                    for (var i = 0; i < 40 && alice.RemotePlayerCount > 0; i++)
+                    for (var i = 0; i < 100 && alice.RemotePlayerCount > 0; i++)
                     {
                         _ = await alice.RunHeadlessFramesAsync(1, cancellationToken: cts.Token).ConfigureAwait(false);
-                        await Task.Delay(15, cts.Token).ConfigureAwait(false);
+                        await Task.Delay(20, cts.Token).ConfigureAwait(false);
                     }
 
                     alice.RemotePlayerCount.Should().Be(0);

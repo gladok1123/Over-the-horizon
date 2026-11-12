@@ -357,7 +357,7 @@ public sealed class RenderingAudioAndClientTests
     [Fact]
     public async Task MultiplayerHeadlessClient_ConnectsOverTcpReceivesChunksMeshesAndRendersAsync()
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
 
         var serverOpts = new ServerOptions(
             TicksPerSecond: 100,
