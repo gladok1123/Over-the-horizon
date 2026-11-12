@@ -108,7 +108,7 @@ public sealed class ClientHotbar
     public static int PaletteCount => Catalog.Length;
 
     /// <summary>Gets the number of hotbar slots (<c>9</c>).</summary>
-    public int SlotCount => PlayerInventory.HotbarSlotCount;
+    public int SlotCount => _hotbarColors.Length;
 
     /// <summary>Gets the active zero-based hotbar slot index (<c>0..8</c>).</summary>
     public int SelectedSlot => _selectedSlot;

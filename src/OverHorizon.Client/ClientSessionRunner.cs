@@ -27,7 +27,6 @@ public sealed class ClientSessionRunner : IAsyncDisposable
     private const long LocalTicketOwnerId = 1L;
 
     private readonly ClientOptions _options;
-    private readonly CoreRegistries _registries;
     private readonly IBlockRegistry _blocks;
     private readonly IWorldSubsystem _localWorld;
     private readonly IRenderSubsystem _renderer;
@@ -77,7 +76,6 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(logger);
 
         _options = options;
-        _registries = registries;
         _blocks = blocks;
         _localWorld = localWorld;
         _renderer = renderer;

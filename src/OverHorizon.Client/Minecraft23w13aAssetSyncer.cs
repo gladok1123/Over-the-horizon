@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace OverHorizon.Client;
 
 /// <summary>
@@ -5,6 +7,7 @@ namespace OverHorizon.Client;
 /// from <c>https://github.com/InventivetalentDev/minecraft-assets/tree/23w13a__or__b</c> into local
 /// <c>./resourcepacks/23w13a__or__b/</c> on client startup so zero proprietary assets are redistributed in Git or releases.
 /// </summary>
+[SuppressMessage("Minor Code Smell", "S1075:URIs should not be hardcoded", Justification = "Default public GitHub asset mirror for 23w13a__or__b; overridable via --assets.")]
 public static class Minecraft23w13aAssetSyncer
 {
     /// <summary>Default local resource-pack directory populated from <c>23w13a__or__b</c>.</summary>

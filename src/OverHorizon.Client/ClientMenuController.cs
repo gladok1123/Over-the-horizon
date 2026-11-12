@@ -281,7 +281,7 @@ internal sealed class ClientMenuController
         {
             if (buttons[i].IsHovered)
             {
-                return ActivateAction(buttons[i].Id, player);
+                return ActivateAction(buttons[i].ActionId, player);
             }
         }
 
