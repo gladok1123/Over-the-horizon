@@ -194,13 +194,12 @@ internal sealed class NetworkSession : IAsyncDisposable
                             inboundState,
                             rentedPayload.AsSpan(0, payloadLength));
 
-                        var shouldStop = await HandleDecodedInboundAsync(
-                            packet,
-                            ref inboundState,
-                            ref inboundCompression,
-                            ref clientProtocolVersion,
-                            ref loginQueued,
-                            ct).ConfigureAwait(false);
+                        bool shouldStop;
+                        (shouldStop, inboundState, inboundCompression, clientProtocolVersion, loginQueued) =
+                            await HandleDecodedInboundAsync(
+                                packet,
+                                (inboundState, inboundCompression, clientProtocolVersion, loginQueued),
+                                ct).ConfigureAwait(false);
 
                         if (shouldStop)
                         {
@@ -259,14 +258,13 @@ internal sealed class NetworkSession : IAsyncDisposable
         }
     }
 
-    private async ValueTask<bool> HandleDecodedInboundAsync(
+    private async ValueTask<(bool ShouldStop, ConnectionState State, int Compression, int ProtocolVersion, bool LoginQueued)> HandleDecodedInboundAsync(
         IServerboundPacket packet,
-        ref ConnectionState inboundState,
-        ref int inboundCompression,
-        ref int clientProtocolVersion,
-        ref bool loginQueued,
+        (ConnectionState State, int Compression, int ProtocolVersion, bool LoginQueued) ctx,
         CancellationToken ct)
     {
+        var (inboundState, inboundCompression, clientProtocolVersion, loginQueued) = ctx;
+
         switch (packet)
         {
             case HandshakePacket hs:
@@ -274,20 +272,20 @@ internal sealed class NetworkSession : IAsyncDisposable
                 inboundState = hs.Intent == HandshakeIntent.Status
                     ? ConnectionState.Status
                     : ConnectionState.Login;
-                return false;
+                return (false, inboundState, inboundCompression, clientProtocolVersion, loginQueued);
 
             case StatusRequestPacket:
                 _ = TryEnqueueOutbound(new OutboundEnvelope(
                     ConnectionState.Status,
                     new StatusResponsePacket(_statusJsonFactory())));
-                return false;
+                return (false, inboundState, inboundCompression, clientProtocolVersion, loginQueued);
 
             case PingRequestPacket ping:
                 _ = TryEnqueueOutbound(new OutboundEnvelope(
                     ConnectionState.Status,
                     new PongResponsePacket(ping.ClientTimestamp),
                     CloseAfterSend: true));
-                return true;
+                return (true, inboundState, inboundCompression, clientProtocolVersion, loginQueued);
 
             case LoginStartPacket login:
                 if (clientProtocolVersion != _options.ProtocolVersion)
@@ -295,7 +293,7 @@ internal sealed class NetworkSession : IAsyncDisposable
                     DisconnectWithReason(
                         ConnectionState.Login,
                         $"Incompatible protocol version {clientProtocolVersion} (expected {_options.ProtocolVersion}).");
-                    return true;
+                    return (true, inboundState, inboundCompression, clientProtocolVersion, loginQueued);
                 }
 
                 Username = login.Username;
@@ -326,7 +324,7 @@ internal sealed class NetworkSession : IAsyncDisposable
                         PlayerUuid,
                         Packet: null),
                     ct).ConfigureAwait(false);
-                return false;
+                return (false, inboundState, inboundCompression, clientProtocolVersion, loginQueued);
 
             default:
                 var seq = Interlocked.Increment(ref _sequenceCounter);
@@ -339,7 +337,7 @@ internal sealed class NetworkSession : IAsyncDisposable
                         PlayerUuid,
                         packet),
                     ct).ConfigureAwait(false);
-                return false;
+                return (false, inboundState, inboundCompression, clientProtocolVersion, loginQueued);
         }
     }
 
