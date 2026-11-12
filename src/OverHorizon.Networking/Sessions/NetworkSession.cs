@@ -174,6 +174,7 @@ internal sealed class NetworkSession : IAsyncDisposable
         var inboundCompression = -1;
         var clientProtocolVersion = _options.ProtocolVersion;
         var loginQueued = false;
+        var gracefulOutboundClose = false;
 
         try
         {
@@ -203,6 +204,7 @@ internal sealed class NetworkSession : IAsyncDisposable
 
                         if (shouldStop)
                         {
+                            gracefulOutboundClose = true;
                             _reader.AdvanceTo(buffer.Start, buffer.End);
                             return;
                         }
@@ -254,7 +256,10 @@ internal sealed class NetworkSession : IAsyncDisposable
                     Packet: null));
             }
 
-            InitiateClose("Read stream completed");
+            if (!gracefulOutboundClose)
+            {
+                InitiateClose("Read stream completed");
+            }
         }
     }
 
