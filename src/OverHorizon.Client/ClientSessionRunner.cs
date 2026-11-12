@@ -422,24 +422,19 @@ public sealed class ClientSessionRunner : IAsyncDisposable
             _lastFps = (_lastFps * 0.85) + ((1.0 / dt) * 0.15);
         }
 
-        var headPos = _player.Camera.Position.ToBlockPos();
-        var (sky, blk) = _worldCache.GetLight(headPos);
-        var managedMb = GC.GetTotalMemory(forceFullCollection: false) / (1024 * 1024);
-
         var snapshot = new F3DebugSnapshot(
-            Fps: _lastFps,
-            Tps: 20.0,
-            Position: _player.FeetPosition,
+            BackendName: _renderer.BackendName,
+            FramesPerSecond: _lastFps,
+            FrameTimeMilliseconds: dt * 1000.0,
+            PlayerPosition: _player.FeetPosition,
+            Facing: _player.Camera.CardinalFacing,
             YawDegrees: _player.Camera.YawDegrees,
             PitchDegrees: _player.Camera.PitchDegrees,
-            Facing: _player.Camera.CardinalFacing,
-            BiomeName: "overhorizon:plains",
-            SkyLight: sky,
-            BlockLight: blk,
-            LoadedChunks: _worldCache.LoadedChunkCount,
-            RenderedSections: metrics.VisibleSections,
-            EntityCount: _gameplay.EntityCount,
-            ManagedMemoryMb: managedMb);
+            Biome: OverHorizon.Core.Biomes.BuiltInBiomes.Plains,
+            VisibleSections: metrics.VisibleSections,
+            TotalMeshedSections: _renderer.UploadedSectionCount,
+            DrawnVertices: (long)metrics.TrianglesSubmitted * 3L,
+            ManagedMemoryBytes: GC.GetTotalMemory(forceFullCollection: false));
 
         _latestDebugText = F3OverlayFormatter.Format(in snapshot);
     }

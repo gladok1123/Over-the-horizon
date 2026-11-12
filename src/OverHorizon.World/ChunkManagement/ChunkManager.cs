@@ -129,7 +129,7 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
         var desiredDistances = ComputeDesiredChunksWithMinDistance();
 
         // 1. Unload chunks no longer covered by any active ticket.
-        foreach (var (packedKey, existingChunk) in _loadedChunks)
+        foreach (var (packedKey, _) in _loadedChunks)
         {
             if (!desiredDistances.ContainsKey(packedKey) && _loadedChunks.TryRemove(packedKey, out var removed))
             {

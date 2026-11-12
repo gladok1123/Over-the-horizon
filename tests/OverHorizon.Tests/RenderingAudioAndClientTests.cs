@@ -52,14 +52,14 @@ public sealed class RenderingAudioAndClientTests
         atlasA.RgbaPixels.Length.Should().Be(256 * 256 * 4);
         atlasA.RgbaPixels.Span.SequenceEqual(atlasB.RgbaPixels.Span).Should().BeTrue();
 
-        var grassKey = BuiltInBlocks.GrassBlock.Key;
+        var grassKey = BuiltInBlocks.GrassBlock;
         var topTile = atlasA.GetTileIndex(grassKey, Direction.Up);
         var sideTile = atlasA.GetTileIndex(grassKey, Direction.North);
         var bottomTile = atlasA.GetTileIndex(grassKey, Direction.Down);
 
         topTile.Should().NotBe(sideTile);
         sideTile.Should().NotBe(bottomTile);
-        bottomTile.Should().Be(atlasA.GetTileIndex(BuiltInBlocks.Dirt.Key, Direction.Up));
+        bottomTile.Should().Be(atlasA.GetTileIndex(BuiltInBlocks.Dirt, Direction.Up));
 
         // Mod/datapack fallback tile is deterministic and non-transparent.
         var customKey = new ResourceKey("custom_mod", "ruby_ore");
@@ -86,7 +86,7 @@ public sealed class RenderingAudioAndClientTests
     {
         var registries = CoreRegistries.CreateDefault();
         var atlas = ProceduralAtlasGenerator.CreateDefault(registries.Blocks);
-        var stone = registries.Blocks.GetDefaultState(BuiltInBlocks.Stone.Key);
+        var stone = registries.Blocks.GetDefaultState(BuiltInBlocks.Stone);
 
         var centerCol = new ChunkColumn(new ChunkPos(0, 0));
         var eastCol = new ChunkColumn(new ChunkPos(1, 0));
@@ -127,7 +127,7 @@ public sealed class RenderingAudioAndClientTests
     {
         var registries = CoreRegistries.CreateDefault();
         var atlas = ProceduralAtlasGenerator.CreateDefault(registries.Blocks);
-        var water = registries.Blocks.GetDefaultState(BuiltInBlocks.Water.Key);
+        var water = registries.Blocks.GetDefaultState(BuiltInBlocks.Water);
 
         var column = new ChunkColumn(new ChunkPos(0, 0));
         _ = column.SetBlockState(4, 0, 4, water, registries.Blocks);
@@ -201,27 +201,24 @@ public sealed class RenderingAudioAndClientTests
     public void F3OverlayFormatter_FormatsTelemetryWithInvariantNumbers()
     {
         var snapshot = new F3DebugSnapshot(
-            Fps: 144.2,
-            Tps: 20.0,
-            Position: new Vec3d(12.5, 68.0, -33.25),
+            BackendName: "Headless",
+            FramesPerSecond: 144.2,
+            FrameTimeMilliseconds: 6.93,
+            PlayerPosition: new Vec3d(12.5, 68.0, -33.25),
+            Facing: Direction.East,
             YawDegrees: 90.0f,
             PitchDegrees: -12.5f,
-            Facing: Direction.East,
-            BiomeName: "overhorizon:plains",
-            SkyLight: 15,
-            BlockLight: 4,
-            LoadedChunks: 49,
-            RenderedSections: 112,
-            EntityCount: 8,
-            ManagedMemoryMb: 64);
+            Biome: OverHorizon.Core.Biomes.BuiltInBiomes.Plains,
+            VisibleSections: 112,
+            TotalMeshedSections: 140,
+            DrawnVertices: 4800,
+            ManagedMemoryBytes: 64L * 1024L * 1024L);
 
         var formatted = F3OverlayFormatter.Format(in snapshot);
         formatted.Should().Contain("144.2 FPS")
-            .And.Contain("20.0 TPS")
             .And.Contain("XYZ: 12.500 / 68.000 / -33.250")
             .And.Contain("Facing: East")
-            .And.Contain("Sky 15, Block 4")
-            .And.Contain("Chunks: 49 loaded, 112 sections visible");
+            .And.Contain("Sections: 112/140");
     }
 
     [Fact]
@@ -229,7 +226,7 @@ public sealed class RenderingAudioAndClientTests
     {
         var registries = CoreRegistries.CreateDefault();
         var atlas = ProceduralAtlasGenerator.CreateDefault(registries.Blocks);
-        var stone = registries.Blocks.GetDefaultState(BuiltInBlocks.Stone.Key);
+        var stone = registries.Blocks.GetDefaultState(BuiltInBlocks.Stone);
 
         var frontCol = new ChunkColumn(new ChunkPos(0, -2));
         var behindCol = new ChunkColumn(new ChunkPos(0, 2));
@@ -346,7 +343,7 @@ public sealed class RenderingAudioAndClientTests
             renderer.UploadedSectionCount.Should().BeGreaterThan(0);
             metrics.VisibleSections.Should().BeGreaterThan(0);
             metrics.TrianglesSubmitted.Should().BeGreaterThan(0);
-            runner.LatestDebugOverlayText.Should().Contain("Over-the-Horizon");
+            runner.LatestDebugOverlayText.Should().Contain("OverHorizon");
 
             await runner.DisposeAsync().ConfigureAwait(false);
         }

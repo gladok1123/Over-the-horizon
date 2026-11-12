@@ -36,6 +36,13 @@ public static class ProceduralAtlasGenerator
     private const ushort FirstCustomTile = 16;
 
     /// <summary>
+    /// Alias for <see cref="Generate"/> creating the default procedural block texture atlas.
+    /// </summary>
+    /// <param name="blocks">Frozen block registry.</param>
+    /// <returns>Generated <see cref="TextureAtlasData"/>.</returns>
+    public static TextureAtlasData CreateDefault(IBlockRegistry blocks) => Generate(blocks);
+
+    /// <summary>
     /// Generates a deterministic 256x256 RGBA8 texture atlas covering all built-in and mod-registered blocks in <paramref name="blocks"/>.
     /// </summary>
     /// <param name="blocks">Frozen block registry.</param>

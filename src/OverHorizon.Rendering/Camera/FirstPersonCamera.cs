@@ -68,6 +68,39 @@ public sealed class FirstPersonCamera
     /// <summary>Gets the normalized camera up vector.</summary>
     public Vector3 Up => Vector3.Normalize(Vector3.Cross(Right, Forward));
 
+    /// <summary>Gets the normalized horizontal XZ forward movement vector.</summary>
+    public Vector3 HorizontalForward
+    {
+        get
+        {
+            var yawRad = YawDegrees * (MathF.PI / 180.0f);
+            return Vector3.Normalize(new Vector3(MathF.Sin(yawRad), 0.0f, -MathF.Cos(yawRad)));
+        }
+    }
+
+    /// <summary>Gets the cardinal horizontal <see cref="Direction"/> the camera is currently facing.</summary>
+    public Direction CardinalFacing => GetCardinalFacing();
+
+    /// <summary>Sets horizontal yaw and vertical pitch in degrees.</summary>
+    /// <param name="yawDegrees">Horizontal yaw in degrees.</param>
+    /// <param name="pitchDegrees">Vertical pitch in degrees.</param>
+    public void SetRotation(float yawDegrees, float pitchDegrees)
+    {
+        YawDegrees = yawDegrees % 360.0f;
+        PitchDegrees = pitchDegrees;
+    }
+
+    /// <summary>Updates <see cref="AspectRatio"/> from pixel viewport dimensions.</summary>
+    /// <param name="width">Viewport width in pixels.</param>
+    /// <param name="height">Viewport height in pixels.</param>
+    public void SetAspectRatio(int width, int height)
+    {
+        if (width > 0 && height > 0)
+        {
+            AspectRatio = (float)width / height;
+        }
+    }
+
     /// <summary>Applies mouse look deltas in degrees.</summary>
     /// <param name="deltaYaw">Horizontal yaw delta.</param>
     /// <param name="deltaPitch">Vertical pitch delta.</param>
@@ -101,6 +134,13 @@ public sealed class FirstPersonCamera
     /// <returns>Combined <see cref="Matrix4x4"/>.</returns>
     public Matrix4x4 ComputeRelativeViewProjectionMatrix() =>
         ComputeRelativeViewMatrix() * ComputeProjectionMatrix();
+
+    /// <summary>
+    /// Alias for <see cref="ComputeRelativeViewProjectionMatrix"/>.
+    /// </summary>
+    /// <returns>Combined <see cref="Matrix4x4"/>.</returns>
+    public Matrix4x4 BuildCameraRelativeViewProjectionMatrix() =>
+        ComputeRelativeViewProjectionMatrix();
 
     /// <summary>
     /// Computes the cardinal horizontal <see cref="Direction"/> the camera is currently facing.

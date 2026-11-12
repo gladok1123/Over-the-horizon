@@ -132,10 +132,7 @@ public ref struct PacketSpanReader
     /// <returns>Decoded string.</returns>
     public string ReadUtf8(int maxChars = PacketBufferWriter.DefaultMaxStringChars)
     {
-        if (maxChars < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(maxChars));
-        }
+        ArgumentOutOfRangeException.ThrowIfNegative(maxChars);
 
         var byteLength = ReadVarInt();
         if (byteLength < 0 || byteLength > maxChars * 3)

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.Loader;
 
@@ -13,6 +14,10 @@ internal sealed class CollectibleModLoadContext : AssemblyLoadContext
         _resolver = new AssemblyDependencyResolver(mainPluginAssemblyPath);
     }
 
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "CollectibleModLoadContext is only instantiated when RuntimeFeature.IsDynamicCodeSupported is true.")]
     protected override Assembly? Load(AssemblyName assemblyName)
     {
         var simpleName = assemblyName.Name;
