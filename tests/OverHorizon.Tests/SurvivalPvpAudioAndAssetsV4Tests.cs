@@ -167,50 +167,7 @@ public sealed class SurvivalPvpAudioAndAssetsV4Tests
             }
 
             var ep = new IPEndPoint(IPAddress.Loopback, netServer.BoundEndPoint.Port);
-            EntityCombatEventPacket? combatEvent = null;
-            long attackerId;
-            long defenderId;
-
-            {
-                await using var attacker = await JavaProtocolClient.ConnectTcpAsync(ep, cts.Token).ConfigureAwait(false);
-                await using var defender = await JavaProtocolClient.ConnectTcpAsync(ep, cts.Token).ConfigureAwait(false);
-
-                var attackerLogin = await attacker.LoginAsync("Knight", cancellationToken: cts.Token).ConfigureAwait(false);
-                var defenderLogin = await defender.LoginAsync("Rival", cancellationToken: cts.Token).ConfigureAwait(false);
-                attackerId = attackerLogin.AssignedEntityId;
-                defenderId = defenderLogin.AssignedEntityId;
-
-                // Drain until defender receives initial spawn sync (within 3.8-block melee reach at spawn)
-                Vec3d spawnPos = default;
-                for (var i = 0; i < 60; i++)
-                {
-                    var pkt = await defender.ReceivePacketAsync(cts.Token).ConfigureAwait(false);
-                    if (pkt is SynchronizePlayerPositionPacket sync)
-                    {
-                        spawnPos = sync.Position;
-                        break;
-                    }
-                }
-
-                await attacker.SendPlayPacketAsync(new MovePlayerPacket(spawnPos, 0.0f, 0.0f, OnGround: false), cts.Token).ConfigureAwait(false);
-                await defender.SendPlayPacketAsync(new MovePlayerPacket(spawnPos + new Vec3d(0.0, 0.0, -1.8), 180.0f, 0.0f, OnGround: true), cts.Token).ConfigureAwait(false);
-                await Task.Delay(40, cts.Token).ConfigureAwait(false);
-
-                // Strike Rival with a critical Diamond Sword hit (7.0 * 1.5 = 10.5 damage -> 9.5 HP remaining!)
-                await attacker.SendPlayPacketAsync(
-                    new PlayerAttackEntityPacket(defenderId, diamondSwordId, IsCriticalHit: true),
-                    cts.Token).ConfigureAwait(false);
-
-                for (var i = 0; i < 80; i++)
-                {
-                    var pkt = await defender.ReceivePacketAsync(cts.Token).ConfigureAwait(false);
-                    if (pkt is EntityCombatEventPacket ce && ce.TargetEntityId == defenderId)
-                    {
-                        combatEvent = ce;
-                        break;
-                    }
-                }
-            }
+            var (combatEvent, attackerId) = await ExecutePvpExchangeAsync(ep, diamondSwordId, cts.Token).ConfigureAwait(false);
 
             combatEvent.Should().NotBeNull();
             combatEvent!.AttackerEntityId.Should().Be(attackerId);
@@ -222,5 +179,47 @@ public sealed class SurvivalPvpAudioAndAssetsV4Tests
         {
             await serverHost.StopAsync(CancellationToken.None).ConfigureAwait(false);
         }
+    }
+
+    private static async Task<(EntityCombatEventPacket? Event, long AttackerId)> ExecutePvpExchangeAsync(
+        IPEndPoint ep,
+        ushort diamondSwordId,
+        CancellationToken ct)
+    {
+        await using var attacker = await JavaProtocolClient.ConnectTcpAsync(ep, ct).ConfigureAwait(false);
+        await using var defender = await JavaProtocolClient.ConnectTcpAsync(ep, ct).ConfigureAwait(false);
+
+        var attackerLogin = await attacker.LoginAsync("Knight", cancellationToken: ct).ConfigureAwait(false);
+        var defenderLogin = await defender.LoginAsync("Rival", cancellationToken: ct).ConfigureAwait(false);
+
+        Vec3d spawnPos = default;
+        for (var i = 0; i < 60; i++)
+        {
+            var pkt = await defender.ReceivePacketAsync(ct).ConfigureAwait(false);
+            if (pkt is SynchronizePlayerPositionPacket sync)
+            {
+                spawnPos = sync.Position;
+                break;
+            }
+        }
+
+        await attacker.SendPlayPacketAsync(new MovePlayerPacket(spawnPos, 0.0f, 0.0f, OnGround: false), ct).ConfigureAwait(false);
+        await defender.SendPlayPacketAsync(new MovePlayerPacket(spawnPos + new Vec3d(0.0, 0.0, -1.8), 180.0f, 0.0f, OnGround: true), ct).ConfigureAwait(false);
+        await Task.Delay(40, ct).ConfigureAwait(false);
+
+        await attacker.SendPlayPacketAsync(
+            new PlayerAttackEntityPacket(defenderLogin.AssignedEntityId, diamondSwordId, IsCriticalHit: true),
+            ct).ConfigureAwait(false);
+
+        for (var i = 0; i < 80; i++)
+        {
+            var pkt = await defender.ReceivePacketAsync(ct).ConfigureAwait(false);
+            if (pkt is EntityCombatEventPacket ce && ce.TargetEntityId == defenderLogin.AssignedEntityId)
+            {
+                return (ce, attackerLogin.AssignedEntityId);
+            }
+        }
+
+        return (null, attackerLogin.AssignedEntityId);
     }
 }
