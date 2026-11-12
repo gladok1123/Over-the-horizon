@@ -13,6 +13,7 @@ using OverHorizon.Networking.Packets.Clientbound;
 using OverHorizon.Physics;
 using OverHorizon.Rendering.Textures;
 using OverHorizon.Server;
+using Xunit;
 
 namespace OverHorizon.Tests;
 
