@@ -147,14 +147,15 @@ public sealed class RenderingAudioAndClientTests
     {
         var registries = CoreRegistries.CreateDefault();
         var atlas = ProceduralAtlasGenerator.CreateDefault(registries.Blocks);
-        var generator = new OverworldGenerator(seed: 12345L, registries);
+        var generator = new OverworldGenerator(worldSeed: 12345L, registries);
 
         var neighborhoods = new List<ChunkNeighborhood>(4);
         for (var cx = 0; cx < 2; cx++)
         {
             for (var cz = 0; cz < 2; cz++)
             {
-                var col = generator.GenerateChunk(new ChunkPos(cx, cz));
+                var col = new ChunkColumn(new ChunkPos(cx, cz));
+                generator.GenerateChunk(col);
                 neighborhoods.Add(new ChunkNeighborhood(col.CreateSnapshot()));
             }
         }

@@ -29,7 +29,7 @@ public class RenderingBenchmarks
     {
         _registries = CoreRegistries.CreateDefault();
         _atlas = ProceduralAtlasGenerator.CreateDefault(_registries.Blocks);
-        var generator = new OverworldGenerator(seed: 20261112L, _registries);
+        var generator = new OverworldGenerator(worldSeed: 20261112L, _registries);
 
         var snapshots = new Dictionary<ChunkPos, OverHorizon.World.Storage.ChunkSnapshot>(9);
         for (var z = -1; z <= 1; z++)
@@ -37,7 +37,9 @@ public class RenderingBenchmarks
             for (var x = -1; x <= 1; x++)
             {
                 var pos = new ChunkPos(x, z);
-                snapshots[pos] = generator.GenerateChunk(pos).CreateSnapshot();
+                var col = new OverHorizon.World.Storage.ChunkColumn(pos);
+                generator.GenerateChunk(col);
+                snapshots[pos] = col.CreateSnapshot();
             }
         }
 

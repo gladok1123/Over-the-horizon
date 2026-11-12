@@ -276,7 +276,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
     {
         var centerChunk = _player.FeetPosition.ToBlockPos().ToChunkPos();
         var radius = Math.Clamp(_options.ViewDistanceChunks, 1, 16);
-        _localWorld.Chunks.UpsertTicket(new ChunkTicket(LocalTicketOwnerId, centerChunk, radius));
+        _localWorld.Chunks.UpsertTicket(new ChunkTicket(LocalTicketOwnerId, ChunkTicketType.Player, centerChunk, radius));
         _ = await _localWorld.Chunks.ProcessTicketsAsync(maxChunks, ct).ConfigureAwait(false);
         SyncLocalSnapshots();
     }
