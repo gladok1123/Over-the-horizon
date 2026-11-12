@@ -48,7 +48,7 @@ public sealed class SurvivalPvpAudioAndAssetsV4Tests
         foreach (var cue in Enum.GetValues<SoundCue>())
         {
             var clip = bank[cue];
-            clip.SampleRateHz.Should().BeGreaterThanOrEqualTo(16000);
+            clip.SampleRate.Should().BeGreaterThanOrEqualTo(16000);
             clip.Samples.Length.Should().BeGreaterThan(1000);
         }
     }
@@ -177,7 +177,7 @@ public sealed class SurvivalPvpAudioAndAssetsV4Tests
             Vec3d spawnPos = default;
             for (var i = 0; i < 60; i++)
             {
-                var pkt = await defender.ReadPacketAsync(cts.Token).ConfigureAwait(false);
+                var pkt = await defender.ReceivePacketAsync(cts.Token).ConfigureAwait(false);
                 if (pkt is SynchronizePlayerPositionPacket sync)
                 {
                     spawnPos = sync.Position;
@@ -185,19 +185,19 @@ public sealed class SurvivalPvpAudioAndAssetsV4Tests
                 }
             }
 
-            await attacker.SendPacketAsync(new MovePlayerPacket(spawnPos, 0.0f, 0.0f, OnGround: false), cts.Token).ConfigureAwait(false);
-            await defender.SendPacketAsync(new MovePlayerPacket(spawnPos + new Vec3d(0.0, 0.0, -1.8), 180.0f, 0.0f, OnGround: true), cts.Token).ConfigureAwait(false);
+            await attacker.SendPlayPacketAsync(new MovePlayerPacket(spawnPos, 0.0f, 0.0f, OnGround: false), cts.Token).ConfigureAwait(false);
+            await defender.SendPlayPacketAsync(new MovePlayerPacket(spawnPos + new Vec3d(0.0, 0.0, -1.8), 180.0f, 0.0f, OnGround: true), cts.Token).ConfigureAwait(false);
             await Task.Delay(40, cts.Token).ConfigureAwait(false);
 
             // Strike Rival with a critical Diamond Sword hit (7.0 * 1.5 = 10.5 damage -> 9.5 HP remaining!)
-            await attacker.SendPacketAsync(
+            await attacker.SendPlayPacketAsync(
                 new PlayerAttackEntityPacket(defenderLogin.AssignedEntityId, diamondSwordId, IsCriticalHit: true),
                 cts.Token).ConfigureAwait(false);
 
             EntityCombatEventPacket? combatEvent = null;
             for (var i = 0; i < 80; i++)
             {
-                var pkt = await defender.ReadPacketAsync(cts.Token).ConfigureAwait(false);
+                var pkt = await defender.ReceivePacketAsync(cts.Token).ConfigureAwait(false);
                 if (pkt is EntityCombatEventPacket ce && ce.TargetEntityId == defenderLogin.AssignedEntityId)
                 {
                     combatEvent = ce;
