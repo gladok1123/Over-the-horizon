@@ -42,9 +42,9 @@ public static class VoxelRaycaster
         var y = (int)Math.Floor(origin.Y);
         var z = (int)Math.Floor(origin.Z);
 
-        var stepX = dx > 0.0 ? 1 : (dx < 0.0 ? -1 : 0);
-        var stepY = dy > 0.0 ? 1 : (dy < 0.0 ? -1 : 0);
-        var stepZ = dz > 0.0 ? 1 : (dz < 0.0 ? -1 : 0);
+        var stepX = Math.Sign(dx);
+        var stepY = Math.Sign(dy);
+        var stepZ = Math.Sign(dz);
 
         var tDeltaX = stepX != 0 ? Math.Abs(1.0 / dx) : double.PositiveInfinity;
         var tDeltaY = stepY != 0 ? Math.Abs(1.0 / dy) : double.PositiveInfinity;

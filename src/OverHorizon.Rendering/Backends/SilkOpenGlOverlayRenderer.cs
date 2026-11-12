@@ -1,7 +1,6 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Text;
 using OverHorizon.Core.Math;
 using OverHorizon.Rendering.Camera;
 using OverHorizon.Rendering.Hud;
@@ -192,7 +191,9 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
 
     private static (Vector4 Shirt, Vector4 Pants) ComputeOutfitColors(string username)
     {
-        var hash = Fnv1a64.Compute(Encoding.UTF8.GetBytes(username));
+        var hasher = Fnv1a64.Create();
+        hasher.AppendString(username);
+        var hash = hasher.Value;
         var r = 0.25f + (((hash & 0xFFUL) / 255.0f) * 0.65f);
         var g = 0.25f + ((((hash >> 8) & 0xFFUL) / 255.0f) * 0.65f);
         var b = 0.25f + ((((hash >> 16) & 0xFFUL) / 255.0f) * 0.65f);

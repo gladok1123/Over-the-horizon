@@ -70,7 +70,7 @@ public sealed class PlayWithFriendsMultiplayerTests
         decodedSpawn.Should().Be(spawn);
 
         writer.Clear();
-        var move = new RemotePlayerMovePacket(42L, new Vec3d(13.25, 68.0, -4.25), 135.0f, 5.0f, true);
+        var move = new RemotePlayerMovePacket(42L, new Vec3d(13.25, 68.0, -4.25), 135.0f, 5.0f);
         JavaProtocolCodec.WriteClientboundPacket(writer, ConnectionState.Play, move);
         var decodedMove = DecodeSingleClientbound(writer).Should().BeOfType<RemotePlayerMovePacket>().Subject;
         decodedMove.Should().Be(move);
