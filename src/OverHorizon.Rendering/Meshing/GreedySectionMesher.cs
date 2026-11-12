@@ -37,7 +37,12 @@ public static class GreedySectionMesher
 
         if (section.IsOnlyAir)
         {
-            return new SectionMeshData(secPos, [], [], [], []);
+            return new SectionMeshData(
+                secPos,
+                ReadOnlyMemory<ChunkVertex>.Empty,
+                ReadOnlyMemory<uint>.Empty,
+                ReadOnlyMemory<ChunkVertex>.Empty,
+                ReadOnlyMemory<uint>.Empty);
         }
 
         var opaqueVerts = new List<ChunkVertex>(512);
