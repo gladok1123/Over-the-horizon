@@ -1,4 +1,5 @@
 using System.Numerics;
+using Microsoft.Extensions.Logging;
 using OverHorizon.Core.Math;
 using Silk.NET.Core.Loader;
 using Silk.NET.OpenAL;
@@ -14,8 +15,10 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
     private const int VoicePoolSize = 32;
     private const int MaxCueSlots = 128;
     private const long DuplicateCueCooldownMs = 18;
-    private static readonly object ResolverSyncRoot = new();
+    private static readonly Lock ResolverSyncRoot = new();
 
+    private readonly ILogger<OpenAlAudioSubsystem> _logger;
+    private readonly bool _forceHeadless;
     private readonly Lock _sync = new();
     private readonly uint[] _alBuffers = new uint[MaxCueSlots];
     private readonly int[] _clipDurationsMs = new int[MaxCueSlots];
@@ -36,11 +39,26 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
     /// <summary>
     /// Initializes a new instance of the <see cref="OpenAlAudioSubsystem"/> class.
     /// </summary>
+    /// <param name="logger">Audio subsystem logger.</param>
     /// <param name="externalAssetsPath">Optional path to external <c>.ogg</c>/<c>.wav</c> assets folder.</param>
-    public OpenAlAudioSubsystem(string? externalAssetsPath = null)
+    /// <param name="forceHeadless">When <see langword="true"/>, skips native OpenAL device opening.</param>
+    public OpenAlAudioSubsystem(ILogger<OpenAlAudioSubsystem> logger, string? externalAssetsPath = null, bool forceHeadless = false)
     {
-        _soundBank = ProceduralSoundBank.LoadOrCreateAll(externalAssetsPath);
+        ArgumentNullException.ThrowIfNull(logger);
+        _logger = logger;
+        _forceHeadless = forceHeadless;
+        _soundBank = ProceduralSoundBank.CreateDefaultBank(externalAssetsPath);
         CacheClipDurations(_soundBank);
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="OpenAlAudioSubsystem"/> class in explicit headless/live mode.
+    /// </summary>
+    /// <param name="logger">Audio subsystem logger.</param>
+    /// <param name="forceHeadless">When <see langword="true"/>, skips native OpenAL device opening.</param>
+    public OpenAlAudioSubsystem(ILogger<OpenAlAudioSubsystem> logger, bool forceHeadless)
+        : this(logger, externalAssetsPath: null, forceHeadless: forceHeadless)
+    {
     }
 
     /// <inheritdoc />
@@ -64,6 +82,12 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
                 return true;
             }
 
+            if (_forceHeadless)
+            {
+                AudioLog.OpenAlFallback(_logger, "headless");
+                return false;
+            }
+
             try
             {
                 EnsureSingleFileNativeResolver();
@@ -73,6 +97,7 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
                 if (_device is null)
                 {
                     ReleaseOpenAlHandles();
+                    AudioLog.OpenAlFallback(_logger, "OpenDevice returned null");
                     return false;
                 }
 
@@ -80,6 +105,7 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
                 if (_context is null || !_alc.MakeContextCurrent(_context))
                 {
                     ReleaseOpenAlHandles();
+                    AudioLog.OpenAlFallback(_logger, "CreateContext failed");
                     return false;
                 }
 
@@ -89,11 +115,13 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
 
                 IsInitialized = true;
                 UpdateListenerCore(ListenerPosition, -Vector3.UnitZ, Vector3.UnitY, _masterGain);
+                AudioLog.OpenAlInitialized(_logger, _soundBank.Count, VoicePoolSize);
                 return true;
             }
             catch (Exception ex) when (ex is DllNotFoundException or FileNotFoundException or TypeInitializationException or InvalidOperationException)
             {
                 ReleaseOpenAlHandles();
+                AudioLog.OpenAlFallback(_logger, ex.GetType().Name);
                 return false;
             }
         }
@@ -104,7 +132,7 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        var reloaded = ProceduralSoundBank.LoadOrCreateAll(externalAssetsPath);
+        var reloaded = ProceduralSoundBank.CreateDefaultBank(externalAssetsPath);
         lock (_sync)
         {
             _soundBank = reloaded;

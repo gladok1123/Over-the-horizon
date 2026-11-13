@@ -223,8 +223,12 @@ internal sealed class TreeFeaturePopulator
             var y = topY + layer;
             if (y >= 316) continue;
 
-            var radius = layer <= -1 ? (species == FeatureSpecies.Cherry ? 3 : 2) : 1;
-            if (species == FeatureSpecies.SavannaCanopy && layer == 0)
+            var radius = 1;
+            if (layer <= -1)
+            {
+                radius = species == FeatureSpecies.Cherry ? 3 : 2;
+            }
+            else if (species == FeatureSpecies.SavannaCanopy && layer == 0)
             {
                 radius = 2;
             }
@@ -281,7 +285,19 @@ internal sealed class TreeFeaturePopulator
             if (y >= 316) continue;
 
             var fromTop = topY + 1 - y;
-            var radius = fromTop <= 1 ? (fromTop == 0 ? 0 : 1) : ((fromTop & 1) == 0 ? 2 : 1);
+            int radius;
+            if (fromTop <= 0)
+            {
+                radius = 0;
+            }
+            else if (fromTop == 1)
+            {
+                radius = 1;
+            }
+            else
+            {
+                radius = (fromTop & 1) == 0 ? 2 : 1;
+            }
             for (var dz = -radius; dz <= radius; dz++)
             {
                 var lz = treeZ + dz - chunkMinZ;

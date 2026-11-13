@@ -171,9 +171,13 @@ internal sealed partial class ClientWorldSyncAndMobBridge
 
         if (ComposterAndTrapdoorMechanics.TryToggleDoorOrTrapdoor(_blocks, pos, _localWorld.GetBlockState, RecordWorldSet, out var nowOpen, out var isDoor))
         {
-            var cue = isDoor
-                ? (nowOpen ? SoundCue.WoodenDoorOpen : SoundCue.WoodenDoorClose)
-                : (nowOpen ? SoundCue.WoodenTrapdoorOpen : SoundCue.WoodenTrapdoorClose);
+            var cue = (isDoor, nowOpen) switch
+            {
+                (true, true) => SoundCue.WoodenDoorOpen,
+                (true, false) => SoundCue.WoodenDoorClose,
+                (false, true) => SoundCue.WoodenTrapdoorOpen,
+                (false, false) => SoundCue.WoodenTrapdoorClose,
+            };
             _audio.PlayPositional(cue, new Vec3d(pos.X + 0.5, pos.Y + 0.5, pos.Z + 0.5), gain: 0.75f);
             ProcessRedstoneOutputsAndRemesh();
             return true;

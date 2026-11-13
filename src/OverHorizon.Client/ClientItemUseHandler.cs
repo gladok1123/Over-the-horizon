@@ -128,11 +128,16 @@ internal sealed partial class ClientItemUseHandler
                 {
                     transport.EnqueueOutbound(new PlayerWorldInteractionPacket(
                         PlayerWorldInteractionKind.InteractWorldComponent, center, Vec3d.Zero, 0, 0));
-                    var mpCue = clickedKey == BuiltInBlocks.OakDoor
-                        ? (wasOpen ? SoundCue.WoodenDoorClose : SoundCue.WoodenDoorOpen)
-                        : clickedKey == BuiltInBlocks.OakTrapdoor
-                            ? (wasOpen ? SoundCue.WoodenTrapdoorClose : SoundCue.WoodenTrapdoorOpen)
-                            : SoundCue.UiClick;
+                    var mpCue = SoundCue.UiClick;
+                    if (clickedKey == BuiltInBlocks.OakDoor)
+                    {
+                        mpCue = wasOpen ? SoundCue.WoodenDoorClose : SoundCue.WoodenDoorOpen;
+                    }
+                    else if (clickedKey == BuiltInBlocks.OakTrapdoor)
+                    {
+                        mpCue = wasOpen ? SoundCue.WoodenTrapdoorClose : SoundCue.WoodenTrapdoorOpen;
+                    }
+
                     _audio.PlayPositional(mpCue, center, gain: 0.72f * player.MasterVolume);
                     return true;
                 }

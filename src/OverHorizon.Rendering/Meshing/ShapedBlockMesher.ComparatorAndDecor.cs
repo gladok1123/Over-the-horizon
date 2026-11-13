@@ -249,20 +249,26 @@ internal static partial class ShapedBlockMesher
         var rightHinge = meta.Properties.TryGetValue("hinge", out var hgv) && string.Equals(hgv, "right", StringComparison.OrdinalIgnoreCase);
         var facing = meta.Properties.TryGetValue("facing", out var fv) ? fv : "north";
 
-        var tile = isIron
-            ? (isUpper ? ProceduralAtlasGenerator.TileIronDoorTop : ProceduralAtlasGenerator.TileIronDoorBottom)
-            : (isUpper ? ProceduralAtlasGenerator.TileOakDoorTop : ProceduralAtlasGenerator.TileOakDoorBottom);
+        var tile = (isIron, isUpper) switch
+        {
+            (true, true) => ProceduralAtlasGenerator.TileIronDoorTop,
+            (true, false) => ProceduralAtlasGenerator.TileIronDoorBottom,
+            (false, true) => ProceduralAtlasGenerator.TileOakDoorTop,
+            (false, false) => ProceduralAtlasGenerator.TileOakDoorBottom,
+        };
 
-        // Exact match to BlockCollisionShapeTable.ResolveDoorBox!
-        var edge = !isOpen
-            ? facing
-            : facing switch
+        // Exact match to BlockCollisionShapeTable.ComputeDoorShape!
+        var edge = facing;
+        if (isOpen)
+        {
+            edge = facing switch
             {
                 "north" => rightHinge ? "east" : "west",
                 "south" => rightHinge ? "west" : "east",
                 "west" => rightHinge ? "north" : "south",
                 _ => rightHinge ? "south" : "north",
             };
+        }
 
         const float t = 0.1875f; // 3/16 block thick vanilla door leaf
         // In Minecraft's oak_door / iron_door PNGs, the hinge is on the LEFT (u=0) and the doorknob is on the RIGHT (u=1).

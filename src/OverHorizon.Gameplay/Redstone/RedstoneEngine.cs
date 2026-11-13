@@ -264,9 +264,13 @@ public sealed partial class RedstoneEngine
                 var next = _blocks.WithProperty(_blocks.WithProperty(state, "powered", powered ? "true" : "false"), "open", powered ? "true" : "false");
                 setBlock(pos, next);
                 var isIron = key == BuiltInBlocks.IronTrapdoor;
-                var snd = isIron
-                    ? (powered ? RedstoneSoundKind.IronTrapdoorOpen : RedstoneSoundKind.IronTrapdoorClose)
-                    : (powered ? RedstoneSoundKind.WoodenTrapdoorOpen : RedstoneSoundKind.WoodenTrapdoorClose);
+                var snd = (isIron, powered) switch
+                {
+                    (true, true) => RedstoneSoundKind.IronTrapdoorOpen,
+                    (true, false) => RedstoneSoundKind.IronTrapdoorClose,
+                    (false, true) => RedstoneSoundKind.WoodenTrapdoorOpen,
+                    (false, false) => RedstoneSoundKind.WoodenTrapdoorClose,
+                };
                 soundEvents.Add((pos, snd));
             }
         }
@@ -404,9 +408,13 @@ public sealed partial class RedstoneEngine
         if (wasOpen != powered)
         {
             var isIron = lowerMeta.BlockKey == BuiltInBlocks.IronDoor;
-            var snd = isIron
-                ? (powered ? RedstoneSoundKind.IronDoorOpen : RedstoneSoundKind.IronDoorClose)
-                : (powered ? RedstoneSoundKind.WoodenDoorOpen : RedstoneSoundKind.WoodenDoorClose);
+            var snd = (isIron, powered) switch
+            {
+                (true, true) => RedstoneSoundKind.IronDoorOpen,
+                (true, false) => RedstoneSoundKind.IronDoorClose,
+                (false, true) => RedstoneSoundKind.WoodenDoorOpen,
+                (false, false) => RedstoneSoundKind.WoodenDoorClose,
+            };
             soundEvents.Add((lowerPos, snd));
         }
     }
