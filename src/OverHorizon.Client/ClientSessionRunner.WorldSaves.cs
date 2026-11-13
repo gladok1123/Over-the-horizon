@@ -323,7 +323,7 @@ public sealed partial class ClientSessionRunner
 
             _survivalCombat.StepBowAndShield(dt, rightHeld, _player, _worldBridge, _transport);
             var swungMelee = leftClicked && _survivalCombat.TryExecuteMeleeAttack(_player, _mobManager, _remotePlayers, _transport, _worldBridge);
-            if (!swungMelee) _survivalCombat.StepMining(dt, leftClicked, leftHeld, _player, _worldCache, _worldBridge, _transport.IsConnected, ApplyWorldBlockChange);
+            if (!swungMelee) _survivalCombat.StepMining(dt, leftClicked, leftHeld, _player, _worldCache, ApplyWorldBlockChange, _worldBridge, _transport.IsConnected);
             if (rightClicked && !_player.Hotbar.SelectedIsBow) _ = TryPlaceSelectedBlock();
         }
         else

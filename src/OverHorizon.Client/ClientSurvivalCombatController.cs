@@ -170,9 +170,9 @@ internal sealed class ClientSurvivalCombatController
         bool leftMouseHeld,
         ClientPlayerController player,
         ClientWorldCache world,
-        ClientWorldSyncAndMobBridge worldBridge,
-        bool isMultiplayer,
-        Func<BlockPos, Direction, BlockState, bool> applyWorldBlockChange)
+        Func<BlockPos, Direction, BlockState, bool> applyWorldBlockChange,
+        ClientWorldSyncAndMobBridge? worldBridge = null,
+        bool isMultiplayer = false)
     {
         if (player.IsDead || player.Mode == GameMode.Spectator)
         {
@@ -254,7 +254,14 @@ internal sealed class ClientSurvivalCombatController
                 var drop = BlockDropResolver.ResolveDrop(blockKey, player.Hotbar.SelectedItem, _items, _dropSequence++);
                 if (!drop.IsEmpty)
                 {
-                    _ = worldBridge.DroppedItems.SpawnBlockDrop(hit.BlockPosition, drop);
+                    if (worldBridge is not null)
+                    {
+                        _ = worldBridge.DroppedItems.SpawnBlockDrop(hit.BlockPosition, drop);
+                    }
+                    else
+                    {
+                        _ = player.Hotbar.SurvivalInventory.AddItem(drop, _items);
+                    }
                 }
             }
 

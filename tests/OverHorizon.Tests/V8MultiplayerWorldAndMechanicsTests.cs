@@ -480,7 +480,7 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
 
                 // 2. Alice attacks Creative Bob -> Bob is 100% immune (NO EntityCombatEventPacket emitted for Bob!)
                 await alice.SendPlayPacketAsync(
-                    new PlayerAttackEntityPacket(bobLogin.AssignedEntityId, diamondSwordId, IsCritical: true),
+                    new PlayerAttackEntityPacket(bobLogin.AssignedEntityId, diamondSwordId, IsCriticalHit: true),
                     cts.Token).ConfigureAwait(false);
 
                 // 3. Alice throws 3 Diamonds into the world via 0x06 DropItem -> Server broadcasts 0x0D WorldEntitiesSnapshotPacket!
