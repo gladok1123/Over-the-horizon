@@ -145,4 +145,16 @@ public enum SoundCue : byte
 
     /// <summary>Creeper death (<c>mob/creeper/death.ogg</c>).</summary>
     MobCreeperDeath = 46,
+
+    /// <summary>Short fall landing (<c>damage/fallsmall.ogg</c>).</summary>
+    FallSmall = 47,
+
+    /// <summary>Hard fall landing (<c>damage/fallbig.ogg</c>).</summary>
+    FallBig = 48,
+
+    /// <summary>Fire burn damage tick (<c>random/fizz.ogg</c>).</summary>
+    FireHurt = 49,
+
+    /// <summary>Snow footstep (<c>step/snow1.ogg</c>).</summary>
+    FootstepSnow = 50,
 }

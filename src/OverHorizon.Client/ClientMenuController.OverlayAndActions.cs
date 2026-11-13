@@ -132,7 +132,7 @@ internal sealed partial class ClientMenuController
 
         BlockPos? targetBlock = Mode == UiOverlayMode.InGame ? player.CurrentTarget?.BlockPosition : null;
         BoundingBox? targetBox = null;
-        if (targetBlock is { } tb && worldCache.TryGetSelectionBounds(tb, out var selBounds))
+        if (targetBlock is { } tb && worldCache.TryGetSelectionBox(tb, out var selBounds))
         {
             targetBox = selBounds;
         }

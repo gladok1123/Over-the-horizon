@@ -44,7 +44,7 @@ jobs:
         run: |
           set -o pipefail
           dotnet build OverHorizon.sln --configuration Release --no-restore -warnaserror 2>&1 | tee build.log || {
-            grep -E "error [A-Z0-9]+:" build.log | sed -E 's#^.*/src/#src/#; s#^.*/tests/#tests/#' | awk '!seen[$0]++' | head -n 15 | while IFS= read -r line; do
+            grep -E "error [A-Z0-9]+:" build.log | sed -E 's#^[^:(]*/(src|tests)/#\1/#' | awk '!seen[$0]++' | head -n 15 | while IFS= read -r line; do
               echo "::notice::BUILD_ERR: ${line}"
             done
             echo "### Build Errors (${{ matrix.os }})" >> "$GITHUB_STEP_SUMMARY"

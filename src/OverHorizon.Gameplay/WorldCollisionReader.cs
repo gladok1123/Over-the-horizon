@@ -47,7 +47,7 @@ public sealed class WorldCollisionReader : IVoxelCollisionReader, IVoxelSelectio
                     : (sbyte)0)
                 : (sbyte)-1;
 
-            if (BlockAttachmentAndShapeRules.TryGetSelectionBounds(blocks, state, new BlockPos(0, 0, 0), out var localBox))
+            if (BlockAttachmentAndShapeRules.TryGetLocalSelectionBox(blocks, state, out var localBox))
             {
                 _hasSelectionByStateId[id] = true;
                 _localSelectionBoxByStateId[id] = localBox;

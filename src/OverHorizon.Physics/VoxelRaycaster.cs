@@ -58,29 +58,17 @@ public static class VoxelRaycaster
             {
                 if (selectionReader is not null)
                 {
-                    if (selectionReader.TryGetSelectionBox(currentPos, out var localBox))
+                    if (selectionReader.TryGetSelectionBox(currentPos, out var worldBox) &&
+                        TryIntersectRayBox(origin, dir, maxDistance, worldBox, entryFace, out var boxT, out var boxFace))
                     {
-                        var worldBox = new BoundingBox(
-                            currentPos.X + localBox.MinX,
-                            currentPos.Y + localBox.MinY,
-                            currentPos.Z + localBox.MinZ,
-                            currentPos.X + localBox.MaxX,
-                            currentPos.Y + localBox.MaxY,
-                            currentPos.Z + localBox.MaxZ);
-
-                        if (TryIntersectRayBox(origin, dir, maxDistance, worldBox, entryFace, out var boxT, out var boxFace))
-                        {
-                            var hitPoint = origin + (dir * boxT);
-                            hit = new VoxelRaycastHit(currentPos, currentPos.Offset(boxFace), boxFace, hitPoint, boxT);
-                            return true;
-                        }
+                        hit = new VoxelRaycastHit(currentPos, currentPos.Offset(boxFace), boxFace, boxT);
+                        return true;
                     }
                 }
                 else if (world.IsSolidBlock(currentPos))
                 {
-                    var hitPoint = origin + (dir * traveled);
                     var adjacent = currentPos.Offset(entryFace);
-                    hit = new VoxelRaycastHit(currentPos, adjacent, entryFace, hitPoint, traveled);
+                    hit = new VoxelRaycastHit(currentPos, adjacent, entryFace, traveled);
                     return true;
                 }
             }
@@ -132,6 +120,16 @@ public static class VoxelRaycaster
         double maxDistance,
         out VoxelRaycastHit hit) =>
         TryRaycast(world, origin, new Vec3d(direction.X, direction.Y, direction.Z), maxDistance, out hit);
+
+    /// <summary>
+    /// Nullable-returning raycast helper along <paramref name="direction"/>.
+    /// </summary>
+    public static VoxelRaycastHit? Raycast(
+        IVoxelCollisionReader world,
+        Vec3d origin,
+        Vector3 direction,
+        double maxDistance) =>
+        TryRaycast(world, origin, direction, maxDistance, out var hit) ? hit : null;
 
     private static bool TryIntersectRayBox(
         Vec3d origin,

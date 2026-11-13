@@ -9,6 +9,12 @@ public sealed class HungerAndVitalsModel
     /// <summary>Exhaustion threshold at which 1 point of Saturation (or Hunger) is consumed.</summary>
     public const float ExhaustionThreshold = 4.0f;
 
+    /// <summary>Exhaustion added per melee attack (<c>0.1</c>).</summary>
+    public const float ExhaustionPerAttack = 0.1f;
+
+    /// <summary>Exhaustion added per Survival block broken (<c>0.005</c>).</summary>
+    public const float ExhaustionPerBlockMined = 0.005f;
+
     private double _regenTimer;
     private double _starvationTimer;
 

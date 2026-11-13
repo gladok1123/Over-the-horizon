@@ -16,13 +16,13 @@ internal static class UiTitleAndCreativeScreenBuilder
 
     private static readonly int[] CreativeTabIconTiles =
     [
-        ProceduralAtlasGenerator.TileBricks,
+        ProceduralAtlasGenerator.TileClayBricks,
         ProceduralAtlasGenerator.TileGrassSide,
-        ProceduralAtlasGenerator.TileCraftingFront,
+        ProceduralAtlasGenerator.TileCraftingSide,
         ProceduralAtlasGenerator.TileRedstoneBlock,
         142, // Diamond Sword item tile
         211, // Book / Search item tile
-        ProceduralAtlasGenerator.TileChestFront,
+        ProceduralAtlasGenerator.TileChestSide,
     ];
 
     public static void BuildTitleScreen(List<TexturedUiVertex> v, float width, float height, FrameOverlayState state)

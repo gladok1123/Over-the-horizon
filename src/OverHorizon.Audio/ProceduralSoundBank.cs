@@ -77,6 +77,10 @@ public static class ProceduralSoundBank
         (SoundCue.MobSpiderDeath, "sounds/mob/spider/death.ogg"),
         (SoundCue.MobCreeperHiss, "sounds/mob/creeper/say1.ogg"),
         (SoundCue.MobCreeperDeath, "sounds/mob/creeper/death.ogg"),
+        (SoundCue.FallSmall, "sounds/damage/fallsmall.ogg"),
+        (SoundCue.FallBig, "sounds/damage/fallbig.ogg"),
+        (SoundCue.FireHurt, "sounds/random/fizz.ogg"),
+        (SoundCue.FootstepSnow, "sounds/step/snow1.ogg"),
     ];
 
     /// <summary>
@@ -84,7 +88,7 @@ public static class ProceduralSoundBank
     /// </summary>
     /// <param name="externalAssetsPath">Optional external resource-pack root path.</param>
     /// <returns>Complete dictionary mapping every <see cref="SoundCue"/> to a decoded <see cref="PcmSoundClip"/>.</returns>
-    public static IReadOnlyDictionary<SoundCue, PcmSoundClip> CreateAll(string? externalAssetsPath = null)
+    public static IReadOnlyDictionary<SoundCue, PcmSoundClip> CreateDefaultBank(string? externalAssetsPath = null)
     {
         var asm = Assembly.GetExecutingAssembly();
         var resourceNames = asm.GetManifestResourceNames();
@@ -101,9 +105,18 @@ public static class ProceduralSoundBank
             stream.CopyTo(ms);
             var rawBytes = ms.ToArray();
 
-            var decoded = suffix.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase)
-                ? OggVorbisDecoder.TryDecode(rawBytes, out var oggClip) ? oggClip : null
-                : WavPcmDecoder.TryDecode(rawBytes, out var wavClip) ? wavClip : null;
+            PcmSoundClip? decoded = null;
+            if (suffix.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase))
+            {
+                if (OggVorbisDecoder.TryDecode(cue, rawBytes, out var oggClip))
+                {
+                    decoded = oggClip;
+                }
+            }
+            else if (WavPcmDecoder.TryDecode(cue, rawBytes, out var wavClip))
+            {
+                decoded = wavClip;
+            }
 
             clips[cue] = decoded ?? SynthesizeFallbackClip(cue);
         }
@@ -173,7 +186,7 @@ public static class ProceduralSoundBank
                 try
                 {
                     var bytes = File.ReadAllBytes(file);
-                    if (OggVorbisDecoder.TryDecode(bytes, out var decoded) && decoded.Samples.Length > 0)
+                    if (OggVorbisDecoder.TryDecode(cue, bytes, out var decoded) && decoded.Samples.Length > 0)
                     {
                         clips[cue] = decoded;
                     }
@@ -234,6 +247,6 @@ public static class ProceduralSoundBank
             pcm[i] = (short)Math.Clamp(sample * short.MaxValue, short.MinValue, short.MaxValue);
         }
 
-        return new PcmSoundClip(SampleRate, pcm);
+        return new PcmSoundClip(cue, SampleRate, pcm);
     }
 }

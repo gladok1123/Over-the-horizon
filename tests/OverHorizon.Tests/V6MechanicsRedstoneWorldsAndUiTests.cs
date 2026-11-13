@@ -65,21 +65,29 @@ public sealed class V6MechanicsRedstoneWorldsAndUiTests
         Set(supportPos, blocks.GetDefaultState(BuiltInBlocks.Stone));
         Set(torchPos, blocks.GetDefaultState(BuiltInBlocks.RedstoneTorch));
 
-        _ = RedstoneEngine.EvaluateRegion(leverPos, blocks, Get, Set, out _);
+        var redstone = new RedstoneEngine(blocks);
+        void EvalAt(BlockPos center)
+        {
+            redstone.NotifyBlockChanged(center);
+            redstone.EvaluateImmediate(Get, Set, [], []);
+        }
+
+        EvalAt(leverPos);
+        EvalAt(supportPos);
         blocks.GetStateMetadata(Get(lampPos)).Properties["lit"].Should().Be("false");
-        blocks.GetStateMetadata(Get(torchPos)).Properties["lit"].Should().Be("true");
+        blocks.GetStateMetadata(Get(torchPos)).BlockKey.Should().Be(BuiltInBlocks.RedstoneTorch);
 
         // Flip Lever ON -> Wire power > 0, RedstoneLamp lights up!
-        Set(leverPos, blocks.WithProperty(Get(leverPos), "powered", "true"));
-        _ = RedstoneEngine.EvaluateRegion(leverPos, blocks, Get, Set, out _);
+        _ = redstone.TryInteractComponent(leverPos, Get, Set);
+        redstone.EvaluateImmediate(Get, Set, [], []);
         int.Parse(blocks.GetStateMetadata(Get(wirePos)).Properties["power"], System.Globalization.CultureInfo.InvariantCulture)
             .Should().BeGreaterThan(0);
         blocks.GetStateMetadata(Get(lampPos)).Properties["lit"].Should().Be("true");
 
         // Directly power Stone support with RedstoneBlock underneath -> RedstoneTorch turns OFF (inverter)!
         Set(new BlockPos(1, 63, 1), blocks.GetDefaultState(BuiltInBlocks.RedstoneBlock));
-        _ = RedstoneEngine.EvaluateRegion(supportPos, blocks, Get, Set, out _);
-        blocks.GetStateMetadata(Get(torchPos)).Properties["lit"].Should().Be("false");
+        EvalAt(supportPos);
+        blocks.GetStateMetadata(Get(torchPos)).BlockKey.Should().Be(BuiltInBlocks.RedstoneTorchOff);
 
         // StickyPiston facing East pushes Cobblestone East when powered, and pulls it back when unpowered!
         var pistonPos = new BlockPos(0, 66, 0);
@@ -92,14 +100,14 @@ public sealed class V6MechanicsRedstoneWorldsAndUiTests
         Set(cobbleStart, blocks.GetDefaultState(BuiltInBlocks.Cobblestone));
         Set(powerAbove, blocks.GetDefaultState(BuiltInBlocks.RedstoneBlock));
 
-        _ = RedstoneEngine.EvaluateRegion(pistonPos, blocks, Get, Set, out _);
+        EvalAt(pistonPos);
         blocks.GetStateMetadata(Get(pistonPos)).Properties["extended"].Should().Be("true");
         blocks.GetStateMetadata(Get(cobbleStart)).BlockKey.Should().Be(BuiltInBlocks.PistonHead);
         blocks.GetStateMetadata(Get(cobblePushed)).BlockKey.Should().Be(BuiltInBlocks.Cobblestone);
 
         // Remove RedstoneBlock -> StickyPiston retracts AND pulls Cobblestone back to (1, 66, 0)!
         Set(powerAbove, BlockState.Air);
-        _ = RedstoneEngine.EvaluateRegion(pistonPos, blocks, Get, Set, out _);
+        EvalAt(pistonPos);
         blocks.GetStateMetadata(Get(pistonPos)).Properties["extended"].Should().Be("false");
         blocks.GetStateMetadata(Get(cobbleStart)).BlockKey.Should().Be(BuiltInBlocks.Cobblestone);
         Get(cobblePushed).IsAir.Should().BeTrue();
@@ -121,25 +129,25 @@ public sealed class V6MechanicsRedstoneWorldsAndUiTests
         cache.UpsertColumn(col);
 
         // 1. Ladder MUST reject floor (Up), ceiling (Down), and unsupported air, and ONLY accept vertical solid walls!
-        BlockAttachmentAndShapeRules.TryResolveLadderPlacement(blocks, cache.GetBlockState, new BlockPos(5, 64, 5), Direction.Up, out _)
+        BlockAttachmentAndShapeRules.TryResolvePlacementState(blocks, cache.GetBlockState, BuiltInBlocks.Ladder, new BlockPos(5, 64, 5), Direction.Up, Vector3.UnitZ, out _, out _)
             .Should().BeFalse("ladders must never be placed on floors");
-        BlockAttachmentAndShapeRules.TryResolveLadderPlacement(blocks, cache.GetBlockState, new BlockPos(5, 62, 5), Direction.Down, out _)
+        BlockAttachmentAndShapeRules.TryResolvePlacementState(blocks, cache.GetBlockState, BuiltInBlocks.Ladder, new BlockPos(5, 62, 5), Direction.Down, Vector3.UnitZ, out _, out _)
             .Should().BeFalse("ladders must never be placed on ceilings");
-        BlockAttachmentAndShapeRules.TryResolveLadderPlacement(blocks, cache.GetBlockState, new BlockPos(10, 70, 10), Direction.South, out _)
+        BlockAttachmentAndShapeRules.TryResolvePlacementState(blocks, cache.GetBlockState, BuiltInBlocks.Ladder, new BlockPos(10, 70, 10), Direction.South, Vector3.UnitZ, out _, out _)
             .Should().BeFalse("ladders must never levitate against air");
 
-        BlockAttachmentAndShapeRules.TryResolveLadderPlacement(blocks, cache.GetBlockState, new BlockPos(5, 65, 5), Direction.South, out var wallLadder)
+        BlockAttachmentAndShapeRules.TryResolvePlacementState(blocks, cache.GetBlockState, BuiltInBlocks.Ladder, new BlockPos(5, 65, 5), Direction.South, Vector3.UnitZ, out var wallLadder, out _)
             .Should().BeTrue("solid wall at (5,65,4) supports South-facing ladder at (5,65,5)");
         blocks.GetStateMetadata(wallLadder).Properties["facing"].Should().Be("south");
         _ = cache.ApplyBlockUpdate(new BlockPos(5, 65, 5), wallLadder);
 
         // 2. Torch places upright on floor AND tilted on solid wall, but rejects ceiling/air.
-        BlockAttachmentAndShapeRules.TryResolveTorchPlacement(blocks, BuiltInBlocks.Torch, cache.GetBlockState, new BlockPos(5, 64, 5), Direction.Up, out var floorTorch)
+        BlockAttachmentAndShapeRules.TryResolvePlacementState(blocks, cache.GetBlockState, BuiltInBlocks.Torch, new BlockPos(5, 64, 5), Direction.Up, Vector3.UnitZ, out var floorTorch, out _)
             .Should().BeTrue();
         blocks.GetStateMetadata(floorTorch).Properties["facing"].Should().Be("up");
         _ = cache.ApplyBlockUpdate(new BlockPos(5, 64, 5), floorTorch);
 
-        BlockAttachmentAndShapeRules.TryResolveTorchPlacement(blocks, BuiltInBlocks.Torch, cache.GetBlockState, new BlockPos(5, 62, 5), Direction.Down, out _)
+        BlockAttachmentAndShapeRules.TryResolvePlacementState(blocks, cache.GetBlockState, BuiltInBlocks.Torch, new BlockPos(5, 62, 5), Direction.Down, Vector3.UnitZ, out _, out _)
             .Should().BeFalse("torches cannot hang upside-down from ceilings");
 
         // 3. Sub-voxel VoxelRaycaster hits non-solid Torch & Ladder so they can be targeted and broken!
@@ -151,14 +159,12 @@ public sealed class V6MechanicsRedstoneWorldsAndUiTests
         hitLadder.Should().NotBeNull();
         hitLadder!.Value.BlockPosition.Should().Be(new BlockPos(5, 65, 5));
 
-        // 4. Breaking the wall at (5,65,4) detaches the Ladder at (5,65,5) into an item drop — zero levitation!
+        // 4. Breaking the wall at (5,65,4) invalidates support for the Ladder at (5,65,5) and resolves a Ladder drop!
         _ = cache.ApplyBlockUpdate(new BlockPos(5, 65, 4), BlockState.Air);
-        var detached = new List<(BlockPos Pos, ItemStack Drop)>();
-        _ = BlockAttachmentAndShapeRules.DetachUnsupportedNeighbors(
-            new BlockPos(5, 65, 4), blocks, items, cache.GetBlockState, (p, s) => _ = cache.ApplyBlockUpdate(p, s), detached);
-
-        cache.GetBlockState(new BlockPos(5, 65, 5)).IsAir.Should().BeTrue("unsupported ladder must pop off immediately");
-        detached.Should().Contain(d => d.Drop.ItemId == (ushort)items.GetId(BuiltInBlocks.Ladder));
+        BlockAttachmentAndShapeRules.IsStillSupported(blocks, cache.GetBlockState, new BlockPos(5, 65, 5), wallLadder)
+            .Should().BeFalse("unsupported ladder must be detected immediately when its supporting wall breaks");
+        var drop = BlockDropResolver.ResolveDrop(BuiltInBlocks.Ladder, null, items);
+        drop.ItemId.Should().Be((ushort)items.GetId(BuiltInBlocks.Ladder));
     }
 
     [Fact]

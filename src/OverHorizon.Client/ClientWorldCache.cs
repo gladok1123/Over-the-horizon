@@ -51,7 +51,7 @@ public sealed class ClientWorldCache : IVoxelCollisionReader, IVoxelSelectionRea
             _isSolidByStateId[id] = meta.IsSolid;
             _fluidLevelByStateId[id] = meta.IsFluid ? ParseFluidLevel(meta) : (sbyte)-1;
 
-            if (BlockAttachmentAndShapeRules.TryGetSelectionBounds(blocks, state, new BlockPos(0, 0, 0), out var localBox))
+            if (BlockAttachmentAndShapeRules.TryGetLocalSelectionBox(blocks, state, out var localBox))
             {
                 _hasSelectionByStateId[id] = true;
                 _localSelectionBoxByStateId[id] = localBox;
