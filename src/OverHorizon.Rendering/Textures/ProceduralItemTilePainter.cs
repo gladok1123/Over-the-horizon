@@ -1,8 +1,8 @@
 namespace OverHorizon.Rendering.Textures;
 
 /// <summary>
-/// Clean-room <c>16x16</c> pixel-art item sprite painter providing baseline transparent-background icons
-/// for weapons, tools, buckets, food, and ingots (overridden by <c>23w13a__or__b</c> PNGs when loaded).
+/// Clean-room <c>16x16</c> pixel-art item &amp; cutout block sprite painter providing baseline transparent-background icons
+/// for weapons, tools, armor, torches, ladders, rails, cobwebs, buckets, food, and ingots.
 /// </summary>
 internal static class ProceduralItemTilePainter
 {
@@ -84,6 +84,159 @@ internal static class ProceduralItemTilePainter
         }
     }
 
+    public static void PaintHoe(byte[] atlas, ushort tile, byte r, byte g, byte b)
+    {
+        ClearTile(atlas, tile);
+        for (var i = 0; i < 10; i++)
+        {
+            SetPx(atlas, tile, 3 + i, 13 - i, 128, 88, 48);
+        }
+
+        for (var x = 8; x <= 13; x++)
+        {
+            SetPx(atlas, tile, x, 2, r, g, b);
+            SetPx(atlas, tile, x, 3, r, g, b);
+        }
+    }
+
+    public static void PaintArmor(byte[] atlas, ushort tile, byte r, byte g, byte b, int slotKind)
+    {
+        ClearTile(atlas, tile);
+        for (var y = 3; y <= 13; y++)
+        {
+            for (var x = 3; x <= 12; x++)
+            {
+                var draw = slotKind switch
+                {
+                    0 => y <= 9 && (y <= 5 || x <= 5 || x >= 10), // Helmet
+                    1 => y >= 4 && !(y <= 5 && x is >= 6 and <= 9), // Chestplate
+                    2 => y >= 4 && (y <= 6 || x <= 6 || x >= 9), // Leggings
+                    _ => y >= 8 && (x <= 6 || x >= 9), // Boots
+                };
+                if (draw)
+                {
+                    var shade = (x < 6 || y < 6) ? 18 : 0;
+                    SetPx(atlas, tile, x, y, (byte)Math.Min(255, r + shade), (byte)Math.Min(255, g + shade), (byte)Math.Min(255, b + shade));
+                }
+            }
+        }
+    }
+
+    public static void PaintTorchTile(byte[] atlas, ushort tile)
+    {
+        ClearTile(atlas, tile);
+        for (var y = 8; y <= 15; y++)
+        {
+            SetPx(atlas, tile, 7, y, 138, 98, 52);
+            SetPx(atlas, tile, 8, y, 112, 78, 40);
+        }
+
+        SetPx(atlas, tile, 7, 7, 255, 198, 58);
+        SetPx(atlas, tile, 8, 7, 255, 168, 36);
+        SetPx(atlas, tile, 7, 6, 255, 246, 162);
+        SetPx(atlas, tile, 8, 6, 255, 224, 96);
+    }
+
+    public static void PaintLanternTile(byte[] atlas, ushort tile)
+    {
+        ClearTile(atlas, tile);
+        SetPx(atlas, tile, 7, 3, 72, 76, 84);
+        SetPx(atlas, tile, 8, 3, 72, 76, 84);
+        for (var y = 4; y <= 13; y++)
+        {
+            for (var x = 5; x <= 10; x++)
+            {
+                var frame = y is 4 or 13 || x is 5 or 10;
+                if (frame)
+                {
+                    SetPx(atlas, tile, x, y, 64, 68, 76);
+                }
+                else
+                {
+                    SetPx(atlas, tile, x, y, 255, 214, 92);
+                }
+            }
+        }
+    }
+
+    public static void PaintLadderTile(byte[] atlas, ushort tile)
+    {
+        ClearTile(atlas, tile);
+        for (var y = 0; y < 16; y++)
+        {
+            SetPx(atlas, tile, 2, y, 146, 108, 60);
+            SetPx(atlas, tile, 3, y, 126, 90, 48);
+            SetPx(atlas, tile, 12, y, 146, 108, 60);
+            SetPx(atlas, tile, 13, y, 126, 90, 48);
+            if (y % 4 == 1 || y % 4 == 2)
+            {
+                for (var x = 2; x <= 13; x++)
+                {
+                    SetPx(atlas, tile, x, y, 158, 118, 66);
+                }
+            }
+        }
+    }
+
+    public static void PaintRailTile(byte[] atlas, ushort tile)
+    {
+        ClearTile(atlas, tile);
+        for (var y = 0; y < 16; y++)
+        {
+            if (y % 4 == 1 || y % 4 == 2)
+            {
+                for (var x = 1; x <= 14; x++)
+                {
+                    SetPx(atlas, tile, x, y, 128, 92, 52);
+                }
+            }
+
+            SetPx(atlas, tile, 3, y, 178, 182, 188);
+            SetPx(atlas, tile, 4, y, 148, 152, 158);
+            SetPx(atlas, tile, 11, y, 178, 182, 188);
+            SetPx(atlas, tile, 12, y, 148, 152, 158);
+        }
+    }
+
+    public static void PaintCobwebTile(byte[] atlas, ushort tile)
+    {
+        ClearTile(atlas, tile);
+        for (var i = 0; i < 16; i++)
+        {
+            SetPx(atlas, tile, i, i, 232, 236, 240);
+            SetPx(atlas, tile, 15 - i, i, 232, 236, 240);
+            SetPx(atlas, tile, 7, i, 218, 222, 226);
+            SetPx(atlas, tile, i, 7, 218, 222, 226);
+        }
+    }
+
+    public static void PaintFurnaceFrontTile(byte[] atlas, ushort tile, bool lit)
+    {
+        ProceduralBlockTilePainter.PaintCobblestoneTile(atlas, tile, mossy: false);
+        for (var y = 4; y <= 13; y++)
+        {
+            for (var x = 4; x <= 11; x++)
+            {
+                if (y <= 7)
+                {
+                    SetPx(atlas, tile, x, y, 36, 36, 40);
+                }
+                else if (y >= 9)
+                {
+                    if (lit)
+                    {
+                        var glow = ((x + y) & 1) == 0 ? (byte)255 : (byte)232;
+                        SetPx(atlas, tile, x, y, glow, (byte)(glow - 85), 32);
+                    }
+                    else
+                    {
+                        SetPx(atlas, tile, x, y, 28, 28, 32);
+                    }
+                }
+            }
+        }
+    }
+
     public static void PaintStick(byte[] atlas, ushort tile)
     {
         ClearTile(atlas, tile);
@@ -106,14 +259,7 @@ internal static class ProceduralItemTilePainter
                 if ((dx * dx) + (dy * dy) <= 18.5f)
                 {
                     var hi = (x < 7 && y < 7) ? 32 : 0;
-                    SetPx(
-                        atlas,
-                        tile,
-                        x,
-                        y,
-                        (byte)Math.Min(255, r + hi),
-                        (byte)Math.Min(255, g + hi),
-                        (byte)Math.Min(255, b + hi));
+                    SetPx(atlas, tile, x, y, (byte)Math.Min(255, r + hi), (byte)Math.Min(255, g + hi), (byte)Math.Min(255, b + hi));
                 }
             }
         }
@@ -124,9 +270,10 @@ internal static class ProceduralItemTilePainter
         ClearTile(atlas, tile);
         for (var y = 5; y <= 10; y++)
         {
-            for (var x = 3; x <= 12; x++)
+            var indent = Math.Abs(y - 7) / 2;
+            for (var x = 3 + indent; x <= 12 - indent; x++)
             {
-                var hi = y <= 6 ? 26 : -14;
+                var hi = y <= 6 ? 26 : (y >= 9 ? -22 : 0);
                 SetPx(
                     atlas,
                     tile,
@@ -144,20 +291,16 @@ internal static class ProceduralItemTilePainter
         ClearTile(atlas, tile);
         for (var y = 4; y <= 12; y++)
         {
-            for (var x = 4; x <= 11; x++)
+            var halfW = y <= 6 ? 4 : 3;
+            for (var x = 8 - halfW; x <= 7 + halfW; x++)
             {
-                if (y >= 11 && (x == 4 || x == 11))
+                if (filledWithWater && y is >= 5 and <= 6 && x > 8 - halfW && x < 7 + halfW)
                 {
-                    continue;
-                }
-
-                if (filledWithWater && y is 4 or 5 && x is >= 5 and <= 10)
-                {
-                    SetPx(atlas, tile, x, y, 48, 124, 240);
+                    SetPx(atlas, tile, x, y, 48, 124, 238);
                 }
                 else
                 {
-                    SetPx(atlas, tile, x, y, 186, 192, 198);
+                    SetPx(atlas, tile, x, y, 186, 192, 200);
                 }
             }
         }
@@ -165,28 +308,28 @@ internal static class ProceduralItemTilePainter
 
     private static void ClearTile(byte[] atlas, ushort tile)
     {
-        var tx = (tile % ProceduralAtlasGenerator.TilesPerRow) * 16;
-        var ty = (tile / ProceduralAtlasGenerator.TilesPerRow) * 16;
-        for (var py = 0; py < 16; py++)
+        var baseX = (tile % 16) * 16;
+        var baseY = (tile / 16) * 16;
+        for (var y = 0; y < 16; y++)
         {
-            var dst = (((ty + py) * ProceduralAtlasGenerator.AtlasDimension) + tx) * 4;
-            Array.Clear(atlas, dst, 16 * 4);
+            var rowIdx = (((baseY + y) * 256) + baseX) * 4;
+            Array.Clear(atlas, rowIdx, 16 * 4);
         }
     }
 
-    private static void SetPx(byte[] atlas, ushort tile, int px, int py, byte r, byte g, byte b)
+    private static void SetPx(byte[] atlas, ushort tile, int x, int y, byte r, byte g, byte b)
     {
-        if ((uint)px >= 16 || (uint)py >= 16)
+        if ((uint)x >= 16U || (uint)y >= 16U)
         {
             return;
         }
 
-        var tx = (tile % ProceduralAtlasGenerator.TilesPerRow) * 16;
-        var ty = (tile / ProceduralAtlasGenerator.TilesPerRow) * 16;
-        var dst = (((ty + py) * ProceduralAtlasGenerator.AtlasDimension) + tx + px) * 4;
-        atlas[dst + 0] = r;
-        atlas[dst + 1] = g;
-        atlas[dst + 2] = b;
-        atlas[dst + 3] = 255;
+        var ax = ((tile % 16) * 16) + x;
+        var ay = ((tile / 16) * 16) + y;
+        var idx = ((ay * 256) + ax) * 4;
+        atlas[idx + 0] = r;
+        atlas[idx + 1] = g;
+        atlas[idx + 2] = b;
+        atlas[idx + 3] = 255;
     }
 }

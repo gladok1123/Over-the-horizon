@@ -108,7 +108,7 @@ jobs:
           set -euo pipefail
           mkdir -p release-zips
           for rid in win-x64 linux-x64 osx-arm64 osx-x64; do
-            pkg_name="OverHorizon-v0.4.0-alpha-${rid}"
+            pkg_name="OverHorizon-v0.5.0-alpha-${rid}"
             stage_dir="stage/${pkg_name}"
             mkdir -p "${stage_dir}"
 
@@ -127,7 +127,8 @@ jobs:
               cp scripts/*.bat scripts/*.ps1 "${stage_dir}/"
             else
               cp scripts/*.sh "${stage_dir}/"
-              chmod +x "${stage_dir}"/*.sh "${stage_dir}/OverHorizon.Server" "${stage_dir}/OverHorizon.Client"
+              chmod +x "${stage_dir}"/*.sh "${stage_dir}"/*.bat 2>/dev/null || true
+              chmod +x "${stage_dir}/OverHorizon.Server" "${stage_dir}/OverHorizon.Client"
             fi
 
             (cd stage && zip -r -q "../release-zips/${pkg_name}.zip" "${pkg_name}")
@@ -137,18 +138,18 @@ jobs:
       - name: Upload Playable Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: OverHorizon-v0.4.0-alpha-playable-builds
+          name: OverHorizon-v0.5.0-alpha-playable-builds
           path: release-zips/*.zip
           retention-days: 30
 
-      - name: Publish or Update GitHub Pre-Release v0.4.0-alpha
+      - name: Publish or Update GitHub Pre-Release v0.5.0-alpha
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="v0.4.0-alpha"
-          NOTES=$'### Over-the-Horizon: C# EDITION (`v0.4.0-alpha`) — Текстуры `23w13a__or__b`, переработанный Креатив, Выживание + Крафт, PvP, оригинальная вода/подводный мир и 100% реальные OGG/WAV звуки!\n\nГотовые самодостаточные сборки (установка .NET **не требуется**):\n- **Windows 10/11 (x64)**: `OverHorizon-v0.4.0-alpha-win-x64.zip`\n- **Linux (x86_64)**: `OverHorizon-v0.4.0-alpha-linux-x64.zip`\n- **macOS Apple Silicon (M1–M4)**: `OverHorizon-v0.4.0-alpha-osx-arm64.zip`\n- **macOS Intel (x64)**: `OverHorizon-v0.4.0-alpha-osx-x64.zip`\n\n#### Что нового в `v0.4.0-alpha`:\n- **Все текстуры блоков и предметов из `InventivetalentDev/minecraft-assets` (`23w13a__or__b`)**: при первом запуске клиент автоматически скачивает и кэширует `textures/block/*.png`, `textures/item/*.png`, `lang/en_us.json` и реальные `.ogg`-звуки в локальную папку `./resourcepacks/23w13a__or__b/` (без включения проприетарных файлов Mojang в Git и `.zip`-архивы релиза).\n- **Переработанное меню Креатива (`E`)**: оконный интерфейс с 6 вкладками категорий (`ALL`, `BUILDING`, `NATURAL`, `FUNCTIONAL`, `COMBAT & TOOLS`, `FOOD & MATS`), живым поиском с клавиатуры, скроллом колесом мыши, настоящими `16x16` PNG-иконками в ячейках и хотбаре, подсказками характеристик и быстрым назначением клавишами `1..9`.\n- **Режим Выживания (`F4` / `/gamemode`), все предметы и крафт**: 10 сердец здоровья, 10 единиц сытости, пузырьки кислорода под водой, прогрессивная добыча блоков по уровням кирок/топоров/лопат/ножниц, честный дроп руд и блоков, 22 рецепта крафта и плавки в 1 клик, еда (`Яблоко`, `Хлеб`, `Стейк`, `Золотое яблоко`), `Ведро` / `Ведро воды` (зачерпывание и разлитие воды) и `Огниво` (подрыв TNT, обсидиан).\n- **Мультиплеерный PvP и `/pvp`**: серверная проверка дистанции удара, урон от мечей (`Wooden`..`Netherite`) + `1.5x` крит в прыжке, отбрасывание (knockback), красная вспышка урона, полоски HP над игроками, анонс смерти в чате и респаун.\n- **Оригинальная физика воды и подводный вид**: убрано авто-выталкивание вверх — в воде игрок плавно погружается (`-3.2 бл/с²`), всплывает при удержании `Пробела`, легко выходит на берег, а при погружении камеры включаются глубоководный сине-бирюзовый туман, двусторонняя поверхность воды сверху и виньетка.\n- **100% реальные записанные звуки из интернета (`NVorbis`, НОЛЬ процедурной генерации)**: встроенные CC0 1.0 `.ogg`/`.wav` фоли-записи + декодирование реальных `.ogg` звуков из `23w13a__or__b`.'
+          TAG="v0.5.0-alpha"
+          NOTES=$'### Over-the-Horizon: C# EDITION (`v0.5.0-alpha`) — 64 чанка без лагов, оригинальный GUI `23w13a__or__b`, полёт в Креативе, 3D-предметы, Верстак 3x3 + Печь, Пещеры + Шахты, Освещение `0..15` и 8 видов 3D-мобов!\n\nГотовые самодостаточные сборки (**установка .NET не требуется!**):\n- **Windows 10/11 (x64)**: `OverHorizon-v0.5.0-alpha-win-x64.zip`\n- **Linux (x86_64)**: `OverHorizon-v0.5.0-alpha-linux-x64.zip`\n- **macOS Apple Silicon (M1–M4)**: `OverHorizon-v0.5.0-alpha-osx-arm64.zip`\n- **macOS Intel (x64)**: `OverHorizon-v0.5.0-alpha-osx-x64.zip`\n\n#### Что нового в `v0.5.0-alpha`:\n1. **Оригинальные GUI-текстуры и виджеты `23w13a__or__b`**: автоматическое скачивание и компоновка `icons.png`, `widgets.png`, `slider.png`, `inventory.png`, `crafting_table.png`, `furnace.png` и `container_27.png` в текстурный атлас `512x768`, плюс настоящие перетягиваемые ползунки (`FOV`, `Render Distance 2..64`, `Volume`, `Sensitivity`).\n2. **Дальность прорисовки до 64 чанков без фризов**: приоритетная концентрическая подгрузка от ближайших к игроку чанков + неблокирующая фоновая очередь мешинга с лимитом загрузки в GPU за кадр.\n3. **Чёткая физика без «льда» и полёт в Креативе**: убрано скольжение после отпускания `WASD`, добавлен свободный полёт в Креативе (двойной `Пробел` или клавиша `F`, взлёт на `Пробел`, снижение на `C`/`Ctrl`).\n4. **Настоящая 3D-модель блоков и предметов в руке**: текстурированные 3D-блоки, факелы и объёмные пиксель-арт инструменты/мечи в правой руке с живым освещением мира.\n5. **Оригинальный инвентарь Выживания (`2x2`), Верстак (`3x3`), Печь, 52 блока и 102 предмета**: курсорное перетаскивание стаков (ЛКМ/ПКМ/`Shift`+клик), 4 слота брони с защитой на HUD, 60+ рецептов крафта (`2x2` и `3x3`), плавка руд и еды в Печи (`Furnace` -> `LitFurnace`).\n6. **Богатая генерация мира**: 3D-пещеры (сырные гроты и спагетти-туннели), глубинный сланец (`Deepslate` ниже `Y=8`), жилы 7 руд по высотам, заброшенные шахты (`Mineshafts` с дубовыми подпорками, рельсами, паутиной и факелами) и дубово-берёзовые леса.\n7. **Настоящее освещение `0..15` и динамический факел в руке**: раздельные каналы `SkyLight` и `BlockLight` (в пещерах темно без факелов!), тёплый оранжевый свет факелов/фонарей/печей + динамическая подсветка стен вокруг игрока с факелом/фонарём в руке.\n8. **8 видов 3D-мобов (мирные и враждебные)**: Свинья, Корова, Овца (стрижётся ножницами!), Курица, Зомби, Скелет, Паук и Крипер (шипит, мигает и взрывается!) с анимацией лап, ИИ и дропом.'
           if gh release view "${TAG}" >/dev/null 2>&1; then
             gh release upload "${TAG}" release-zips/*.zip --clobber
             gh release edit "${TAG}" --notes "${NOTES}"
@@ -156,6 +157,6 @@ jobs:
             gh release create "${TAG}" release-zips/*.zip \
               --target "${GITHUB_SHA}" \
               --prerelease \
-              --title "Over-the-Horizon: C# EDITION — v0.4.0-alpha" \
+              --title "Over-the-Horizon: C# EDITION — v0.5.0-alpha" \
               --notes "${NOTES}"
           fi

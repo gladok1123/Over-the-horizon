@@ -1,11 +1,12 @@
 using System.Numerics;
 using OverHorizon.Rendering.Hud;
+using OverHorizon.Rendering.Textures;
 
 namespace OverHorizon.Rendering.Backends;
 
 /// <summary>
-/// Builds screen-space quads for underwater tinting, PvP damage flash, Survival Hearts/Hunger/Oxygen bars,
-/// progressive mining bar, and <c>16x16</c> block/item atlas sprites.
+/// Builds screen-space quads for underwater tinting, PvP/mob hurt flash, and real <c>icons.png</c>
+/// Survival Hearts, Armor Shields, Hunger Drumsticks, Oxygen Bubbles, and <c>16x16</c> item atlas sprites.
 /// </summary>
 internal static class UiSurvivalHudBuilder
 {
@@ -26,7 +27,6 @@ internal static class UiSurvivalHudBuilder
         var au1 = (col + 0.998f) / 16.0f;
         var av1 = (row + 0.998f) / 16.0f;
 
-        // Negative UV encoding (-uv - 1.0) instructs SilkOpenGlUiRenderer to sample uItemAtlas!
         var uv0 = new Vector2(-(au0 + 1.0f), -(av0 + 1.0f));
         var uv1 = new Vector2(-(au1 + 1.0f), -(av0 + 1.0f));
         var uv2 = new Vector2(-(au1 + 1.0f), -(av1 + 1.0f));
@@ -45,6 +45,21 @@ internal static class UiSurvivalHudBuilder
         v.Add(new TexturedUiVertex(p3, uv3, tint));
     }
 
+    public static void DrawCrosshairIcon(List<TexturedUiVertex> v, float centerX, float centerY)
+    {
+        const float size = 27.0f;
+        UiGuiSpriteHelper.DrawGuiSubRect(
+            v,
+            GuiTextureAtlasGenerator.IconsOriginX,
+            GuiTextureAtlasGenerator.IconsOriginY,
+            0, 0, 15, 15,
+            MathF.Round(centerX - (size * 0.5f)),
+            MathF.Round(centerY - (size * 0.5f)),
+            size,
+            size,
+            new Vector4(1.0f, 1.0f, 1.0f, 0.92f));
+    }
+
     public static void BuildUnderwaterAndHurtScreenTint(
         List<TexturedUiVertex> v,
         float width,
@@ -53,7 +68,6 @@ internal static class UiSurvivalHudBuilder
     {
         if (state.IsUnderwater)
         {
-            // Authentic aquamarine water immersion wash + deep-water border vignette
             DrawRect(v, 0, 0, width, height, new Vector4(0.04f, 0.28f, 0.56f, 0.32f));
             var borderW = MathF.Max(36.0f, width * 0.06f);
             var borderH = MathF.Max(28.0f, height * 0.06f);
@@ -85,10 +99,10 @@ internal static class UiSurvivalHudBuilder
 
         if (state.MiningProgress is > 0.01f and < 1.0f && state.Mode == UiOverlayMode.InGame)
         {
-            const float barW = 72.0f;
+            const float barW = 74.0f;
             const float barH = 7.0f;
             var bx = cx - (barW * 0.5f);
-            var by = cy + 16.0f;
+            var by = cy + 18.0f;
             DrawRect(v, bx - 2.0f, by - 2.0f, barW + 4.0f, barH + 4.0f, new Vector4(0.05f, 0.06f, 0.08f, 0.85f));
             DrawRect(v, bx, by, barW * Math.Clamp(state.MiningProgress, 0.0f, 1.0f), barH, new Vector4(0.35f, 0.92f, 0.42f, 0.96f));
         }
@@ -98,80 +112,89 @@ internal static class UiSurvivalHudBuilder
             return;
         }
 
-        // 10 Hearts on the left above hotbar
-        var heartY = hotbarTopY - 22.0f;
+        const float iconDrawSize = 22.0f;
+        const float iconStep = 21.0f;
+        var heartY = hotbarTopY - 27.0f;
         var hp = Math.Clamp(state.Health, 0.0f, state.MaxHealth);
+
+        // 10 Hearts from icons.png (container 16,0; full 52,0; half 61,0)
         for (var i = 0; i < 10; i++)
         {
-            var hx = hotbarStartX + (i * 18.0f);
-            DrawRect(v, hx, heartY, 14.0f, 14.0f, new Vector4(0.10f, 0.08f, 0.10f, 0.92f));
-            var heartThreshold = (i + 1) * 2.0f;
-            if (hp >= heartThreshold - 0.2f)
+            var hx = hotbarStartX + (i * iconStep);
+            DrawIcon9x9(v, 16, 0, hx, heartY, iconDrawSize);
+            var thresh = (i + 1) * 2.0f;
+            if (hp >= thresh - 0.2f)
             {
-                DrawHeartShape(v, hx + 1.0f, heartY + 1.0f, full: true, new Vector4(0.92f, 0.16f, 0.20f, 1.0f));
+                DrawIcon9x9(v, 52, 0, hx, heartY, iconDrawSize);
             }
-            else if (hp >= heartThreshold - 1.2f)
+            else if (hp >= thresh - 1.2f)
             {
-                DrawHeartShape(v, hx + 1.0f, heartY + 1.0f, full: false, new Vector4(0.92f, 0.16f, 0.20f, 1.0f));
+                DrawIcon9x9(v, 61, 0, hx, heartY, iconDrawSize);
             }
         }
 
-        // 10 Hunger drumsticks on the right above hotbar
-        var foodRightX = hotbarStartX + hotbarWidth;
+        // Armor Shield Bar above hearts when wearing armor! (icons.png empty 16,9; half 25,9; full 34,9)
+        if (state.ArmorDefensePoints > 0)
+        {
+            var armorY = heartY - 24.0f;
+            for (var i = 0; i < 10; i++)
+            {
+                var ax = hotbarStartX + (i * iconStep);
+                var thresh = (i + 1) * 2;
+                if (state.ArmorDefensePoints >= thresh)
+                {
+                    DrawIcon9x9(v, 34, 9, ax, armorY, iconDrawSize);
+                }
+                else if (state.ArmorDefensePoints == thresh - 1)
+                {
+                    DrawIcon9x9(v, 25, 9, ax, armorY, iconDrawSize);
+                }
+                else
+                {
+                    DrawIcon9x9(v, 16, 9, ax, armorY, iconDrawSize);
+                }
+            }
+        }
+
+        // 10 Hunger Drumsticks on right from icons.png (container 16,27; full 52,27; half 61,27)
+        var rightEdge = hotbarStartX + hotbarWidth;
         var hunger = Math.Clamp(state.Hunger, 0, 20);
         for (var i = 0; i < 10; i++)
         {
-            var fx = foodRightX - ((i + 1) * 18.0f) + 4.0f;
-            DrawRect(v, fx, heartY, 14.0f, 14.0f, new Vector4(0.10f, 0.09f, 0.08f, 0.92f));
+            var fx = rightEdge - ((i + 1) * iconStep);
+            DrawIcon9x9(v, 16, 27, fx, heartY, iconDrawSize);
             var thresh = (i + 1) * 2;
             if (hunger >= thresh)
             {
-                DrawDrumstick(v, fx + 2.0f, heartY + 2.0f, full: true);
+                DrawIcon9x9(v, 52, 27, fx, heartY, iconDrawSize);
             }
             else if (hunger == thresh - 1)
             {
-                DrawDrumstick(v, fx + 2.0f, heartY + 2.0f, full: false);
+                DrawIcon9x9(v, 61, 27, fx, heartY, iconDrawSize);
             }
         }
 
-        // 10 Oxygen bubbles above hunger when underwater or recovering breath
+        // 10 Oxygen Bubbles from icons.png (16,18)
         if (state.IsUnderwater || state.AirSupplyNormalized < 0.99f)
         {
-            var bubbleY = heartY - 18.0f;
+            var bubbleY = heartY - 24.0f;
             var bubbles = (int)MathF.Ceiling(Math.Clamp(state.AirSupplyNormalized, 0.0f, 1.0f) * 10.0f);
             for (var i = 0; i < bubbles; i++)
             {
-                var bx = foodRightX - ((i + 1) * 18.0f) + 5.0f;
-                DrawRect(v, bx, bubbleY, 12.0f, 12.0f, new Vector4(0.18f, 0.62f, 0.96f, 0.95f));
-                DrawRect(v, bx + 2.0f, bubbleY + 2.0f, 4.0f, 4.0f, new Vector4(0.85f, 0.96f, 1.0f, 0.98f));
+                var bx = rightEdge - ((i + 1) * iconStep);
+                DrawIcon9x9(v, 16, 18, bx, bubbleY, iconDrawSize);
             }
         }
     }
 
-    private static void DrawHeartShape(List<TexturedUiVertex> v, float x, float y, bool full, Vector4 col)
-    {
-        DrawRect(v, x + 1.0f, y + 1.0f, 4.0f, 4.0f, col);
-        DrawRect(v, x + 2.0f, y + 2.0f, 2.0f, 2.0f, new Vector4(1.0f, 0.65f, 0.68f, 1.0f));
-        if (full)
-        {
-            DrawRect(v, x + 7.0f, y + 1.0f, 4.0f, 4.0f, col);
-            DrawRect(v, x + 1.0f, y + 4.0f, 10.0f, 4.0f, col);
-            DrawRect(v, x + 3.0f, y + 8.0f, 6.0f, 3.0f, col);
-        }
-        else
-        {
-            DrawRect(v, x + 1.0f, y + 4.0f, 5.0f, 4.0f, col);
-            DrawRect(v, x + 3.0f, y + 8.0f, 3.0f, 3.0f, col);
-        }
-    }
-
-    private static void DrawDrumstick(List<TexturedUiVertex> v, float x, float y, bool full)
-    {
-        var meat = new Vector4(0.78f, 0.44f, 0.20f, 1.0f);
-        var bone = new Vector4(0.94f, 0.92f, 0.86f, 1.0f);
-        DrawRect(v, x + 6.0f, y + 6.0f, 4.0f, 4.0f, bone);
-        DrawRect(v, x + 1.0f, y + 1.0f, full ? 7.0f : 4.0f, 6.0f, meat);
-    }
+    private static void DrawIcon9x9(List<TexturedUiVertex> v, float srcX, float srcY, float dstX, float dstY, float size) =>
+        UiGuiSpriteHelper.DrawGuiSubRect(
+            v,
+            GuiTextureAtlasGenerator.IconsOriginX,
+            GuiTextureAtlasGenerator.IconsOriginY,
+            srcX, srcY, 9, 9,
+            dstX, dstY, size, size,
+            Vector4.One);
 
     private static void DrawRect(List<TexturedUiVertex> v, float x, float y, float w, float h, Vector4 color)
     {

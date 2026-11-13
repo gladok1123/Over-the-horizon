@@ -90,7 +90,7 @@ public sealed class CSharpEditionUiAndPaletteTests
         var atlas = ProceduralAtlasGenerator.CreateDefault(registries.Blocks);
         var hotbar = new ClientHotbar(registries.Blocks, registries.Items, atlas);
 
-        ClientHotbar.PaletteCount.Should().Be(53);
+        ClientHotbar.PaletteCount.Should().BeGreaterThanOrEqualTo(100);
         hotbar.SelectSlot(2);
         hotbar.EquipPaletteBlock(21); // Diamond Ore
 

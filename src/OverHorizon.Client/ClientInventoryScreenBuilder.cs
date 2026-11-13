@@ -1,22 +1,28 @@
 using System.Numerics;
 using OverHorizon.Core.Items;
 using OverHorizon.Core.Registry;
-using OverHorizon.Gameplay;
 using OverHorizon.Gameplay.Crafting;
 using OverHorizon.Gameplay.Inventory;
+using OverHorizon.Gameplay.Smelting;
 using OverHorizon.Rendering.Hud;
 
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Builds interactive buttons and <c>16x16</c> sprite cells for the Redesigned Tabbed Creative Catalog
-/// and the 36-slot Survival Inventory &amp; Quick-Crafting window.
+/// Builds interactive buttons, draggable sliders (<c>2..64</c> chunk Render Distance), and pixel-exact <c>16x16</c>
+/// container slot cells aligned to <c>23w13a__or__b</c> <c>inventory.png</c> (<c>2x2</c>), <c>crafting_table.png</c> (<c>3x3</c>),
+/// and <c>furnace.png</c> (<c>3</c>-slot smelting).
 /// </summary>
 internal static class ClientInventoryScreenBuilder
 {
+    public const float ContainerGuiScale = 3.0f;
     public const int CreativeCols = 9;
     public const int CreativeVisibleRows = 4;
-    public const int SurvivalRecipeOffset = 1000;
+    public const int CraftGridCellBase = 300;
+    public const int CraftOutputCellId = 399;
+    public const int FurnaceInputCellId = 400;
+    public const int FurnaceFuelCellId = 401;
+    public const int FurnaceOutputCellId = 402;
     public const int CreativeHotbarCellOffset = 2000;
 
     private static readonly (string Id, string Label, ItemCategory? Filter)[] CreativeTabs =
@@ -36,6 +42,15 @@ internal static class ClientInventoryScreenBuilder
         var panelX = (width - panelW) * 0.5f;
         var panelY = MathF.Max(34.0f, (height - panelH) * 0.44f);
         return (panelX, panelY, panelW, panelH);
+    }
+
+    public static (float WinX, float WinY, float WinW, float WinH) GetContainerWindowBounds(float width, float height)
+    {
+        const float winW = 176.0f * ContainerGuiScale;
+        const float winH = 166.0f * ContainerGuiScale;
+        var winX = MathF.Round((width - winW) * 0.5f);
+        var winY = MathF.Max(22.0f, MathF.Round((height - winH) * 0.44f));
+        return (winX, winY, winW, winH);
     }
 
     public static void BuildCreativeCatalog(
@@ -94,7 +109,6 @@ internal static class ClientInventoryScreenBuilder
                 entry.TooltipDetail));
         }
 
-        // Interactive 9-slot Hotbar strip inside Creative panel
         var hotbarY = startY + (CreativeVisibleRows * (cellSize + gap)) + 12.0f;
         var tiles = player.Hotbar.ActiveSlotTiles.Span;
         var colors = player.Hotbar.ActiveSlotColors.Span;
@@ -128,84 +142,84 @@ internal static class ClientInventoryScreenBuilder
         buttons.Add(new UiButtonItem("resume", "Close (Esc)", panelX + panelW - 178.0f, doneY, 160.0f, 28.0f, Contains(mousePos, panelX + panelW - 178.0f, doneY, 160.0f, 28.0f)));
     }
 
-    public static void BuildSurvivalInventoryAndCrafting(
+    public static void BuildContainerScreen(
+        UiOverlayMode mode,
         float width,
         float height,
         Vector2 mousePos,
         ClientPlayerController player,
         IRegistry<ItemDefinition> items,
-        int selectedSwapSlot,
-        int recipeScrollRow,
+        IRegistry<ICraftingRecipe> recipes,
+        CraftingGrid grid2x2,
+        CraftingGrid grid3x3,
+        FurnaceBlockEntity? activeFurnace,
         List<UiButtonItem> buttons,
         List<UiInventoryCell> cells)
     {
-        var (panelX, panelY, panelW, panelH) = GetPanelBounds(width, height);
+        var (winX, winY, _, _) = GetContainerWindowBounds(width, height);
+        const float s = ContainerGuiScale;
+        const float slotSize = 16.0f * s;
         var inv = player.Hotbar.SurvivalInventory;
 
-        const float slotSize = 44.0f;
-        const float gap = 5.0f;
-        var invStartX = panelX + 20.0f;
-        var backpackStartY = panelY + 68.0f;
-
+        // 3x9 Main Inventory Storage at (8, 84) and 1x9 Hotbar at (8, 142) — identical across Inventory, Crafting Table & Furnace!
         for (var i = 9; i < PlayerInventory.MainSlotCount; i++)
         {
             var rel = i - 9;
             var col = rel % 9;
             var row = rel / 9;
-            var sx = invStartX + (col * (slotSize + gap));
-            var sy = backpackStartY + (row * (slotSize + gap));
-            AddSurvivalSlotCell(cells, inv, items, player.Hotbar, i, sx, sy, slotSize, mousePos, selectedSwapSlot);
+            AddStackCell(cells, inv.GetSlot(i), i, winX + ((8.0f + (col * 18.0f)) * s), winY + ((84.0f + (row * 18.0f)) * s), slotSize, mousePos, items, player.Hotbar, string.Empty);
         }
 
-        var hotbarY = backpackStartY + (3 * (slotSize + gap)) + 16.0f;
         for (var i = 0; i < PlayerInventory.HotbarSlotCount; i++)
         {
-            var sx = invStartX + (i * (slotSize + gap));
-            AddSurvivalSlotCell(cells, inv, items, player.Hotbar, i, sx, hotbarY, slotSize, mousePos, selectedSwapSlot);
+            AddStackCell(cells, inv.GetSlot(i), i, winX + ((8.0f + (i * 18.0f)) * s), winY + (142.0f * s), slotSize, mousePos, items, player.Hotbar, string.Empty);
         }
 
-        const int craftCols = 4;
-        const int craftRows = 4;
-        const float craftCell = 50.0f;
-        var craftStartX = panelX + 478.0f;
-        var craftStartY = panelY + 68.0f;
-
-        var entries = QuickCraftCatalog.Entries;
-        var maxRecipeRow = Math.Max(0, ((entries.Count + craftCols - 1) / craftCols) - craftRows);
-        var rowOffset = Math.Clamp(recipeScrollRow, 0, maxRecipeRow);
-        var firstIdx = rowOffset * craftCols;
-        var lastIdx = Math.Min(entries.Count, firstIdx + (craftCols * craftRows));
-
-        for (var rIdx = firstIdx; rIdx < lastIdx; rIdx++)
+        if (mode == UiOverlayMode.SurvivalInventory)
         {
-            var local = rIdx - firstIdx;
-            var col = local % craftCols;
-            var row = local / craftCols;
-            var cx = craftStartX + (col * (craftCell + 6.0f));
-            var cy = craftStartY + (row * (craftCell + 6.0f));
-            var recipe = entries[rIdx];
-            var canCraft = QuickCraftCatalog.CanCraft(inv, recipe, items);
+            string[] armorNames = ["Helmet Slot", "Chestplate Slot", "Leggings Slot", "Boots Slot"];
+            for (var a = 0; a < 4; a++)
+            {
+                var slotIdx = PlayerInventory.ArmorSlotOffset + a;
+                AddStackCell(cells, inv.GetSlot(slotIdx), slotIdx, winX + (8.0f * s), winY + ((8.0f + (a * 18.0f)) * s), slotSize, mousePos, items, player.Hotbar, armorNames[a]);
+            }
 
-            cells.Add(new UiInventoryCell(
-                SurvivalRecipeOffset + rIdx,
-                (canCraft ? "[CRAFT] " : "[NEED] ") + recipe.Label,
-                ClientHotbar.ResolveFallbackColor(recipe.OutputItemKey),
-                cx,
-                cy,
-                craftCell,
-                Contains(mousePos, cx, cy, craftCell, craftCell),
-                player.Hotbar.ResolveAtlasTile(recipe.OutputItemKey),
-                recipe.OutputCount,
-                canCraft ? "Click to craft directly into your inventory!" : "Mine blocks & ores to gather required materials",
-                IsSelected: canCraft));
+            AddStackCell(cells, inv.GetSlot(PlayerInventory.OffhandSlotIndex), PlayerInventory.OffhandSlotIndex, winX + (77.0f * s), winY + (62.0f * s), slotSize, mousePos, items, player.Hotbar, "Offhand Slot");
+
+            for (var r = 0; r < 2; r++)
+            {
+                for (var c = 0; c < 2; c++)
+                {
+                    var cellId = CraftGridCellBase + (r * 2) + c;
+                    AddStackCell(cells, grid2x2.GetSlot(c, r), cellId, winX + ((98.0f + (c * 18.0f)) * s), winY + ((18.0f + (r * 18.0f)) * s), slotSize, mousePos, items, player.Hotbar, "2x2 Crafting Input");
+                }
+            }
+
+            var preview2 = BuiltInRecipes.FindMatch(grid2x2, recipes)?.Output ?? ItemStack.Empty;
+            AddStackCell(cells, preview2, CraftOutputCellId, winX + (154.0f * s), winY + (28.0f * s), slotSize, mousePos, items, player.Hotbar, "Crafted Output (Left-Click: Take 1 | Shift/Right-Click: Craft All)");
+        }
+        else if (mode == UiOverlayMode.CraftingTableScreen)
+        {
+            for (var r = 0; r < 3; r++)
+            {
+                for (var c = 0; c < 3; c++)
+                {
+                    var cellId = CraftGridCellBase + (r * 3) + c;
+                    AddStackCell(cells, grid3x3.GetSlot(c, r), cellId, winX + ((30.0f + (c * 18.0f)) * s), winY + ((17.0f + (r * 18.0f)) * s), slotSize, mousePos, items, player.Hotbar, "3x3 Crafting Table Input");
+                }
+            }
+
+            var preview3 = BuiltInRecipes.FindMatch(grid3x3, recipes)?.Output ?? ItemStack.Empty;
+            AddStackCell(cells, preview3, CraftOutputCellId, winX + (124.0f * s), winY + (35.0f * s), slotSize, mousePos, items, player.Hotbar, "Crafted Output (Left-Click: Take 1 | Right-Click: Craft Stack)");
+        }
+        else if (mode == UiOverlayMode.FurnaceScreen && activeFurnace is not null)
+        {
+            AddStackCell(cells, activeFurnace.InputSlot, FurnaceInputCellId, winX + (56.0f * s), winY + (17.0f * s), slotSize, mousePos, items, player.Hotbar, "Smelting Input (Raw Ore, Sand, Clay, Raw Meat, Log)");
+            AddStackCell(cells, activeFurnace.FuelSlot, FurnaceFuelCellId, winX + (56.0f * s), winY + (53.0f * s), slotSize, mousePos, items, player.Hotbar, "Fuel Slot (Coal, Charcoal, Planks, Logs, Sticks)");
+            AddStackCell(cells, activeFurnace.OutputSlot, FurnaceOutputCellId, winX + (116.0f * s), winY + (35.0f * s), slotSize, mousePos, items, player.Hotbar, "Smelted Output");
         }
 
-        buttons.Add(new UiButtonItem("scroll_up", "Recipes ^", craftStartX, craftStartY + 232.0f, 106.0f, 28.0f, Contains(mousePos, craftStartX, craftStartY + 232.0f, 106.0f, 28.0f)));
-        buttons.Add(new UiButtonItem("scroll_down", "Recipes v", craftStartX + 114.0f, craftStartY + 232.0f, 106.0f, 28.0f, Contains(mousePos, craftStartX + 114.0f, craftStartY + 232.0f, 106.0f, 28.0f)));
-
-        var doneY = panelY + panelH - 36.0f;
-        buttons.Add(new UiButtonItem("switch_to_creative", "Creative Mode", panelX + 20.0f, doneY, 175.0f, 28.0f, Contains(mousePos, panelX + 20.0f, doneY, 175.0f, 28.0f)));
-        buttons.Add(new UiButtonItem("resume", "Close (Esc / E)", panelX + panelW - 188.0f, doneY, 170.0f, 28.0f, Contains(mousePos, panelX + panelW - 188.0f, doneY, 170.0f, 28.0f)));
+        _ = buttons;
     }
 
     public static List<int> GetFilteredCatalogIndices(ClientHotbar hotbar, int tabIndex, string searchQuery)
@@ -235,54 +249,6 @@ internal static class ClientInventoryScreenBuilder
         return result;
     }
 
-    private static void AddSurvivalSlotCell(
-        List<UiInventoryCell> cells,
-        PlayerInventory inv,
-        IRegistry<ItemDefinition> items,
-        ClientHotbar hotbar,
-        int slotIdx,
-        float x,
-        float y,
-        float size,
-        Vector2 mousePos,
-        int selectedSwapSlot)
-    {
-        var stack = inv.GetSlot(slotIdx);
-        if (stack.IsEmpty)
-        {
-            cells.Add(new UiInventoryCell(
-                slotIdx,
-                $"Empty Slot {slotIdx + 1}",
-                new Vector3(0.20f, 0.21f, 0.24f),
-                x,
-                y,
-                size,
-                Contains(mousePos, x, y, size, size),
-                AtlasTileIndex: -1,
-                StackCount: 0,
-                "Click an item slot then click here to move it",
-                IsSelected: slotIdx == selectedSwapSlot));
-            return;
-        }
-
-        var def = items.GetById(stack.ItemId);
-        cells.Add(new UiInventoryCell(
-            slotIdx,
-            $"{def.EffectiveName} x{stack.Count}",
-            ClientHotbar.ResolveFallbackColor(def.Key),
-            x,
-            y,
-            size,
-            Contains(mousePos, x, y, size, size),
-            hotbar.ResolveAtlasTile(def.Key),
-            stack.Count,
-            hotbar.BuildTooltipDetail(def.Key),
-            IsSelected: slotIdx == selectedSwapSlot));
-    }
-
-    private static bool Contains(Vector2 pt, float x, float y, float w, float h) =>
-        pt.X >= x && pt.X <= x + w && pt.Y >= y && pt.Y <= y + h;
-
     public static void BuildStandardMenuButtons(
         UiOverlayMode mode,
         float width,
@@ -298,11 +264,15 @@ internal static class ClientInventoryScreenBuilder
     {
         var cx = width * 0.5f;
         const float bw = 420.0f;
-        const float bh = 44.0f;
+        const float bh = 42.0f;
         var bx = cx - (bw * 0.5f);
 
-        void AddBtn(string id, string label, float x, float y, float w = bw, bool isInput = false, bool focused = false) =>
-            buttons.Add(new UiButtonItem(id, label, x, y, w, bh, Contains(mousePos, x, y, w, bh), isInput, focused));
+        void AddBtn(string id, string label, float x, float y, float w = bw, bool isInput = false, bool focused = false, bool isSlider = false, float sliderVal = 0.0f) =>
+            buttons.Add(new UiButtonItem(id, label, x, y, w, bh, Contains(mousePos, x, y, w, bh), isInput, focused)
+            {
+                IsSlider = isSlider,
+                SliderNormalizedValue = sliderVal,
+            });
 
         switch (mode)
         {
@@ -310,45 +280,87 @@ internal static class ClientInventoryScreenBuilder
                 var ty = MathF.Max(205.0f, height * 0.38f);
                 AddBtn("singleplayer", "Singleplayer (Creative)", bx, ty, 204.0f);
                 AddBtn("singleplayer_survival", "Singleplayer (Survival)", bx + 216.0f, ty, 204.0f);
-                AddBtn("open_multiplayer", "Multiplayer (PvP & Friends)", bx, ty + 56.0f);
-                AddBtn("open_options", "Options...", bx, ty + 112.0f, 204.0f);
-                AddBtn("quit_game", "Quit Game", bx + 216.0f, ty + 112.0f, 204.0f);
+                AddBtn("open_multiplayer", "Multiplayer (PvP & Friends)", bx, ty + 54.0f);
+                AddBtn("open_options", "Options...", bx, ty + 108.0f, 204.0f);
+                AddBtn("quit_game", "Quit Game", bx + 216.0f, ty + 108.0f, 204.0f);
                 break;
 
             case UiOverlayMode.MultiplayerMenu:
                 var my = MathF.Max(165.0f, height * 0.28f);
                 AddBtn("focus_endpoint", "Server: " + serverEndpointInput, bx, my, bw, isInput: true, focused: focusedInputField == 0);
-                AddBtn("focus_username", "Name:   " + usernameInput, bx, my + 56.0f, bw, isInput: true, focused: focusedInputField == 1);
-                AddBtn("join_server", "Join Friend's Server", bx, my + 122.0f);
-                AddBtn("host_and_join", "Host Local Server (25565) & Play", bx, my + 178.0f);
-                AddBtn("back_to_title", "Back to Title Screen", bx, my + 242.0f);
+                AddBtn("focus_username", "Name:   " + usernameInput, bx, my + 54.0f, bw, isInput: true, focused: focusedInputField == 1);
+                AddBtn("join_server", "Join Friend's Server", bx, my + 118.0f);
+                AddBtn("host_and_join", "Host Local Server (25565) & Play", bx, my + 172.0f);
+                AddBtn("back_to_title", "Back to Title Screen", bx, my + 234.0f);
                 break;
 
             case UiOverlayMode.OptionsMenu:
-                var oy = MathF.Max(160.0f, height * 0.25f);
+                var oy = MathF.Max(150.0f, height * 0.24f);
+                var vdNorm = Math.Clamp((activeViewDistance - 2.0f) / 62.0f, 0.0f, 1.0f);
+                var fovNorm = Math.Clamp((fovDegrees - 70.0f) / 40.0f, 0.0f, 1.0f);
+                var volNorm = Math.Clamp(player.MasterVolume, 0.0f, 1.0f);
+                var sensNorm = Math.Clamp((player.MouseSensitivity - 0.03f) / 0.22f, 0.0f, 1.0f);
+
                 AddBtn("toggle_gamemode", $"Game Mode: {player.Mode} (F4)", bx, oy);
-                AddBtn("cycle_fov", $"FOV: {fovDegrees:F0} deg", bx, oy + 52.0f);
-                AddBtn("cycle_view_dist", $"Render Distance: {activeViewDistance} chunks", bx, oy + 104.0f);
-                AddBtn("cycle_volume", $"Sound Volume: {(int)(player.MasterVolume * 100.0f)}%", bx, oy + 156.0f);
-                AddBtn("cycle_sensitivity", $"Mouse Sensitivity: {(int)(player.MouseSensitivity * 1000.0f)}", bx, oy + 208.0f);
-                AddBtn("options_done", "Done", bx, oy + 266.0f);
+                AddBtn("slider_view_dist", $"Render Distance: {activeViewDistance} Chunks", bx, oy + 50.0f, bw, isSlider: true, sliderVal: vdNorm);
+                AddBtn("slider_fov", $"FOV: {fovDegrees:F0} deg", bx, oy + 100.0f, bw, isSlider: true, sliderVal: fovNorm);
+                AddBtn("slider_volume", $"Sound Volume: {(int)MathF.Round(player.MasterVolume * 100.0f)}%", bx, oy + 150.0f, bw, isSlider: true, sliderVal: volNorm);
+                AddBtn("slider_sensitivity", $"Mouse Sensitivity: {(int)MathF.Round(player.MouseSensitivity * 1000.0f)}", bx, oy + 200.0f, bw, isSlider: true, sliderVal: sensNorm);
+                AddBtn("options_done", "Done", bx, oy + 258.0f);
                 break;
 
             case UiOverlayMode.PauseMenu:
                 var py = MathF.Max(175.0f, height * 0.28f);
                 AddBtn("resume", "Back to Game", bx, py);
-                AddBtn("toggle_gamemode", $"Switch Mode (Current: {player.Mode})", bx, py + 54.0f);
-                var invLabel = player.Mode == GameMode.Survival ? "Survival Inventory & Crafting (E)" : "Creative Catalog (E)";
-                AddBtn("open_inventory", invLabel, bx, py + 108.0f);
-                AddBtn("open_options", "Options...", bx, py + 162.0f);
-                AddBtn("save_and_title", "Save & Quit to Title", bx, py + 220.0f);
+                AddBtn("toggle_gamemode", $"Switch Mode (Current: {player.Mode})", bx, py + 52.0f);
+                var invLabel = player.Mode == GameMode.Survival ? "Survival Inventory & 2x2 Crafting (E)" : "Creative Catalog (E)";
+                AddBtn("open_inventory", invLabel, bx, py + 104.0f);
+                AddBtn("open_options", "Options...", bx, py + 156.0f);
+                AddBtn("save_and_title", "Save & Quit to Title", bx, py + 212.0f);
                 break;
 
             case UiOverlayMode.DeathScreen:
                 var dy = MathF.Max(260.0f, height * 0.48f);
                 AddBtn("respawn_player", "Respawn", bx, dy);
-                AddBtn("save_and_title", "Title Screen", bx, dy + 58.0f);
+                AddBtn("save_and_title", "Title Screen", bx, dy + 56.0f);
                 break;
         }
     }
+
+    private static void AddStackCell(
+        List<UiInventoryCell> cells,
+        ItemStack stack,
+        int cellId,
+        float x,
+        float y,
+        float size,
+        Vector2 mousePos,
+        IRegistry<ItemDefinition> items,
+        ClientHotbar hotbar,
+        string emptyHint)
+    {
+        var hovered = Contains(mousePos, x, y, size, size);
+        if (stack.IsEmpty)
+        {
+            cells.Add(new UiInventoryCell(cellId, emptyHint, new Vector3(0.35f, 0.35f, 0.37f), x, y, size, hovered, AtlasTileIndex: -1, StackCount: 0));
+            return;
+        }
+
+        var def = items.GetById(stack.ItemId);
+        var title = stack.Count > 1 ? $"{def.EffectiveName} (x{stack.Count})" : def.EffectiveName;
+        cells.Add(new UiInventoryCell(
+            cellId,
+            title,
+            ClientHotbar.ResolveFallbackColor(def.Key),
+            x,
+            y,
+            size,
+            hovered,
+            hotbar.ResolveAtlasTile(def.Key),
+            stack.Count,
+            hotbar.BuildTooltipDetail(def.Key)));
+    }
+
+    private static bool Contains(Vector2 pt, float x, float y, float w, float h) =>
+        pt.X >= x && pt.X <= x + w && pt.Y >= y && pt.Y <= y + h;
 }

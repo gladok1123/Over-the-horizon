@@ -9,17 +9,29 @@ using OverHorizon.World.Storage;
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Offloads background greedy chunk meshing onto a dedicated worker task and uploads completed meshes on the render thread.
+/// Offloads multi-core parallel greedy + shaped chunk meshing onto background worker threads
+/// and budgets GPU VAO/VBO uploads per render frame so even 64-chunk view distances stay stall-free.
 /// </summary>
 internal sealed class ClientAsyncMeshQueue : IAsyncDisposable
 {
+    private const int MaxBatchDequeue = 24;
+    private const int MaxGpuColumnUploadsPerFrame = 14;
+
     private readonly IBlockRegistry _blocks;
     private readonly TextureAtlasData _atlas;
-    private readonly Channel<IReadOnlyList<ChunkNeighborhood>> _jobs = Channel.CreateUnbounded<IReadOnlyList<ChunkNeighborhood>>();
+    private readonly Channel<IReadOnlyList<ChunkNeighborhood>> _jobs = Channel.CreateBounded<IReadOnlyList<ChunkNeighborhood>>(
+        new BoundedChannelOptions(16)
+        {
+            SingleReader = true,
+            SingleWriter = true,
+            FullMode = BoundedChannelFullMode.Wait,
+        });
+
     private readonly Channel<(ChunkPos Position, IReadOnlyList<SectionMeshData> Sections)> _completed =
         Channel.CreateUnbounded<(ChunkPos, IReadOnlyList<SectionMeshData>)>();
 
     private Task? _workerTask;
+    private int _inFlightBatches;
 
     public ClientAsyncMeshQueue(IBlockRegistry blocks, TextureAtlasData atlas)
     {
@@ -30,21 +42,27 @@ internal sealed class ClientAsyncMeshQueue : IAsyncDisposable
     public void Start(CancellationToken cancellationToken) =>
         _workerTask = PumpJobsAsync(cancellationToken);
 
-    public void DispatchAndUpload(ClientWorldCache worldCache, SilkOpenGlRenderSubsystem silkRenderer)
+    public void DispatchAndUpload(ClientWorldCache worldCache, SilkOpenGlRenderSubsystem silkRenderer, ChunkPos? playerChunk = null)
     {
-        var dirty = worldCache.DequeueDirtyNeighborhoods(maxColumns: 4);
-        if (dirty.Count > 0)
+        if (Volatile.Read(ref _inFlightBatches) < 4)
         {
-            _ = _jobs.Writer.TryWrite(dirty);
+            var dirty = worldCache.DequeueDirtyNeighborhoods(MaxBatchDequeue, playerChunk);
+            if (dirty.Count > 0 && _jobs.Writer.TryWrite(dirty))
+            {
+                Interlocked.Increment(ref _inFlightBatches);
+            }
         }
 
-        while (_completed.Reader.TryRead(out var item))
+        var uploadedColumns = 0;
+        while (uploadedColumns < MaxGpuColumnUploadsPerFrame && _completed.Reader.TryRead(out var item))
         {
             silkRenderer.RemoveChunkMeshes(item.Position);
             foreach (var mesh in item.Sections)
             {
                 silkRenderer.UploadOrReplaceSectionMesh(mesh);
             }
+
+            uploadedColumns++;
         }
     }
 
@@ -74,11 +92,18 @@ internal sealed class ClientAsyncMeshQueue : IAsyncDisposable
         {
             await foreach (var batch in _jobs.Reader.ReadAllAsync(ct).ConfigureAwait(false))
             {
-                foreach (var nb in batch)
+                try
                 {
-                    ct.ThrowIfCancellationRequested();
-                    var sections = ParallelChunkMesher.MeshColumn(in nb, _blocks, _atlas);
-                    _ = _completed.Writer.TryWrite((nb.Center.Position, sections));
+                    Parallel.For(0, batch.Count, new ParallelOptions { CancellationToken = ct }, i =>
+                    {
+                        var nb = batch[i];
+                        var sections = ParallelChunkMesher.MeshColumn(in nb, _blocks, _atlas);
+                        _ = _completed.Writer.TryWrite((nb.Center.Position, sections));
+                    });
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _inFlightBatches);
                 }
             }
         }

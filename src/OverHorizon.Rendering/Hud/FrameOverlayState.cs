@@ -4,7 +4,8 @@ using OverHorizon.Core.Math;
 namespace OverHorizon.Rendering.Hud;
 
 /// <summary>
-/// Per-frame dynamic 3D world overlays, underwater optics, Survival HUD stats, and 2D menu state passed to <see cref="IRenderSubsystem"/>.
+/// Per-frame dynamic 3D world overlays, <c>0..15</c> hand &amp; dynamic torch lighting, 3D mobs,
+/// container GUI state, and 2D menu state passed to <see cref="IRenderSubsystem"/>.
 /// </summary>
 public sealed record FrameOverlayState(
     BlockPos? TargetedBlock,
@@ -39,4 +40,22 @@ public sealed record FrameOverlayState(
     bool HeldIsEmpty = false,
     ReadOnlyMemory<int> HotbarSlotTiles = default,
     ReadOnlyMemory<int> HotbarSlotCounts = default,
-    string CreativeSearchQuery = "");
+    string CreativeSearchQuery = "",
+    float HeldLightBrightness = 1.0f,
+    float HeldTorchLightLevel = 0.0f,
+    bool HeldIsBlock3D = false,
+    bool HeldIsTorchStyle = false,
+    int HeldTopTile = -1,
+    int HeldSideTile = -1,
+    int HeldFrontTile = -1,
+    int HeldBottomTile = -1,
+    int HeldItemSpriteTile = -1,
+    int CursorItemTile = -1,
+    int CursorItemCount = 0,
+    string CursorItemName = "",
+    Vector2 CursorScreenPos = default,
+    int ArmorDefensePoints = 0,
+    float FurnaceBurnNormalized = 0.0f,
+    float FurnaceCookNormalized = 0.0f,
+    IReadOnlyList<WorldMobVisual>? WorldMobs = null,
+    bool IsCreativeFlying = false);

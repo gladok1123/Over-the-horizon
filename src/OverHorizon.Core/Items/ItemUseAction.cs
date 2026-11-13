@@ -22,4 +22,10 @@ public enum ItemUseAction : byte
 
     /// <summary>Ignites targeted TNT or strikes sparks.</summary>
     IgniteTnt = 5,
+
+    /// <summary>Tills targeted Dirt or Grass Block into Farmland (Hoe).</summary>
+    TillSoil = 6,
+
+    /// <summary>Equips this armor piece into the matching player armor slot (<c>36..39</c>).</summary>
+    EquipArmor = 7,
 }

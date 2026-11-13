@@ -1,0 +1,86 @@
+using OverHorizon.Core.Blocks;
+using OverHorizon.Core.Items;
+using OverHorizon.Core.Registry;
+
+namespace OverHorizon.Rendering.Textures;
+
+/// <summary>
+/// Maps standalone items, tools, swords, hoes, armor sets, foods, and cutout block-items
+/// to their <c>128..197</c> <c>16x16</c> tile slots and <c>23w13a__or__b</c> PNG filenames.
+/// </summary>
+internal static class ProceduralItemTileManifest
+{
+    public static readonly (ResourceKey ItemKey, ushort Tile, string PngStem)[] BuiltInItemTiles =
+    [
+        (BuiltInItems.Stick, 128, "stick"),
+        (BuiltInItems.Coal, 129, "coal"),
+        (BuiltInItems.IronIngot, 130, "iron_ingot"),
+        (BuiltInItems.GoldIngot, 131, "gold_ingot"),
+        (BuiltInItems.Diamond, 132, "diamond"),
+        (BuiltInItems.WoodenSword, 133, "wooden_sword"),
+        (BuiltInItems.StoneSword, 134, "stone_sword"),
+        (BuiltInItems.GoldenSword, 135, "golden_sword"),
+        (BuiltInItems.IronSword, 136, "iron_sword"),
+        (BuiltInItems.DiamondSword, 137, "diamond_sword"),
+        (BuiltInItems.NetheriteSword, 138, "netherite_sword"),
+        (BuiltInItems.WoodenPickaxe, 139, "wooden_pickaxe"),
+        (BuiltInItems.StonePickaxe, 140, "stone_pickaxe"),
+        (BuiltInItems.IronPickaxe, 141, "iron_pickaxe"),
+        (BuiltInItems.DiamondPickaxe, 142, "diamond_pickaxe"),
+        (BuiltInItems.IronAxe, 143, "iron_axe"),
+        (BuiltInItems.DiamondAxe, 144, "diamond_axe"),
+        (BuiltInItems.IronShovel, 145, "iron_shovel"),
+        (BuiltInItems.DiamondShovel, 146, "diamond_shovel"),
+        (BuiltInItems.Shears, 147, "shears"),
+        (BuiltInItems.FlintAndSteel, 148, "flint_and_steel"),
+        (BuiltInItems.Bucket, 149, "bucket"),
+        (BuiltInItems.WaterBucket, 150, "water_bucket"),
+        (BuiltInItems.Apple, 151, "apple"),
+        (BuiltInItems.Bread, 152, "bread"),
+        (BuiltInItems.CookedBeef, 153, "cooked_beef"),
+        (BuiltInItems.GoldenApple, 154, "golden_apple"),
+        (BuiltInItems.Charcoal, 155, "charcoal"),
+        (BuiltInItems.RawIron, 156, "raw_iron"),
+        (BuiltInItems.RawGold, 157, "raw_gold"),
+        (BuiltInItems.RawCopper, 158, "raw_copper"),
+        (BuiltInItems.CopperIngot, 159, "copper_ingot"),
+        (BuiltInItems.Emerald, 160, "emerald"),
+        (BuiltInItems.LapisLazuli, 161, "lapis_lazuli"),
+        (BuiltInItems.Redstone, 162, "redstone"),
+        (BuiltInItems.NetheriteIngot, 163, "netherite_ingot"),
+        (BuiltInItems.Flint, 164, "flint"),
+        (BuiltInItems.Bone, 165, "bone"),
+        (BuiltInItems.String, 166, "string"),
+        (BuiltInItems.Gunpowder, 167, "gunpowder"),
+        (BuiltInItems.SpiderEye, 168, "spider_eye"),
+        (BuiltInItems.Leather, 169, "leather"),
+        (BuiltInItems.Feather, 170, "feather"),
+        (BuiltInItems.GoldenPickaxe, 171, "golden_pickaxe"),
+        (BuiltInItems.NetheritePickaxe, 172, "netherite_pickaxe"),
+        (BuiltInItems.WoodenAxe, 173, "wooden_axe"),
+        (BuiltInItems.StoneAxe, 174, "stone_axe"),
+        (BuiltInItems.WoodenShovel, 175, "wooden_shovel"),
+        (BuiltInItems.StoneShovel, 176, "stone_shovel"),
+        (BuiltInItems.WoodenHoe, 177, "wooden_hoe"),
+        (BuiltInItems.StoneHoe, 178, "stone_hoe"),
+        (BuiltInItems.IronHoe, 179, "iron_hoe"),
+        (BuiltInItems.DiamondHoe, 180, "diamond_hoe"),
+        (BuiltInItems.IronHelmet, 181, "iron_helmet"),
+        (BuiltInItems.IronChestplate, 182, "iron_chestplate"),
+        (BuiltInItems.IronLeggings, 183, "iron_leggings"),
+        (BuiltInItems.IronBoots, 184, "iron_boots"),
+        (BuiltInItems.DiamondHelmet, 185, "diamond_helmet"),
+        (BuiltInItems.DiamondChestplate, 186, "diamond_chestplate"),
+        (BuiltInItems.DiamondLeggings, 187, "diamond_leggings"),
+        (BuiltInItems.DiamondBoots, 188, "diamond_boots"),
+        (BuiltInItems.RawPorkchop, 189, "porkchop"),
+        (BuiltInItems.CookedPorkchop, 190, "cooked_porkchop"),
+        (BuiltInItems.RawBeef, 191, "beef"),
+        (BuiltInItems.RawChicken, 192, "chicken"),
+        (BuiltInItems.CookedChicken, 193, "cooked_chicken"),
+        (BuiltInItems.RawMutton, 194, "mutton"),
+        (BuiltInItems.CookedMutton, 195, "cooked_mutton"),
+        (BuiltInItems.RottenFlesh, 196, "rotten_flesh"),
+        (BuiltInBlocks.Lantern, 197, "lantern"),
+    ];
+}

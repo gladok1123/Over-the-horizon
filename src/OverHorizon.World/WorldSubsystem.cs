@@ -10,7 +10,7 @@ namespace OverHorizon.World;
 /// </summary>
 public sealed class WorldSubsystem : IWorldSubsystem
 {
-    private const int DefaultMaxChunkLoadsPerTick = 8;
+    private const int DefaultMaxChunkLoadsPerTick = 24;
     private const int AutoSaveIntervalTicks = 200; // Every 10 seconds at 20 TPS
 
     private readonly ChunkManager _chunkManager;

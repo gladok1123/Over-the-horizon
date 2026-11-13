@@ -25,5 +25,7 @@ saves/
 assets/
 minecraft-assets/
 resourcepacks/
+*.rar
+
 
 

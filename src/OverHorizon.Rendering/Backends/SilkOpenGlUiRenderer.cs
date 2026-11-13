@@ -2,12 +2,15 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using OverHorizon.Rendering.Camera;
 using OverHorizon.Rendering.Hud;
+using OverHorizon.Rendering.Textures;
 using Silk.NET.OpenGL;
 
 namespace OverHorizon.Rendering.Backends;
 
 /// <summary>
-/// Batched OpenGL 3.3 Core pixel-space 2D UI, bitmap-font, and <c>16x16</c> item/block atlas sprite renderer.
+/// Batched OpenGL 3.3 Core pixel-space 2D UI renderer binding:
+/// Unit 0 = bitmap font &amp; solid quads, Unit 1 = <c>256x256</c> block/item sprites,
+/// Unit 2 = <c>512x768</c> real <c>23w13a__or__b</c> GUI sheets (<c>widgets.png</c>, <c>icons.png</c>, <c>slider.png</c>, <c>container/*.png</c>).
 /// </summary>
 internal sealed class SilkOpenGlUiRenderer : IDisposable
 {
@@ -38,13 +41,19 @@ internal sealed class SilkOpenGlUiRenderer : IDisposable
 
         uniform sampler2D uFontAtlas;
         uniform sampler2D uItemAtlas;
+        uniform sampler2D uGuiAtlas;
 
         out vec4 FragColor;
 
         void main()
         {
             vec4 sampleCol;
-            if (vUv.x <= -0.5)
+            if (vUv.x <= -2.5)
+            {
+                vec2 guiUv = -vUv - vec2(3.0);
+                sampleCol = texture(uGuiAtlas, guiUv);
+            }
+            else if (vUv.x <= -0.5)
             {
                 vec2 itemUv = -vUv - vec2(1.0);
                 sampleCol = texture(uItemAtlas, itemUv);
@@ -68,20 +77,24 @@ internal sealed class SilkOpenGlUiRenderer : IDisposable
     private readonly int _locViewport;
     private readonly int _locFontAtlas;
     private readonly int _locItemAtlas;
+    private readonly int _locGuiAtlas;
     private readonly uint _fontTexture;
+    private readonly uint _guiTexture;
     private readonly uint _vao;
     private readonly uint _vbo;
-    private readonly List<TexturedUiVertex> _vertices = new(8192);
+    private readonly List<TexturedUiVertex> _vertices = new(12288);
     private bool _disposed;
 
-    public unsafe SilkOpenGlUiRenderer(GL gl)
+    public unsafe SilkOpenGlUiRenderer(GL gl, string? externalAssetsPath = null)
     {
         _gl = gl;
         _program = CompileAndLink(gl);
         _locViewport = gl.GetUniformLocation(_program, "uViewport");
         _locFontAtlas = gl.GetUniformLocation(_program, "uFontAtlas");
         _locItemAtlas = gl.GetUniformLocation(_program, "uItemAtlas");
-        _fontTexture = UploadFontTexture(gl);
+        _locGuiAtlas = gl.GetUniformLocation(_program, "uGuiAtlas");
+        _fontTexture = UploadRgbaTexture(gl, PixelFontGlyphs.CreateRgbaAtlas(), PixelFontGlyphs.AtlasWidth, PixelFontGlyphs.AtlasHeight);
+        _guiTexture = UploadRgbaTexture(gl, GuiTextureAtlasGenerator.Generate(externalAssetsPath), GuiTextureAtlasGenerator.AtlasWidth, GuiTextureAtlasGenerator.AtlasHeight);
 
         _vao = gl.GenVertexArray();
         _vbo = gl.GenBuffer();
@@ -119,12 +132,16 @@ internal sealed class SilkOpenGlUiRenderer : IDisposable
         _gl.Uniform2(_locViewport, width, height);
         _gl.Uniform1(_locFontAtlas, 0);
         _gl.Uniform1(_locItemAtlas, 1);
+        _gl.Uniform1(_locGuiAtlas, 2);
 
         _gl.ActiveTexture(TextureUnit.Texture0);
         _gl.BindTexture(TextureTarget.Texture2D, _fontTexture);
 
         _gl.ActiveTexture(TextureUnit.Texture1);
         _gl.BindTexture(TextureTarget.Texture2D, itemAtlasTexture != 0 ? itemAtlasTexture : _fontTexture);
+
+        _gl.ActiveTexture(TextureUnit.Texture2);
+        _gl.BindTexture(TextureTarget.Texture2D, _guiTexture);
 
         _gl.BindVertexArray(_vao);
         _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _vbo);
@@ -166,6 +183,11 @@ internal sealed class SilkOpenGlUiRenderer : IDisposable
             _gl.DeleteBuffer(_vbo);
         }
 
+        if (_guiTexture != 0)
+        {
+            _gl.DeleteTexture(_guiTexture);
+        }
+
         if (_fontTexture != 0)
         {
             _gl.DeleteTexture(_fontTexture);
@@ -179,23 +201,13 @@ internal sealed class SilkOpenGlUiRenderer : IDisposable
         _disposed = true;
     }
 
-    private static unsafe uint UploadFontTexture(GL gl)
+    private static unsafe uint UploadRgbaTexture(GL gl, byte[] rgba, uint width, uint height)
     {
         var tex = gl.GenTexture();
         gl.BindTexture(TextureTarget.Texture2D, tex);
-        var rgba = PixelFontGlyphs.CreateRgbaAtlas();
         fixed (byte* ptr = rgba)
         {
-            gl.TexImage2D(
-                TextureTarget.Texture2D,
-                0,
-                InternalFormat.Rgba8,
-                PixelFontGlyphs.AtlasWidth,
-                PixelFontGlyphs.AtlasHeight,
-                0,
-                PixelFormat.Rgba,
-                PixelType.UnsignedByte,
-                ptr);
+            gl.TexImage2D(TextureTarget.Texture2D, 0, InternalFormat.Rgba8, width, height, 0, PixelFormat.Rgba, PixelType.UnsignedByte, ptr);
         }
 
         gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Nearest);

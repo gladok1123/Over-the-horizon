@@ -3,7 +3,7 @@ using OverHorizon.Core.Math;
 namespace OverHorizon.Physics;
 
 /// <summary>
-/// Deterministic single-entity kinematic integrator combining gravity, fluid buoyancy/currents, swept collisions, and drag.
+/// Deterministic single-entity kinematic integrator combining gravity, Creative flight, fluid buoyancy/currents, swept collisions, and drag.
 /// </summary>
 public static class KinematicsIntegrator
 {
@@ -18,6 +18,7 @@ public static class KinematicsIntegrator
     /// <param name="height">Vertical entity height.</param>
     /// <param name="deltaSeconds">Simulation step duration in seconds (typically <c>0.05</c>).</param>
     /// <param name="swimUp">When <see langword="true"/> in fluid, applies upward swimming propulsion instead of gentle sinking.</param>
+    /// <param name="isFlying">When <see langword="true"/>, bypasses gravity and applies smooth Creative flight damping.</param>
     /// <returns>Resolved <see cref="PhysicsStepResult"/>.</returns>
     public static PhysicsStepResult StepEntity(
         IVoxelCollisionReader world,
@@ -26,14 +27,14 @@ public static class KinematicsIntegrator
         double width,
         double height,
         double deltaSeconds,
-        bool swimUp = false)
+        bool swimUp = false,
+        bool isFlying = false)
     {
         ArgumentNullException.ThrowIfNull(world);
 
         var footBlock = feetPosition.ToBlockPos();
         if (!world.IsColumnLoaded(footBlock))
         {
-            // Freeze physics in unloaded chunks so entities never fall into unloaded void.
             return new PhysicsStepResult(feetPosition, Vec3d.Zero, OnGround: false, CollidedHorizontally: false, InFluid: false);
         }
 
@@ -44,32 +45,33 @@ public static class KinematicsIntegrator
         var vy = velocity.Y;
         var vz = velocity.Z;
 
-        if (inFluid)
+        if (!isFlying)
         {
-            // Authentic water physics: gentle downward sink by default; smooth upward swim only when holding Jump.
-            if (swimUp)
+            if (inFluid)
             {
-                vy = Math.Min(PhysicsConstants.MaxWaterSwimUpSpeed, vy + (PhysicsConstants.WaterSwimUpAcceleration * deltaSeconds));
+                if (swimUp)
+                {
+                    vy = Math.Min(PhysicsConstants.MaxWaterSwimUpSpeed, vy + (PhysicsConstants.WaterSwimUpAcceleration * deltaSeconds));
+                }
+                else
+                {
+                    vy = Math.Max(PhysicsConstants.MaxWaterSinkSpeed, vy + (PhysicsConstants.WaterGravityAcceleration * deltaSeconds));
+                }
+
+                vx += currentPush.X * PhysicsConstants.FluidCurrentAcceleration * deltaSeconds;
+                vz += currentPush.Z * PhysicsConstants.FluidCurrentAcceleration * deltaSeconds;
             }
             else
             {
-                vy = Math.Max(PhysicsConstants.MaxWaterSinkSpeed, vy + (PhysicsConstants.WaterGravityAcceleration * deltaSeconds));
+                vy = Math.Max(
+                    PhysicsConstants.TerminalVelocity,
+                    vy + (PhysicsConstants.GravityAcceleration * deltaSeconds));
             }
-
-            vx += currentPush.X * PhysicsConstants.FluidCurrentAcceleration * deltaSeconds;
-            vz += currentPush.Z * PhysicsConstants.FluidCurrentAcceleration * deltaSeconds;
-        }
-        else
-        {
-            vy = Math.Max(
-                PhysicsConstants.TerminalVelocity,
-                vy + (PhysicsConstants.GravityAcceleration * deltaSeconds));
         }
 
         var requestedMove = new Vec3d(vx * deltaSeconds, vy * deltaSeconds, vz * deltaSeconds);
         var (resolvedBox, actualMove, onGround, hitHorizontal) = VoxelSweptCollider.MoveAndCollide(world, box, requestedMove);
 
-        // Zero blocked velocity components upon impact.
         if (Math.Abs(actualMove.Y - requestedMove.Y) > 1e-7)
         {
             vy = 0.0;
@@ -85,10 +87,18 @@ public static class KinematicsIntegrator
             vz = 0.0;
         }
 
-        // Apply medium-appropriate damping scaled to 20 TPS so high-FPS clients preserve exact jump height & inertia.
         var tickScale = deltaSeconds * 20.0;
         var exactSingleTick = Math.Abs(tickScale - 1.0) <= 1e-6;
-        if (inFluid)
+        if (isFlying)
+        {
+            var flightRetention = exactSingleTick
+                ? PhysicsConstants.FlightDragFactor
+                : Math.Pow(PhysicsConstants.FlightDragFactor, tickScale);
+            vx *= flightRetention;
+            vy *= flightRetention;
+            vz *= flightRetention;
+        }
+        else if (inFluid)
         {
             var fluidRetention = exactSingleTick
                 ? PhysicsConstants.FluidDragFactor

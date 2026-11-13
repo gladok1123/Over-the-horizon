@@ -11,7 +11,55 @@ namespace OverHorizon.World.Lighting;
 /// </summary>
 public static class LightingEngine
 {
+    /// <summary>Minimum voxel illumination level (pitch-dark cave).</summary>
+    public const byte MinLightLevel = 0;
+
+    /// <summary>Maximum voxel illumination level (direct sunlight / lantern).</summary>
+    public const byte MaxLightLevel = 15;
+
     private const int InitialQueueCapacity = 16_384;
+
+    /// <summary>
+    /// Computes dynamic block light (<c>0..15</c>) contributed at <paramref name="samplePosition"/> by a held
+    /// light source (e.g. a Torch with emission <c>14</c> or Lantern with emission <c>15</c>) at <paramref name="emitterPosition"/>.
+    /// </summary>
+    public static byte ComputeDynamicLightLevel(Vec3d emitterPosition, byte emittedLight, Vec3d samplePosition)
+    {
+        if (emittedLight == 0)
+        {
+            return MinLightLevel;
+        }
+
+        var clampedEmission = Math.Min(emittedLight, MaxLightLevel);
+        var dist = emitterPosition.DistanceTo(samplePosition);
+        var falloff = (int)Math.Floor(dist);
+        var remaining = clampedEmission - falloff;
+        return remaining <= 0 ? MinLightLevel : (byte)Math.Min(remaining, MaxLightLevel);
+    }
+
+    /// <summary>
+    /// Combines sky light (<c>0..15</c>), static block light (<c>0..15</c>), and dynamic held-item light (<c>0..15</c>)
+    /// into the effective voxel illumination level on <c>[0.0, 15.0]</c>.
+    /// </summary>
+    public static float ComputeEffectiveLightLevel(byte skyLight, byte blockLight, byte dynamicLight, float skyBrightness = 1.0f)
+    {
+        var scaledSky = Math.Clamp(skyLight, MinLightLevel, MaxLightLevel) * Math.Clamp(skyBrightness, 0.0f, 1.0f);
+        var maxBlock = (float)Math.Max(
+            Math.Clamp(blockLight, MinLightLevel, MaxLightLevel),
+            Math.Clamp(dynamicLight, MinLightLevel, MaxLightLevel));
+        return Math.Clamp(MathF.Max(scaledSky, maxBlock), 0.0f, 15.0f);
+    }
+
+    /// <summary>
+    /// Maps a <c>0..15</c> light level onto the clean-room Minecraft perceptual brightness curve (<c>0.045..1.0</c>),
+    /// ensuring pitch-black caves (<c>0</c>) render genuinely dark while level <c>15</c> reaches full brightness.
+    /// </summary>
+    public static float LightLevelToBrightness(float lightLevel0To15)
+    {
+        var normalized = Math.Clamp(lightLevel0To15, 0.0f, 15.0f) / 15.0f;
+        var curved = normalized / (3.0f - (2.0f * normalized));
+        return 0.045f + (curved * 0.955f);
+    }
 
     /// <summary>
     /// Computes full sky light and emissive block light propagation across <paramref name="chunk"/>.

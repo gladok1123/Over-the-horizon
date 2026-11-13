@@ -41,6 +41,8 @@ internal sealed class SilkOpenGlProgramResources : IDisposable
 
     public int LocSkyBrightness { get; }
 
+    public int LocHeldTorchLight { get; }
+
     public int LocFogStart { get; }
 
     public int LocFogEnd { get; }

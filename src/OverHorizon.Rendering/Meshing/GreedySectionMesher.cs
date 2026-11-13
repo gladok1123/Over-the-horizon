@@ -6,22 +6,15 @@ using OverHorizon.Rendering.Textures;
 namespace OverHorizon.Rendering.Meshing;
 
 /// <summary>
-/// Greedy 2D quad-merging voxel section mesher with cross-chunk face culling, directional shading,
-/// per-corner smooth ambient occlusion, and anisotropy-free quad triangulation.
+/// Greedy 2D quad-merging voxel section mesher with separate <c>0..15</c> sky &amp; block light nibble packing,
+/// cross-chunk face culling, directional shading, smooth AO, and sub-voxel non-cube block geometry.
 /// </summary>
 public static class GreedySectionMesher
 {
     private const ulong ValidCellBit = 1UL << 63;
     private const ulong TranslucentBit = 1UL << 32;
 
-    /// <summary>
-    /// Builds a <see cref="SectionMeshData"/> for section <paramref name="sectionIndex"/> (<c>0..23</c>) of <paramref name="neighborhood"/>.
-    /// </summary>
-    /// <param name="neighborhood">Center and horizontal neighbor chunk snapshots.</param>
-    /// <param name="sectionIndex">Zero-based vertical section index (<c>0..23</c>).</param>
-    /// <param name="blocks">Frozen block registry.</param>
-    /// <param name="atlas">Texture atlas providing tile indices.</param>
-    /// <returns>Constructed <see cref="SectionMeshData"/>.</returns>
+    /// <summary>Meshes a single <c>16x16x16</c> chunk section into opaque and translucent vertex/index buffers.</summary>
     public static SectionMeshData MeshSection(
         in ChunkNeighborhood neighborhood,
         int sectionIndex,
@@ -75,6 +68,8 @@ public static class GreedySectionMesher
             }
         }
 
+        ShapedBlockMesher.AppendSectionShapes(in neighborhood, sectionIndex, blocks, atlas, opaqueVerts, opaqueIndices);
+
         return new SectionMeshData(
             secPos,
             opaqueVerts.Count > 0 ? opaqueVerts.ToArray() : ReadOnlyMemory<ChunkVertex>.Empty,
@@ -109,7 +104,7 @@ public static class GreedySectionMesher
                 }
 
                 var meta = blocks.GetStateMetadata(state);
-                if (!meta.IsSolid && !meta.IsFluid)
+                if ((!meta.IsSolid && !meta.IsFluid) || ShapedBlockMesher.IsCustomShape(meta.BlockKey))
                 {
                     continue;
                 }
@@ -126,14 +121,15 @@ public static class GreedySectionMesher
 
                 var tile = atlas.GetTileIndex(meta.BlockKey, face);
                 var (sky, blk) = neighborhood.GetLight(adjX, adjY, adjZ);
-                var light = Math.Max(meta.LightEmission, Math.Max(sky, blk));
+                var effBlk = Math.Max(meta.LightEmission, blk);
+                var packedSkyAndBlk = (byte)(((sky & 0x0F) << 4) | (effBlk & 0x0F));
                 var packedAo = QuadGeometryBuilder.SampleFaceCornerAo(in neighborhood, blocks, face, adjX, adjY, adjZ);
                 var isTranslucent = meta.IsFluid;
 
                 mask[(v << 4) | u] = ValidCellBit |
                     (isTranslucent ? TranslucentBit : 0UL) |
                     ((ulong)packedAo << 24) |
-                    ((ulong)(light & 0x0F) << 16) |
+                    ((ulong)packedSkyAndBlk << 16) |
                     tile;
 
                 any = true;
@@ -243,7 +239,7 @@ public static class GreedySectionMesher
         List<uint> indices)
     {
         var tile = (ushort)(token & 0xFFFFUL);
-        var lightNibble = (byte)((token >> 16) & 0x0FUL);
+        var packedSkyBlk = (byte)((token >> 16) & 0xFFUL);
         var packedAo = (byte)((token >> 24) & 0xFFUL);
 
         var ao0 = (byte)(packedAo & 3);
@@ -251,7 +247,7 @@ public static class GreedySectionMesher
         var ao2 = (byte)((packedAo >> 4) & 3);
         var ao3 = (byte)((packedAo >> 6) & 3);
 
-        var lightNorm = Math.Max(0.06f, lightNibble / 15.0f);
+        float packedLightFloat = packedSkyBlk;
         var baseIdx = (uint)verts.Count;
 
         var (p0, p1, p2, p3, uv0, uv1, uv2, uv3) = QuadGeometryBuilder.BuildQuadCorners(
@@ -262,10 +258,10 @@ public static class GreedySectionMesher
             rect.Width,
             rect.Height);
 
-        verts.Add(new ChunkVertex(p0, uv0, tile, faceShade * AmbientOcclusionCalculator.ToBrightnessFactor(ao0), lightNorm));
-        verts.Add(new ChunkVertex(p1, uv1, tile, faceShade * AmbientOcclusionCalculator.ToBrightnessFactor(ao1), lightNorm));
-        verts.Add(new ChunkVertex(p2, uv2, tile, faceShade * AmbientOcclusionCalculator.ToBrightnessFactor(ao2), lightNorm));
-        verts.Add(new ChunkVertex(p3, uv3, tile, faceShade * AmbientOcclusionCalculator.ToBrightnessFactor(ao3), lightNorm));
+        verts.Add(new ChunkVertex(p0, uv0, tile, faceShade * AmbientOcclusionCalculator.ToBrightnessFactor(ao0), packedLightFloat));
+        verts.Add(new ChunkVertex(p1, uv1, tile, faceShade * AmbientOcclusionCalculator.ToBrightnessFactor(ao1), packedLightFloat));
+        verts.Add(new ChunkVertex(p2, uv2, tile, faceShade * AmbientOcclusionCalculator.ToBrightnessFactor(ao2), packedLightFloat));
+        verts.Add(new ChunkVertex(p3, uv3, tile, faceShade * AmbientOcclusionCalculator.ToBrightnessFactor(ao3), packedLightFloat));
 
         if (ao0 + ao2 < ao1 + ao3)
         {

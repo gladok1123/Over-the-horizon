@@ -13,11 +13,6 @@ public static class BlockDropResolver
     /// Computes the time in seconds required to mine <paramref name="block"/> while holding <paramref name="heldTool"/>.
     /// Returns <see cref="float.PositiveInfinity"/> for unbreakable blocks such as Bedrock.
     /// </summary>
-    /// <param name="block">Target block definition.</param>
-    /// <param name="heldTool">Held item definition (or <see langword="null"/> for bare hand).</param>
-    /// <param name="isEyeUnderwater">Whether the miner's eyes are submerged in water.</param>
-    /// <param name="onGround">Whether the miner is standing on solid ground.</param>
-    /// <returns>Required mining duration in seconds.</returns>
     public static float ComputeBreakSeconds(
         BlockDefinition block,
         ItemDefinition? heldTool,
@@ -44,9 +39,15 @@ public static class BlockDropResolver
         {
             speed = Math.Max(1.5f, heldTool.MiningSpeedMultiplier);
         }
-        else if (heldTool is { ToolType: ToolKind.Sword } && block.Key == BuiltInBlocks.OakLeaves)
+        else if (heldTool is { ToolType: ToolKind.Sword } &&
+                 (block.Key == BuiltInBlocks.OakLeaves || block.Key == BuiltInBlocks.BirchLeaves || block.Key == BuiltInBlocks.Cobweb))
         {
-            speed = 2.0f;
+            speed = block.Key == BuiltInBlocks.Cobweb ? 15.0f : 2.5f;
+        }
+        else if (heldTool is { ToolType: ToolKind.Hoe } &&
+                 (block.Key == BuiltInBlocks.OakLeaves || block.Key == BuiltInBlocks.BirchLeaves || block.Key == BuiltInBlocks.HayBlock))
+        {
+            speed = Math.Max(2.5f, heldTool.MiningSpeedMultiplier);
         }
 
         if (isEyeUnderwater)
@@ -66,11 +67,6 @@ public static class BlockDropResolver
     /// <summary>
     /// Resolves the Survival item stack dropped when <paramref name="blockKey"/> is broken with <paramref name="heldTool"/>.
     /// </summary>
-    /// <param name="blockKey">Broken block resource key.</param>
-    /// <param name="heldTool">Held tool definition, if any.</param>
-    /// <param name="items">Frozen item registry.</param>
-    /// <param name="dropSequence">Monotonic counter used for deterministic bonus drops (e.g. Apples from Oak Leaves).</param>
-    /// <returns>Dropped <see cref="ItemStack"/> (or <see cref="ItemStack.Empty"/>).</returns>
     public static ItemStack ResolveDrop(
         ResourceKey blockKey,
         ItemDefinition? heldTool,
@@ -91,15 +87,32 @@ public static class BlockDropResolver
                 : ItemStack.Empty;
         }
 
-        if (blockKey == BuiltInBlocks.OakLeaves)
+        if (blockKey == BuiltInBlocks.Cobweb)
         {
             if (heldTool is { ToolType: ToolKind.Shears })
             {
-                return MakeStack(items, BuiltInBlocks.OakLeaves, 1);
+                return MakeStack(items, BuiltInBlocks.Cobweb, 1);
             }
 
-            return (dropSequence & 3) == 0
-                ? MakeStack(items, BuiltInItems.Apple, 1)
+            return heldTool is { ToolType: ToolKind.Sword }
+                ? MakeStack(items, BuiltInItems.String, 1)
+                : ItemStack.Empty;
+        }
+
+        if (blockKey == BuiltInBlocks.OakLeaves || blockKey == BuiltInBlocks.BirchLeaves)
+        {
+            if (heldTool is { ToolType: ToolKind.Shears })
+            {
+                return MakeStack(items, blockKey, 1);
+            }
+
+            if (blockKey == BuiltInBlocks.OakLeaves && (dropSequence & 3) == 0)
+            {
+                return MakeStack(items, BuiltInItems.Apple, 1);
+            }
+
+            return (dropSequence & 3) == 1
+                ? MakeStack(items, BuiltInItems.Stick, 1)
                 : ItemStack.Empty;
         }
 
@@ -113,9 +126,26 @@ public static class BlockDropResolver
             return MakeStack(items, BuiltInBlocks.Cobblestone, 1);
         }
 
-        if (blockKey == BuiltInBlocks.GrassBlock)
+        if (blockKey == BuiltInBlocks.Deepslate)
+        {
+            return MakeStack(items, BuiltInBlocks.CobbledDeepslate, 1);
+        }
+
+        if (blockKey == BuiltInBlocks.GrassBlock || blockKey == BuiltInBlocks.Farmland)
         {
             return MakeStack(items, BuiltInBlocks.Dirt, 1);
+        }
+
+        if (blockKey == BuiltInBlocks.LitFurnace)
+        {
+            return MakeStack(items, BuiltInBlocks.Furnace, 1);
+        }
+
+        if (blockKey == BuiltInBlocks.Gravel)
+        {
+            return (dropSequence & 3) == 0
+                ? MakeStack(items, BuiltInItems.Flint, 1)
+                : MakeStack(items, BuiltInBlocks.Gravel, 1);
         }
 
         if (blockKey == BuiltInBlocks.CoalOre)
@@ -123,9 +153,39 @@ public static class BlockDropResolver
             return MakeStack(items, BuiltInItems.Coal, 1);
         }
 
+        if (blockKey == BuiltInBlocks.IronOre)
+        {
+            return MakeStack(items, BuiltInItems.RawIron, 1);
+        }
+
+        if (blockKey == BuiltInBlocks.GoldOre)
+        {
+            return MakeStack(items, BuiltInItems.RawGold, 1);
+        }
+
+        if (blockKey == BuiltInBlocks.CopperOre)
+        {
+            return MakeStack(items, BuiltInItems.RawCopper, 2);
+        }
+
+        if (blockKey == BuiltInBlocks.RedstoneOre)
+        {
+            return MakeStack(items, BuiltInItems.Redstone, 4);
+        }
+
+        if (blockKey == BuiltInBlocks.LapisOre)
+        {
+            return MakeStack(items, BuiltInItems.LapisLazuli, 4);
+        }
+
         if (blockKey == BuiltInBlocks.DiamondOre)
         {
             return MakeStack(items, BuiltInItems.Diamond, 1);
+        }
+
+        if (blockKey == BuiltInBlocks.EmeraldOre)
+        {
+            return MakeStack(items, BuiltInItems.Emerald, 1);
         }
 
         if (blockKey == BuiltInBlocks.Bookshelf)
@@ -143,34 +203,48 @@ public static class BlockDropResolver
     }
 
     private static bool RequiresPickaxeForFastHarvest(ResourceKey key) =>
-        key == BuiltInBlocks.Stone || key == BuiltInBlocks.Cobblestone || key == BuiltInBlocks.MossyCobblestone ||
+        key == BuiltInBlocks.Stone || key == BuiltInBlocks.Deepslate || key == BuiltInBlocks.CobbledDeepslate ||
+        key == BuiltInBlocks.Cobblestone || key == BuiltInBlocks.MossyCobblestone ||
         key == BuiltInBlocks.StoneBricks || key == BuiltInBlocks.Bricks || key == BuiltInBlocks.Sandstone ||
+        key == BuiltInBlocks.Furnace || key == BuiltInBlocks.LitFurnace || key == BuiltInBlocks.Lantern ||
         key == BuiltInBlocks.CoalOre || key == BuiltInBlocks.IronOre || key == BuiltInBlocks.GoldOre ||
-        key == BuiltInBlocks.DiamondOre || key == BuiltInBlocks.Obsidian;
+        key == BuiltInBlocks.CopperOre || key == BuiltInBlocks.RedstoneOre || key == BuiltInBlocks.LapisOre ||
+        key == BuiltInBlocks.DiamondOre || key == BuiltInBlocks.EmeraldOre || key == BuiltInBlocks.Obsidian ||
+        key == BuiltInBlocks.CoalBlock || key == BuiltInBlocks.IronBlock || key == BuiltInBlocks.GoldBlock ||
+        key == BuiltInBlocks.DiamondBlock;
 
     private static ToolKind GetPreferredTool(ResourceKey key)
     {
-        if (RequiresPickaxeForFastHarvest(key))
+        if (RequiresPickaxeForFastHarvest(key) || key == BuiltInBlocks.Rail)
         {
             return ToolKind.Pickaxe;
         }
 
-        if (key == BuiltInBlocks.OakLog || key == BuiltInBlocks.OakPlanks ||
+        if (key == BuiltInBlocks.OakLog || key == BuiltInBlocks.BirchLog ||
+            key == BuiltInBlocks.OakPlanks || key == BuiltInBlocks.BirchPlanks ||
+            key == BuiltInBlocks.OakFence || key == BuiltInBlocks.Chest ||
+            key == BuiltInBlocks.Barrel || key == BuiltInBlocks.Ladder ||
             key == BuiltInBlocks.CraftingTable || key == BuiltInBlocks.Bookshelf)
         {
             return ToolKind.Axe;
         }
 
-        if (key == BuiltInBlocks.Dirt || key == BuiltInBlocks.GrassBlock ||
+        if (key == BuiltInBlocks.Dirt || key == BuiltInBlocks.GrassBlock || key == BuiltInBlocks.Farmland ||
             key == BuiltInBlocks.Sand || key == BuiltInBlocks.Gravel || key == BuiltInBlocks.SnowBlock)
         {
             return ToolKind.Shovel;
         }
 
-        if (key == BuiltInBlocks.OakLeaves || key == BuiltInBlocks.CrimsonWool ||
+        if (key == BuiltInBlocks.OakLeaves || key == BuiltInBlocks.BirchLeaves ||
+            key == BuiltInBlocks.Cobweb || key == BuiltInBlocks.CrimsonWool ||
             key == BuiltInBlocks.WhiteWool || key == BuiltInBlocks.BlueWool)
         {
             return ToolKind.Shears;
+        }
+
+        if (key == BuiltInBlocks.HayBlock)
+        {
+            return ToolKind.Hoe;
         }
 
         return ToolKind.None;

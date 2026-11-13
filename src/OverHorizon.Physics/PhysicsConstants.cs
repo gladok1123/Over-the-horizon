@@ -1,7 +1,7 @@
 namespace OverHorizon.Physics;
 
 /// <summary>
-/// Clean-room kinematic, drag, and authentic water constants for deterministic 20 TPS simulation.
+/// Clean-room kinematic, drag, Creative flight, and authentic water constants for deterministic 20 TPS simulation.
 /// </summary>
 public static class PhysicsConstants
 {
@@ -15,7 +15,10 @@ public static class PhysicsConstants
     public const double AirDragFactor = 0.98;
 
     /// <summary>Per-tick horizontal velocity retention when sliding on solid ground.</summary>
-    public const double GroundSlipperiness = 0.60;
+    public const double GroundSlipperiness = 0.72;
+
+    /// <summary>Per-tick velocity retention when hovering/flying in Creative mode.</summary>
+    public const double FlightDragFactor = 0.82;
 
     /// <summary>Per-tick velocity retention when submerged in fluid.</summary>
     public const double FluidDragFactor = 0.80;
@@ -27,7 +30,7 @@ public static class PhysicsConstants
     public const double WaterSwimUpAcceleration = 16.0;
 
     /// <summary>Maximum upward vertical swim speed while submerged in water (blocks/s).</summary>
-    public const double MaxWaterSwimUpSpeed = 3.2;
+    public const double MaxWaterSwimUpSpeed = 3.6;
 
     /// <summary>Maximum passive downward sinking speed in still water (blocks/s).</summary>
     public const double MaxWaterSinkSpeed = -2.4;

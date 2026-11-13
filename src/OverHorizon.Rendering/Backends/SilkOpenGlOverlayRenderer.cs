@@ -4,14 +4,15 @@ using System.Runtime.InteropServices;
 using OverHorizon.Core.Math;
 using OverHorizon.Rendering.Camera;
 using OverHorizon.Rendering.Hud;
+using OverHorizon.Rendering.Textures;
 using OverHorizon.Shared.Hashing;
 using Silk.NET.OpenGL;
 
 namespace OverHorizon.Rendering.Backends;
 
 /// <summary>
-/// Renders 3D sky sun &amp; clouds, 3D articulated friend avatars with eyes, targeted block wireframe shell,
-/// 3D first-person swinging block viewmodel, and delegates 2D menus/HUD to <see cref="SilkOpenGlUiRenderer"/>.
+/// Renders 3D sky sun &amp; clouds, 3D friend avatars, 3D peaceful &amp; hostile mobs, targeted block wireframe,
+/// world-lit textured 3D held blocks &amp; pixel-extruded 3D tools/items, and delegates 2D GUI to <see cref="SilkOpenGlUiRenderer"/>.
 /// </summary>
 internal sealed class SilkOpenGlOverlayRenderer : IDisposable
 {
@@ -19,14 +20,17 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
         #version 330 core
         layout (location = 0) in vec3 aPosition;
         layout (location = 1) in vec4 aColor;
+        layout (location = 2) in vec2 aUv;
 
         uniform mat4 uTransform;
 
         out vec4 vColor;
+        out vec2 vUv;
 
         void main()
         {
             vColor = aColor;
+            vUv = aUv;
             gl_Position = uTransform * vec4(aPosition, 1.0);
         }
         """;
@@ -34,10 +38,26 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
     private const string FragmentShaderSource = """
         #version 330 core
         in vec4 vColor;
+        in vec2 vUv;
+
+        uniform sampler2D uAtlas;
+
         out vec4 FragColor;
 
         void main()
         {
+            if (vUv.x >= -0.25)
+            {
+                vec4 texel = texture(uAtlas, vUv);
+                if (texel.a < 0.08)
+                {
+                    discard;
+                }
+
+                FragColor = texel * vColor;
+                return;
+            }
+
             FragColor = vColor;
         }
         """;
@@ -45,18 +65,20 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
     private readonly GL _gl;
     private readonly uint _program;
     private readonly int _locTransform;
+    private readonly int _locAtlas;
     private readonly uint _vao;
     private readonly uint _vbo;
     private readonly SilkOpenGlUiRenderer _uiRenderer;
-    private readonly List<OverlayVertex> _scratch = new(2048);
+    private readonly List<OverlayVertex> _scratch = new(4096);
     private bool _disposed;
 
-    public unsafe SilkOpenGlOverlayRenderer(GL gl)
+    public unsafe SilkOpenGlOverlayRenderer(GL gl, string? externalAssetsPath = null)
     {
         _gl = gl;
         _program = CompileAndLink(gl);
         _locTransform = gl.GetUniformLocation(_program, "uTransform");
-        _uiRenderer = new SilkOpenGlUiRenderer(gl);
+        _locAtlas = gl.GetUniformLocation(_program, "uAtlas");
+        _uiRenderer = new SilkOpenGlUiRenderer(gl, externalAssetsPath);
 
         _vao = gl.GenVertexArray();
         _vbo = gl.GenBuffer();
@@ -69,19 +91,32 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
         gl.EnableVertexAttribArray(0);
         gl.VertexAttribPointer(1, 4, VertexAttribPointerType.Float, false, stride, (void*)(3 * sizeof(float)));
         gl.EnableVertexAttribArray(1);
+        gl.VertexAttribPointer(2, 2, VertexAttribPointerType.Float, false, stride, (void*)(7 * sizeof(float)));
+        gl.EnableVertexAttribArray(2);
         gl.BindVertexArray(0);
     }
 
-    public unsafe int RenderOverlays(FirstPersonCamera camera, FrameOverlayState overlay, uint itemAtlasTexture = 0)
+    public unsafe int RenderOverlays(
+        FirstPersonCamera camera,
+        FrameOverlayState overlay,
+        uint itemAtlasTexture = 0,
+        TextureAtlasData? atlasData = null)
     {
         var drawCalls = 0;
         var vp = camera.BuildCameraRelativeViewProjectionMatrix();
 
         _gl.UseProgram(_program);
+        _gl.Uniform1(_locAtlas, 0);
+        if (itemAtlasTexture != 0)
+        {
+            _gl.ActiveTexture(TextureUnit.Texture0);
+            _gl.BindTexture(TextureTarget.Texture2D, itemAtlasTexture);
+        }
+
         _gl.BindVertexArray(_vao);
         _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _vbo);
 
-        // Pass 1: 3D Sky Sun + Drifting Voxel Clouds + Remote Friend Avatars
+        // Pass 1: 3D Sky Sun + Drifting Voxel Clouds + Remote Friend Avatars + 3D World Mobs
         _scratch.Clear();
         if (!overlay.IsUnderwater)
         {
@@ -92,6 +127,8 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
         {
             AppendPlayerAvatarGeometry(camera.Position, in avatar);
         }
+
+        WorldMob3DMesher.AppendWorldMobs(_scratch, camera.Position, overlay.WorldMobs);
 
         if (_scratch.Count > 0)
         {
@@ -105,7 +142,7 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
             drawCalls++;
         }
 
-        // Pass 2: Targeted Block Selection Highlight Box (only during gameplay)
+        // Pass 2: Targeted Block Selection Highlight Box
         if (overlay.Mode == UiOverlayMode.InGame && overlay.TargetedBlock is { } blockPos)
         {
             _scratch.Clear();
@@ -113,8 +150,8 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
                 (float)(blockPos.X - camera.Position.X) - 0.005f,
                 (float)(blockPos.Y - camera.Position.Y) - 0.005f,
                 (float)(blockPos.Z - camera.Position.Z) - 0.005f);
-            AppendBoxTriangles(relMin, new Vector3(1.010f, 1.010f, 1.010f), Matrix4x4.Identity, new Vector4(0.08f, 0.08f, 0.10f, 0.24f));
-            AppendWireframeEdges(relMin, new Vector3(1.012f, 1.012f, 1.012f), 0.012f, new Vector4(0.05f, 0.05f, 0.06f, 0.85f));
+            AppendBoxTriangles(relMin, new Vector3(1.010f, 1.010f, 1.010f), Matrix4x4.Identity, new Vector4(0.08f, 0.08f, 0.10f, 0.18f));
+            AppendWireframeEdges(relMin, new Vector3(1.012f, 1.012f, 1.012f), 0.011f, new Vector4(0.04f, 0.04f, 0.05f, 0.86f));
 
             _gl.Enable(EnableCap.DepthTest);
             _gl.Disable(EnableCap.CullFace);
@@ -128,35 +165,33 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
             drawCalls++;
         }
 
-        // Pass 3: 3D First-Person Held Block / Sword / Tool / Hand Viewmodel
+        // Pass 3: Authentic Minecraft 3D Held Block / Torch / 16x16 Pixel-Extruded Sword & Tool Viewmodel (lit by 0..15 world light!)
         if (overlay.Mode is not (UiOverlayMode.TitleMenu or UiOverlayMode.DeathScreen))
         {
             _scratch.Clear();
-            AppendFirstPersonHeldItem(
-                overlay.HeldBlockColor,
-                overlay.WalkBobPhase,
-                overlay.HandSwingProgress,
-                overlay.HeldIsToolOrWeapon,
-                overlay.HeldIsEmpty);
+            HeldItem3DMesher.AppendHeldViewmodel(_scratch, overlay, atlasData);
 
-            _gl.Clear((uint)ClearBufferMask.DepthBufferBit);
-            _gl.Enable(EnableCap.DepthTest);
-            _gl.Disable(EnableCap.CullFace);
-            _gl.Disable(EnableCap.Blend);
+            if (_scratch.Count > 0)
+            {
+                _gl.Clear((uint)ClearBufferMask.DepthBufferBit);
+                _gl.Enable(EnableCap.DepthTest);
+                _gl.Disable(EnableCap.CullFace);
+                _gl.Disable(EnableCap.Blend);
 
-            var viewProjHand = Matrix4x4.CreatePerspectiveFieldOfView(
-                62.0f * (MathF.PI / 180.0f),
-                Math.Max(0.5f, camera.AspectRatio),
-                0.05f,
-                16.0f);
-            _gl.UniformMatrix4(_locTransform, 1, false, (float*)&viewProjHand);
-            UploadAndDrawTriangles();
-            drawCalls++;
+                var viewProjHand = Matrix4x4.CreatePerspectiveFieldOfView(
+                    64.0f * (MathF.PI / 180.0f),
+                    Math.Max(0.5f, camera.AspectRatio),
+                    0.05f,
+                    16.0f);
+                _gl.UniformMatrix4(_locTransform, 1, false, (float*)&viewProjHand);
+                UploadAndDrawTriangles();
+                drawCalls++;
+            }
         }
 
         _gl.BindVertexArray(0);
 
-        // Pass 4: 2D Screen-Space Menus, Bitmap Font Text, Real Sprite Hotbar, Survival HUD, Chat, F3 & Nametags
+        // Pass 4: 2D Screen-Space Real Game GUI (widgets.png, icons.png, container/*.png), Sprites, & Text
         drawCalls += _uiRenderer.RenderUi(camera, overlay, itemAtlasTexture);
         return drawCalls;
     }
@@ -239,11 +274,9 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
 
     private void AppendSkySunAndClouds(float drift)
     {
-        // Bright voxel sun high in the sky
         AppendBoxTriangles(new Vector3(48.0f, 118.0f, -95.0f), new Vector3(16.0f, 16.0f, 16.0f), Matrix4x4.Identity, new Vector4(1.0f, 0.96f, 0.68f, 1.0f));
         AppendBoxTriangles(new Vector3(50.0f, 120.0f, -93.0f), new Vector3(12.0f, 12.0f, 12.0f), Matrix4x4.Identity, new Vector4(1.0f, 1.0f, 0.90f, 1.0f));
 
-        // Crisp white voxel cloud puffs drifting gently overhead
         var wrapped = (drift % 160.0f) - 80.0f;
         var cloudCol = new Vector4(0.97f, 0.98f, 1.0f, 1.0f);
         for (var i = -3; i <= 3; i++)
@@ -255,56 +288,9 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
         }
     }
 
-    private void AppendFirstPersonHeldItem(
-        Vector3 itemRgb,
-        float bobPhase,
-        float swingProgress,
-        bool isToolOrWeapon,
-        bool isEmptyHand)
-    {
-        var bobX = MathF.Cos(bobPhase * 0.5f) * 0.035f;
-        var bobY = MathF.Abs(MathF.Sin(bobPhase)) * -0.04f;
-        var swingArc = MathF.Sin(swingProgress * MathF.PI);
-
-        if (isEmptyHand)
-        {
-            var armSkin = new Vector4(0.90f, 0.72f, 0.58f, 1.0f);
-            var armModel = Matrix4x4.CreateRotationX(0.62f - (swingArc * 0.75f))
-                * Matrix4x4.CreateRotationY(-0.35f + (swingArc * 0.30f))
-                * Matrix4x4.CreateTranslation(0.54f + bobX - (swingArc * 0.14f), -0.58f + bobY + (swingArc * 0.14f), -0.78f - (swingArc * 0.16f));
-            AppendBoxTriangles(new Vector3(-0.10f, -0.26f, -0.10f), new Vector3(0.20f, 0.52f, 0.20f), armModel, armSkin);
-            return;
-        }
-
-        var color = itemRgb.LengthSquared() > 0.01f
-            ? new Vector4(itemRgb.X, itemRgb.Y, itemRgb.Z, 1.0f)
-            : new Vector4(0.55f, 0.55f, 0.58f, 1.0f);
-
-        if (isToolOrWeapon)
-        {
-            var bladeModel = Matrix4x4.CreateRotationZ(-0.22f - (swingArc * 0.55f))
-                * Matrix4x4.CreateRotationX(0.32f - (swingArc * 1.15f))
-                * Matrix4x4.CreateRotationY(0.28f - (swingArc * 0.35f))
-                * Matrix4x4.CreateTranslation(0.56f + bobX - (swingArc * 0.22f), -0.48f + bobY + (swingArc * 0.08f), -0.92f - (swingArc * 0.22f));
-            var handleWood = new Vector4(0.52f, 0.35f, 0.19f, 1.0f);
-            AppendBoxTriangles(new Vector3(-0.035f, -0.24f, -0.035f), new Vector3(0.07f, 0.24f, 0.07f), bladeModel, handleWood);
-            AppendBoxTriangles(new Vector3(-0.13f, -0.02f, -0.045f), new Vector3(0.26f, 0.06f, 0.09f), bladeModel, Shade(color, 0.78f));
-            AppendBoxTriangles(new Vector3(-0.045f, 0.04f, -0.025f), new Vector3(0.09f, 0.52f, 0.05f), bladeModel, color);
-            return;
-        }
-
-        var model = Matrix4x4.CreateRotationY(0.68f - (swingArc * 0.45f))
-            * Matrix4x4.CreateRotationX(0.28f - (swingArc * 0.85f))
-            * Matrix4x4.CreateRotationZ(-swingArc * 0.35f)
-            * Matrix4x4.CreateTranslation(0.58f + bobX - (swingArc * 0.16f), -0.52f + bobY + (swingArc * 0.12f), -0.92f - (swingArc * 0.18f));
-
-        AppendBoxTriangles(new Vector3(-0.19f, -0.19f, -0.19f), new Vector3(0.38f, 0.38f, 0.38f), model, color);
-    }
-
     private void AppendWireframeEdges(Vector3 min, Vector3 size, float t, Vector4 color)
     {
         var max = min + size;
-        // 4 bottom + 4 top + 4 vertical edge bars
         AppendBoxTriangles(new Vector3(min.X, min.Y, min.Z), new Vector3(size.X, t, t), Matrix4x4.Identity, color);
         AppendBoxTriangles(new Vector3(min.X, min.Y, max.Z - t), new Vector3(size.X, t, t), Matrix4x4.Identity, color);
         AppendBoxTriangles(new Vector3(min.X, max.Y - t, min.Z), new Vector3(size.X, t, t), Matrix4x4.Identity, color);
@@ -344,6 +330,7 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
             skin = Vector4.Lerp(skin, hurtTint, f);
             hair = Vector4.Lerp(hair, hurtTint, f);
         }
+
         var eyeCol = new Vector4(0.14f, 0.22f, 0.48f, 1.0f);
 
         var leftLegXform = Matrix4x4.CreateRotationX(swing) * Matrix4x4.CreateTranslation(-0.13f, 0.70f, 0.0f) * bodyRot;
@@ -362,7 +349,6 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
         var headXform = Matrix4x4.CreateRotationX(pitchRad) * Matrix4x4.CreateTranslation(0.0f, 1.40f, 0.0f) * bodyRot;
         AppendBoxTriangles(new Vector3(-0.23f, 0.0f, -0.23f), new Vector3(0.46f, 0.46f, 0.46f), headXform, skin);
         AppendBoxTriangles(new Vector3(-0.24f, 0.34f, -0.24f), new Vector3(0.48f, 0.14f, 0.48f), headXform, hair);
-        // Eyes on the -Z front face
         AppendBoxTriangles(new Vector3(-0.14f, 0.18f, -0.245f), new Vector3(0.08f, 0.07f, 0.02f), headXform, eyeCol);
         AppendBoxTriangles(new Vector3(0.06f, 0.18f, -0.245f), new Vector3(0.08f, 0.07f, 0.02f), headXform, eyeCol);
     }

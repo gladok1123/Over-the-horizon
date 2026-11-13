@@ -14,7 +14,8 @@ using OverHorizon.World.Storage;
 namespace OverHorizon.World.ChunkManagement;
 
 /// <summary>
-/// Horizon-style lock-free chunk manager with distance-prioritized parallel worldgen,
+/// Horizon-style lock-free chunk manager with concentric-ring distance-prioritized parallel worldgen
+/// (scaling cleanly up to 64-chunk view distances without full-grid allocations),
 /// double-buffered <see cref="ChunkSnapshot"/>s, and <see cref="Channel{T}"/>-backed async persistence.
 /// </summary>
 public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
@@ -50,7 +51,7 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
         _generator = generator;
         _storage = storage;
 
-        _saveQueue = Channel.CreateBounded<ChunkColumn>(new BoundedChannelOptions(512)
+        _saveQueue = Channel.CreateBounded<ChunkColumn>(new BoundedChannelOptions(2048)
         {
             SingleReader = true,
             SingleWriter = false,
@@ -125,12 +126,13 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
             return 0;
         }
 
-        var desiredDistances = ComputeDesiredChunksWithMinDistance();
+        var activeTickets = _tickets.Values.ToArray();
 
-        // 1. Unload chunks no longer covered by any active ticket.
+        // 1. Unload chunks no longer covered by any active ticket (zero 16,641-entry HashMap allocation!).
         foreach (var (packedKey, _) in _loadedChunks)
         {
-            if (!desiredDistances.ContainsKey(packedKey) && _loadedChunks.TryRemove(packedKey, out var removed))
+            var pos = ChunkPos.UnpackInt64(packedKey);
+            if (!IsCoveredByAnyTicket(pos, activeTickets) && _loadedChunks.TryRemove(packedKey, out var removed))
             {
                 _ = _publishedSnapshots.TryRemove(packedKey, out _);
                 if (removed.IsDirty)
@@ -140,33 +142,17 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
             }
         }
 
-        // 2. Prioritize missing chunks by minimum Chebyshev distance to any ticket center, then ChunkPos order.
-        var priorityQueue = new PriorityQueue<ChunkPos, (long Distance, ChunkPos Pos)>();
-        foreach (var (packedKey, minDist) in desiredDistances)
-        {
-            if (!_loadedChunks.ContainsKey(packedKey))
-            {
-                var pos = ChunkPos.UnpackInt64(packedKey);
-                priorityQueue.Enqueue(pos, (minDist, pos));
-            }
-        }
-
-        var batchCount = Math.Min(maxChunksToLoad, priorityQueue.Count);
-        if (batchCount == 0)
+        // 2. Concentric Chebyshev ring expansion (stops as soon as maxChunksToLoad missing chunks are found!).
+        var batchPositions = SelectClosestMissingChunks(activeTickets, maxChunksToLoad);
+        if (batchPositions.Length == 0)
         {
             return 0;
         }
 
-        var batchPositions = new ChunkPos[batchCount];
-        for (var i = 0; i < batchCount; i++)
-        {
-            batchPositions[i] = priorityQueue.Dequeue();
-        }
-
-        var results = new ChunkColumn[batchCount];
+        var results = new ChunkColumn[batchPositions.Length];
         await Parallel.ForAsync(
             0,
-            batchCount,
+            batchPositions.Length,
             cancellationToken,
             async (index, ct) =>
             {
@@ -181,7 +167,7 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
                 results[index] = loaded;
             }).ConfigureAwait(false);
 
-        // Deterministic commit ordered by ChunkPos.
+        // Deterministic commit ordered by ChunkPos, including cross-chunk border light propagation!
         Array.Sort(results, static (a, b) => a.Position.CompareTo(b.Position));
         for (var i = 0; i < results.Length; i++)
         {
@@ -189,6 +175,19 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
             var key = chunk.Position.PackInt64();
             _loadedChunks[key] = chunk;
             _publishedSnapshots[key] = chunk.CreateSnapshot();
+        }
+
+        for (var i = 0; i < results.Length; i++)
+        {
+            var cp = results[i].Position;
+            _ = _loadedChunks.TryGetValue(new ChunkPos(cp.X, cp.Z - 1).PackInt64(), out var n);
+            _ = _loadedChunks.TryGetValue(new ChunkPos(cp.X, cp.Z + 1).PackInt64(), out var s);
+            _ = _loadedChunks.TryGetValue(new ChunkPos(cp.X - 1, cp.Z).PackInt64(), out var w);
+            _ = _loadedChunks.TryGetValue(new ChunkPos(cp.X + 1, cp.Z).PackInt64(), out var e);
+            if (LightingEngine.PropagateCrossChunkLight(results[i], n, s, w, e, _registries.Blocks))
+            {
+                _publishedSnapshots[cp.PackInt64()] = results[i].CreateSnapshot();
+            }
         }
 
         return results.Length;
@@ -259,29 +258,108 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
         _backgroundCts.Dispose();
     }
 
-    private Dictionary<long, long> ComputeDesiredChunksWithMinDistance()
+    private static bool IsCoveredByAnyTicket(ChunkPos pos, ReadOnlySpan<ChunkTicket> tickets)
     {
-        var desired = new Dictionary<long, long>();
-        foreach (var (_, ticket) in _tickets)
+        for (var i = 0; i < tickets.Length; i++)
         {
-            var r = ticket.Radius;
-            for (var dz = -r; dz <= r; dz++)
+            if (tickets[i].Center.ChessboardDistance(pos) <= tickets[i].Radius)
             {
-                for (var dx = -r; dx <= r; dx++)
-                {
-                    var pos = new ChunkPos(ticket.Center.X + dx, ticket.Center.Z + dz);
-                    var key = pos.PackInt64();
-                    var dist = ticket.Center.ChessboardDistance(pos);
-
-                    if (!desired.TryGetValue(key, out var existing) || dist < existing)
-                    {
-                        desired[key] = dist;
-                    }
-                }
+                return true;
             }
         }
 
-        return desired;
+        return false;
+    }
+
+    private ChunkPos[] SelectClosestMissingChunks(ReadOnlySpan<ChunkTicket> tickets, int maxCount)
+    {
+        if (tickets.IsEmpty || maxCount <= 0)
+        {
+            return [];
+        }
+
+        var maxRadius = 0;
+        for (var i = 0; i < tickets.Length; i++)
+        {
+            if (tickets[i].Radius > maxRadius)
+            {
+                maxRadius = tickets[i].Radius;
+            }
+        }
+
+        var selected = new List<ChunkPos>(maxCount);
+        var seen = new HashSet<long>(maxCount * 2);
+        var ringScratch = new List<ChunkPos>(64);
+
+        for (var ring = 0; ring <= maxRadius && selected.Count < maxCount; ring++)
+        {
+            ringScratch.Clear();
+            for (var t = 0; t < tickets.Length; t++)
+            {
+                var ticket = tickets[t];
+                if (ring > ticket.Radius)
+                {
+                    continue;
+                }
+
+                if (ring == 0)
+                {
+                    TryAddRingCandidate(ticket.Center, ring, tickets, seen, ringScratch);
+                    continue;
+                }
+
+                for (var dx = -ring; dx <= ring; dx++)
+                {
+                    TryAddRingCandidate(new ChunkPos(ticket.Center.X + dx, ticket.Center.Z - ring), ring, tickets, seen, ringScratch);
+                    TryAddRingCandidate(new ChunkPos(ticket.Center.X + dx, ticket.Center.Z + ring), ring, tickets, seen, ringScratch);
+                }
+
+                for (var dz = -ring + 1; dz <= ring - 1; dz++)
+                {
+                    TryAddRingCandidate(new ChunkPos(ticket.Center.X - ring, ticket.Center.Z + dz), ring, tickets, seen, ringScratch);
+                    TryAddRingCandidate(new ChunkPos(ticket.Center.X + ring, ticket.Center.Z + dz), ring, tickets, seen, ringScratch);
+                }
+            }
+
+            if (ringScratch.Count == 0)
+            {
+                continue;
+            }
+
+            ringScratch.Sort();
+            for (var i = 0; i < ringScratch.Count && selected.Count < maxCount; i++)
+            {
+                selected.Add(ringScratch[i]);
+            }
+        }
+
+        return selected.ToArray();
+    }
+
+    private void TryAddRingCandidate(
+        ChunkPos pos,
+        int currentRing,
+        ReadOnlySpan<ChunkTicket> tickets,
+        HashSet<long> seen,
+        List<ChunkPos> ringScratch)
+    {
+        var key = pos.PackInt64();
+        if (_loadedChunks.ContainsKey(key) || seen.Contains(key))
+        {
+            return;
+        }
+
+        // Ensure minimum Chebyshev distance across all tickets equals currentRing
+        for (var i = 0; i < tickets.Length; i++)
+        {
+            if (tickets[i].Center.ChessboardDistance(pos) < currentRing && tickets[i].Center.ChessboardDistance(pos) <= tickets[i].Radius)
+            {
+                return;
+            }
+        }
+
+        _ = seen.Add(key);
+        ringScratch.Add(pos);
     }
 
     private void RefreshColumnAndBorderNeighbors(ChunkPos centerPos, ChunkColumn center)

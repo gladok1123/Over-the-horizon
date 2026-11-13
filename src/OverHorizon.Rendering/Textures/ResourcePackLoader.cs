@@ -4,13 +4,14 @@ using System.Text.Json;
 namespace OverHorizon.Rendering.Textures;
 
 /// <summary>
-/// Loads external <c>16x16</c> block &amp; item PNG textures and <c>lang/*.json</c> translations from unpacked directories,
-/// <c>.zip</c> resource packs, <c>minecraft-assets</c> (<c>23w13a__or__b</c>) caches, or <c>.jar</c> files.
+/// Loads external <c>16x16</c> block &amp; item PNG textures, <c>256x256</c> GUI sheets (<c>widgets.png</c>, <c>icons.png</c>,
+/// <c>slider.png</c>, <c>container/*.png</c>), and <c>lang/*.json</c> translations from <c>minecraft-assets</c> (<c>23w13a__or__b</c>) or user packs.
 /// </summary>
 public sealed class ResourcePackLoader : IDisposable
 {
     private readonly Dictionary<string, byte[]> _blockTextures = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, byte[]> _itemTextures = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, byte[]> _guiTextures = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _translations = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Gets the number of block PNG textures discovered in external asset sources.</summary>
@@ -19,12 +20,15 @@ public sealed class ResourcePackLoader : IDisposable
     /// <summary>Gets the number of item PNG textures discovered in external asset sources.</summary>
     public int LoadedItemTextureCount => _itemTextures.Count;
 
+    /// <summary>Gets the number of GUI PNG textures discovered in external asset sources.</summary>
+    public int LoadedGuiTextureCount => _guiTextures.Count;
+
     /// <summary>Gets the parsed localization entries (<c>block.minecraft.*</c>, <c>item.minecraft.*</c>), if any.</summary>
     public IReadOnlyDictionary<string, string> Translations => _translations;
 
     /// <summary>
-    /// Scans <paramref name="explicitPath"/> (if provided) plus standard <c>./resourcepacks</c>, <c>./assets</c>,
-    /// and <c>./minecraft-assets</c> locations for block/item PNGs and <c>lang/*.json</c> files.
+    /// Scans <paramref name="explicitPath"/> plus standard <c>./resourcepacks</c>, <c>./assets</c>,
+    /// and <c>./minecraft-assets</c> locations for block/item/GUI PNGs and <c>lang/*.json</c> files.
     /// </summary>
     public static ResourcePackLoader Discover(string? explicitPath = null)
     {
@@ -61,9 +65,11 @@ public sealed class ResourcePackLoader : IDisposable
         return loader;
     }
 
-    /// <summary>
-    /// Attempts to overwrite a <c>16x16</c> block tile in <paramref name="atlas"/> using an external block PNG texture.
-    /// </summary>
+    /// <summary>Looks up a loaded GUI PNG sheet (e.g. <c>"widgets"</c>, <c>"icons"</c>, <c>"container/inventory"</c>).</summary>
+    public bool TryGetGuiPng(string guiKey, out byte[] pngBytes) =>
+        _guiTextures.TryGetValue(guiKey, out pngBytes!);
+
+    /// <summary>Attempts to overwrite a <c>16x16</c> block tile in <paramref name="atlas"/> using an external block PNG texture.</summary>
     public bool TryBlitTile(
         byte[] atlas,
         ushort tileIndex,
@@ -92,14 +98,13 @@ public sealed class ResourcePackLoader : IDisposable
         return true;
     }
 
-    /// <summary>
-    /// Attempts to overwrite a <c>16x16</c> item sprite tile in <paramref name="atlas"/> using an external item PNG texture.
-    /// </summary>
+    /// <summary>Attempts to overwrite a <c>16x16</c> item sprite tile in <paramref name="atlas"/> using an external item or block PNG texture.</summary>
     public bool TryBlitItemTile(byte[] atlas, ushort tileIndex, string itemStem)
     {
         ArgumentNullException.ThrowIfNull(atlas);
 
-        if (!_itemTextures.TryGetValue(itemStem, out var pngBytes) ||
+        if ((!_itemTextures.TryGetValue(itemStem, out var pngBytes) &&
+             !_blockTextures.TryGetValue(itemStem, out pngBytes)) ||
             !PngImageDecoder.TryDecodeTo16x16Rgba(pngBytes, out var rgba))
         {
             return false;
@@ -114,6 +119,7 @@ public sealed class ResourcePackLoader : IDisposable
     {
         _blockTextures.Clear();
         _itemTextures.Clear();
+        _guiTextures.Clear();
         _translations.Clear();
     }
 
@@ -225,6 +231,7 @@ public sealed class ResourcePackLoader : IDisposable
                 LoadPngFolder(Path.Combine(relPrefix, "textures", "blocks"), _blockTextures);
                 LoadPngFolder(Path.Combine(relPrefix, "textures", "item"), _itemTextures);
                 LoadPngFolder(Path.Combine(relPrefix, "textures", "items"), _itemTextures);
+                LoadGuiPngTree(Path.Combine(relPrefix, "textures", "gui"), string.Empty);
 
                 var langDir = Path.Combine(relPrefix, "lang");
                 if (Directory.Exists(langDir))
@@ -245,6 +252,28 @@ public sealed class ResourcePackLoader : IDisposable
                      .Where(static d => Directory.Exists(Path.Combine(d, "assets"))))
         {
             LoadFromDirectoryTree(subDir);
+        }
+    }
+
+    private void LoadGuiPngTree(string guiDir, string prefix)
+    {
+        if (!Directory.Exists(guiDir))
+        {
+            return;
+        }
+
+        foreach (var pngFile in Directory.EnumerateFiles(guiDir, "*.png"))
+        {
+            var stem = Path.GetFileNameWithoutExtension(pngFile);
+            var key = string.IsNullOrEmpty(prefix) ? stem : $"{prefix}/{stem}";
+            _guiTextures[key] = File.ReadAllBytes(pngFile);
+        }
+
+        foreach (var sub in Directory.EnumerateDirectories(guiDir))
+        {
+            var subName = Path.GetFileName(sub);
+            var nextPrefix = string.IsNullOrEmpty(prefix) ? subName : $"{prefix}/{subName}";
+            LoadGuiPngTree(sub, nextPrefix);
         }
     }
 
@@ -276,25 +305,30 @@ public sealed class ResourcePackLoader : IDisposable
                 var norm = entry.FullName.Replace('\\', '/');
                 if (norm.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (norm.Contains("/textures/block/", StringComparison.OrdinalIgnoreCase) ||
-                        norm.Contains("/textures/blocks/", StringComparison.OrdinalIgnoreCase) ||
-                        norm.StartsWith("assets/minecraft/textures/block/", StringComparison.OrdinalIgnoreCase) ||
-                        norm.StartsWith("assets/overhorizon/textures/block/", StringComparison.OrdinalIgnoreCase))
+                    var guiMarker = "/textures/gui/";
+                    var guiIdx = norm.IndexOf(guiMarker, StringComparison.OrdinalIgnoreCase);
+                    if (guiIdx >= 0)
+                    {
+                        var relGui = norm[(guiIdx + guiMarker.Length)..];
+                        var key = relGui[..^4];
+                        _guiTextures[key] = ReadEntryBytes(entry);
+                    }
+                    else if (norm.Contains("/textures/block/", StringComparison.OrdinalIgnoreCase) ||
+                             norm.Contains("/textures/blocks/", StringComparison.OrdinalIgnoreCase) ||
+                             norm.StartsWith("assets/minecraft/textures/block/", StringComparison.OrdinalIgnoreCase))
                     {
                         _blockTextures[Path.GetFileNameWithoutExtension(norm)] = ReadEntryBytes(entry);
                     }
                     else if (norm.Contains("/textures/item/", StringComparison.OrdinalIgnoreCase) ||
                              norm.Contains("/textures/items/", StringComparison.OrdinalIgnoreCase) ||
-                             norm.StartsWith("assets/minecraft/textures/item/", StringComparison.OrdinalIgnoreCase) ||
-                             norm.StartsWith("assets/overhorizon/textures/item/", StringComparison.OrdinalIgnoreCase))
+                             norm.StartsWith("assets/minecraft/textures/item/", StringComparison.OrdinalIgnoreCase))
                     {
                         _itemTextures[Path.GetFileNameWithoutExtension(norm)] = ReadEntryBytes(entry);
                     }
                 }
                 else if (norm.EndsWith("/lang/en_us.json", StringComparison.OrdinalIgnoreCase) ||
                          norm.EndsWith("/lang/ru_ru.json", StringComparison.OrdinalIgnoreCase) ||
-                         string.Equals(norm, "assets/minecraft/lang/en_us.json", StringComparison.OrdinalIgnoreCase) ||
-                         string.Equals(norm, "assets/minecraft/lang/ru_ru.json", StringComparison.OrdinalIgnoreCase))
+                         string.Equals(norm, "assets/minecraft/lang/en_us.json", StringComparison.OrdinalIgnoreCase))
                 {
                     ParseLangJson(ReadEntryBytes(entry));
                 }

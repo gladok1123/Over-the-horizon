@@ -6,6 +6,7 @@ using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
 using OverHorizon.Gameplay;
+using OverHorizon.Gameplay.Mobs;
 using OverHorizon.Networking.Packets;
 using OverHorizon.Networking.Packets.Serverbound;
 using OverHorizon.Rendering;
@@ -19,7 +20,8 @@ using OverHorizon.World.Storage;
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Drives the voxel client runtime across Title Screen ("C# EDITION"), Redesigned Creative Mode, Survival &amp; Crafting,
+/// Drives the voxel client runtime across Title Screen ("C# EDITION"), Creative Flight, <c>0..15</c> Dynamic Lighting,
+/// <c>2x2</c>/<c>3x3</c> Crafting &amp; Furnace Smelting, 3D Peaceful/Hostile Mobs, up-to-64-chunk streaming,
 /// and Multiplayer PvP sessions over Silk.NET OpenGL or headless simulation frames.
 /// </summary>
 public sealed class ClientSessionRunner : IAsyncDisposable
@@ -40,6 +42,8 @@ public sealed class ClientSessionRunner : IAsyncDisposable
     private readonly ClientMenuSessionActions _menuActions;
     private readonly ClientInputBinder _inputBinder;
     private readonly ClientRemotePlayerTracker _remotePlayers;
+    private readonly WorldMobManager _mobManager = new();
+    private readonly ClientWorldSyncAndMobBridge _worldBridge;
     private readonly ClientSurvivalCombatController _survivalCombat;
     private readonly ClientAsyncMeshQueue _meshQueue;
 
@@ -55,9 +59,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
     private float _lastSentPitch;
     private string _latestDebugText = string.Empty;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="ClientSessionRunner"/> class.
-    /// </summary>
+    /// <summary>Initializes a new instance of the <see cref="ClientSessionRunner"/> class.</summary>
     public ClientSessionRunner(
         ClientOptions options,
         CoreRegistries registries,
@@ -92,11 +94,12 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         _player.Hotbar.BindAtlas(_atlas);
         _player.Camera.SetAspectRatio(1280, 720);
 
-        _menu = new ClientMenuController(options, initialMode, registries.Items);
+        _menu = new ClientMenuController(options, initialMode, registries.Items, registries.Recipes);
         _menuActions = new ClientMenuSessionActions(_menu, _chatHistory, _localWorld, _logger);
         _inputBinder = new ClientInputBinder(
             _player, _menu, _audio, _logger, () => _latestDebugText, () => _renderer is SilkOpenGlRenderSubsystem s ? s.WindowPixelSize : new Vector2(1280, 720));
         _remotePlayers = new ClientRemotePlayerTracker(_logger);
+        _worldBridge = new ClientWorldSyncAndMobBridge(_blocks, _localWorld, _worldCache, _renderer, _audio, _mobManager);
         _survivalCombat = new ClientSurvivalCombatController(blocks, registries.Items, _audio);
         _meshQueue = new ClientAsyncMeshQueue(blocks, _atlas);
     }
@@ -106,6 +109,9 @@ public sealed class ClientSessionRunner : IAsyncDisposable
 
     /// <summary>Gets the local first-person player controller.</summary>
     public ClientPlayerController Player => _player;
+
+    /// <summary>Gets the singleplayer 3D peaceful/hostile mob manager.</summary>
+    public WorldMobManager Mobs => _mobManager;
 
     /// <summary>Gets the block &amp; item texture atlas uploaded to the renderer.</summary>
     public TextureAtlasData Atlas => _atlas;
@@ -125,10 +131,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         if (!string.IsNullOrWhiteSpace(_options.ServerHost))
         {
             var login = await _transport.ConnectAndLoginAsync(
-                _options.ServerHost,
-                _options.ServerPort,
-                _options.Username,
-                cancellationToken).ConfigureAwait(false);
+                _options.ServerHost, _options.ServerPort, _options.Username, cancellationToken).ConfigureAwait(false);
             ClientLog.MultiplayerConnected(_logger, _options.ServerHost, _options.ServerPort, login.Username, login.AssignedEntityId);
             return;
         }
@@ -140,75 +143,57 @@ public sealed class ClientSessionRunner : IAsyncDisposable
             _player.ApplyAuthoritativePose(new Vec3d(0.5, _localSpawnY, 0.5), 0.0f, 0.0f);
         }
 
-        if (!_options.Headless && _menu.Mode == UiOverlayMode.InGame)
+        if (!_options.Headless)
         {
-            _chatHistory.AddMessage("Welcome to Over-the-Horizon: C# Edition v0.4.0! Press E for Inventory, F4 for Survival/Creative.");
+            _worldBridge.SeedInitialStarterMobs();
+            if (_menu.Mode == UiOverlayMode.InGame)
+            {
+                _chatHistory.AddMessage("Welcome to Over-the-Horizon: C# Edition v0.5.0! E: Inv/Craft | F: Fly | F4: Mode.");
+            }
         }
     }
 
     /// <summary>Breaks the block currently targeted by the player's crosshair.</summary>
     public bool TryBreakTargetedBlock()
     {
-        if (_player.CurrentTarget is not { } target)
-        {
-            return false;
-        }
-
+        if (_player.CurrentTarget is not { } target) return false;
         var existing = _worldCache.GetBlockState(target.BlockPosition);
-        if (existing.IsAir || existing == _blocks.GetDefaultState(BuiltInBlocks.Bedrock))
-        {
-            return false;
-        }
+        if (existing.IsAir || existing == _blocks.GetDefaultState(BuiltInBlocks.Bedrock)) return false;
 
         _player.TriggerHandSwing();
         return ApplyWorldBlockChange(target.BlockPosition, target.HitFace, BlockState.Air);
     }
 
-    /// <summary>Uses the selected item (food, bucket, flint &amp; steel) or places the selected block.</summary>
+    /// <summary>Uses the selected item or places the selected block.</summary>
     public bool TryPlaceSelectedBlock()
     {
         var used = _survivalCombat.HandleRightClickUseOrPlace(
-            _player,
-            _worldCache,
-            ApplyWorldBlockChange,
-            out var openCrafting);
+            _player, _worldCache, _mobManager, ApplyWorldBlockChange, out var openContainer, out var containerPos);
 
-        if (openCrafting)
+        if (openContainer is { } containerMode)
         {
-            _menu.Mode = UiOverlayMode.SurvivalInventory;
+            _menu.OpenContainerScreen(containerMode, containerPos);
         }
 
         return used;
     }
 
-    /// <summary>Sends a chat message or slash command (handling local <c>/gamemode</c> toggle + multiplayer forwarding).</summary>
+    /// <summary>Sends a chat message or slash command.</summary>
     public void SendChatOrCommand(string message)
     {
-        if (string.IsNullOrWhiteSpace(message))
-        {
-            return;
-        }
-
+        if (string.IsNullOrWhiteSpace(message)) return;
         var trimmed = message.Trim();
         if (trimmed.StartsWith("/gamemode", StringComparison.OrdinalIgnoreCase) ||
             trimmed.StartsWith("/gm", StringComparison.OrdinalIgnoreCase))
         {
             var toSurvival = trimmed.Contains("survival", StringComparison.OrdinalIgnoreCase) ||
-                trimmed.EndsWith(" s", StringComparison.OrdinalIgnoreCase) ||
-                trimmed.EndsWith(" 0", StringComparison.Ordinal);
+                trimmed.EndsWith(" s", StringComparison.OrdinalIgnoreCase) || trimmed.EndsWith(" 0", StringComparison.Ordinal);
             var toCreative = trimmed.Contains("creative", StringComparison.OrdinalIgnoreCase) ||
-                trimmed.EndsWith(" c", StringComparison.OrdinalIgnoreCase) ||
-                trimmed.EndsWith(" 1", StringComparison.Ordinal);
+                trimmed.EndsWith(" c", StringComparison.OrdinalIgnoreCase) || trimmed.EndsWith(" 1", StringComparison.Ordinal);
 
             var nextMode = _player.Mode == GameMode.Creative ? GameMode.Survival : GameMode.Creative;
-            if (toSurvival)
-            {
-                nextMode = GameMode.Survival;
-            }
-            else if (toCreative)
-            {
-                nextMode = GameMode.Creative;
-            }
+            if (toSurvival) nextMode = GameMode.Survival;
+            else if (toCreative) nextMode = GameMode.Creative;
 
             _player.SetGameMode(nextMode);
             _chatHistory.AddMessage($"[System] Set own game mode to {nextMode} Mode.");
@@ -232,7 +217,6 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         RenderFrameMetrics lastMetrics = default;
-
         for (var i = 0; i < frameCount; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -263,45 +247,43 @@ public sealed class ClientSessionRunner : IAsyncDisposable
             {
                 var metrics = silkRenderer.RenderFrame(_player.Camera, overlay: BuildOverlayState(silkRenderer.WindowPixelSize));
                 RefreshDebugTelemetry(metrics, dt);
+                var flyTag = _player.IsFlying ? " [FLY]" : string.Empty;
                 silkRenderer.WindowTitle = _menu.Mode == UiOverlayMode.TitleMenu
-                    ? "Over-the-Horizon: C# EDITION (v0.4.0-alpha)"
-                    : $"Over-the-Horizon: C# EDITION | {_lastFps:F0} FPS | {_player.Mode} | [{_player.Hotbar.SelectedSlot + 1}: {_player.Hotbar.SelectedBlockDisplayName}] | Friends: {_remotePlayers.Count}";
+                    ? "Over-the-Horizon: C# EDITION (v0.5.0-alpha)"
+                    : $"Over-the-Horizon: C# EDITION | {_lastFps:F0} FPS | {_player.Mode}{flyTag} | RD:{_menu.ActiveViewDistance} | [{_player.Hotbar.SelectedSlot + 1}: {_player.Hotbar.SelectedBlockDisplayName}]";
             },
             onResize: (w, h) => _player.Camera.SetAspectRatio(w, h),
             cancellationToken: cancellationToken);
 
-        if (_backgroundWorldStreamTask is not null)
-        {
-            await _backgroundWorldStreamTask.ConfigureAwait(false);
-        }
-
-        if (!_transport.IsConnected)
-        {
-            _ = await _localWorld.Chunks.SaveDirtyChunksAsync(CancellationToken.None).ConfigureAwait(false);
-        }
-
+        if (_backgroundWorldStreamTask is not null) await _backgroundWorldStreamTask.ConfigureAwait(false);
+        if (!_transport.IsConnected) _ = await _localWorld.Chunks.SaveDirtyChunksAsync(CancellationToken.None).ConfigureAwait(false);
         await _meshQueue.DisposeAsync().ConfigureAwait(false);
     }
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        if (_sessionCts is not null)
-        {
-            await _sessionCts.CancelAsync().ConfigureAwait(false);
-        }
-
+        if (_sessionCts is not null) await _sessionCts.CancelAsync().ConfigureAwait(false);
         await _menuActions.AwaitPendingAsync().ConfigureAwait(false);
         await _meshQueue.DisposeAsync().ConfigureAwait(false);
         await _transport.DisposeAsync().ConfigureAwait(false);
         _menuActions.Dispose();
-
         _sessionCts?.Dispose();
         _sessionCts = null;
     }
 
     private bool ApplyWorldBlockChange(BlockPos targetPos, Direction face, BlockState newState)
     {
+        if (newState.IsAir)
+        {
+            var brokenKey = _blocks.GetStateMetadata(_worldCache.GetBlockState(targetPos)).BlockKey;
+            if (brokenKey == BuiltInBlocks.Furnace || brokenKey == BuiltInBlocks.LitFurnace)
+            {
+                _menu.RemoveFurnaceAndDropContents(targetPos, _player.Hotbar.SurvivalInventory);
+                _player.Hotbar.RefreshSlotVisuals(_player.Mode);
+            }
+        }
+
         if (_transport.IsConnected)
         {
             _ = _worldCache.ApplyBlockUpdate(targetPos, newState);
@@ -314,7 +296,8 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         }
         else
         {
-            SyncLocalSnapshots();
+            var centerChunk = _player.FeetPosition.ToBlockPos().ToChunkPos();
+            _worldBridge.SyncLocalSnapshots(centerChunk, _menu.ActiveViewDistance, fullImmediateRadius: 2);
         }
 
         var center = new Vec3d(targetPos.X + 0.5, targetPos.Y + 0.5, targetPos.Z + 0.5);
@@ -332,42 +315,38 @@ public sealed class ClientSessionRunner : IAsyncDisposable
 
         _menu.AdvanceAnimations(dt, _player);
         _survivalCombat.StepTimers(dt);
+        var playerChunk = _player.FeetPosition.ToBlockPos().ToChunkPos();
 
         if (_menu.Mode == UiOverlayMode.TitleMenu)
         {
             _player.Camera.Position = new Vec3d(0.5, _localSpawnY + 14.0, 0.5);
             _player.Camera.SetRotation(_menu.PanoramaYawDegrees, -12.0f);
-            _meshQueue.DispatchAndUpload(_worldCache, silkRenderer);
+            _meshQueue.DispatchAndUpload(_worldCache, silkRenderer, playerChunk);
             return;
         }
 
         if (!_transport.IsConnected && (_backgroundWorldStreamTask is null || _backgroundWorldStreamTask.IsCompleted))
         {
-            var centerChunk = _player.FeetPosition.ToBlockPos().ToChunkPos();
-            _localWorld.Chunks.UpsertTicket(new ChunkTicket(LocalTicketOwnerId, ChunkTicketType.Player, centerChunk, _menu.ActiveViewDistance));
-            _backgroundWorldStreamTask = _localWorld.Chunks.ProcessTicketsAsync(2, sessionToken).AsTask();
-            SyncLocalSnapshots();
+            var radius = Math.Clamp(_menu.ActiveViewDistance, 1, 64);
+            var loadBatch = Math.Clamp(4 + (radius / 3), 6, 28);
+            _localWorld.Chunks.UpsertTicket(new ChunkTicket(LocalTicketOwnerId, ChunkTicketType.Player, playerChunk, radius));
+            _backgroundWorldStreamTask = _localWorld.Chunks.ProcessTicketsAsync(loadBatch, sessionToken).AsTask();
+            _worldBridge.SyncLocalSnapshots(playerChunk, radius);
         }
 
-        var movement = _inputBinder.PollMovement(silkRenderer.InputContext);
-        _player.StepMovement(_worldCache, _blocks, _audio, movement, dt);
+        var (move, descend) = _inputBinder.PollMovement(silkRenderer.InputContext);
+        _player.StepMovement(_worldCache, _blocks, _audio, move, dt, descend);
         _remotePlayers.StepInterpolation(dt);
+        if (!_transport.IsConnected) _worldBridge.StepWorldMobs(_player, (float)dt);
 
         var (leftClicked, rightClicked) = _inputBinder.ConsumeActionRequests();
         var leftHeld = _inputBinder.IsLeftMouseHeld(silkRenderer.InputContext);
 
         if (_menu.IsGameplayActive)
         {
-            var swungPvp = leftClicked && _survivalCombat.TryExecutePvpAttack(_player, _remotePlayers, _transport);
-            if (!swungPvp)
-            {
-                _survivalCombat.StepMining(dt, leftClicked, leftHeld, _player, _worldCache, ApplyWorldBlockChange);
-            }
-
-            if (rightClicked)
-            {
-                _ = TryPlaceSelectedBlock();
-            }
+            var swungMelee = leftClicked && _survivalCombat.TryExecuteMeleeAttack(_player, _mobManager, _remotePlayers, _transport);
+            if (!swungMelee) _survivalCombat.StepMining(dt, leftClicked, leftHeld, _player, _worldCache, ApplyWorldBlockChange);
+            if (rightClicked) _ = TryPlaceSelectedBlock();
         }
         else
         {
@@ -375,23 +354,18 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         }
 
         EnqueueOutboundMovementIfChanged(dt);
-        _meshQueue.DispatchAndUpload(_worldCache, silkRenderer);
+        _meshQueue.DispatchAndUpload(_worldCache, silkRenderer, playerChunk);
     }
 
     private FrameOverlayState BuildOverlayState(Vector2 viewport) =>
-        _menu.BuildOverlayState(viewport, _player, _remotePlayers.BuildSnapshot(), _chatHistory, _latestDebugText);
+        _menu.BuildOverlayState(
+            viewport, _player, _worldCache, _remotePlayers.BuildSnapshot(), _worldBridge.BuildMobVisuals(_player), _chatHistory, _latestDebugText);
 
-    private async ValueTask StepFrameAsync(
-        double deltaSeconds,
-        (float Forward, float Strafe, bool Jump, bool Sprint) movement,
-        CancellationToken ct)
+    private async ValueTask StepFrameAsync(double deltaSeconds, (float Forward, float Strafe, bool Jump, bool Sprint) movement, CancellationToken ct)
     {
         DrainInboundPackets();
-        if (!_transport.IsConnected)
-        {
-            await StreamLocalWorldStepAsync(maxChunks: 8, ct).ConfigureAwait(false);
-        }
-
+        if (!_transport.IsConnected) await StreamLocalWorldStepAsync(maxChunks: 12, ct).ConfigureAwait(false);
+        _menu.AdvanceAnimations(deltaSeconds, _player);
         _survivalCombat.StepTimers(deltaSeconds);
         _player.StepMovement(_worldCache, _blocks, _audio, movement, deltaSeconds);
         _remotePlayers.StepInterpolation(deltaSeconds);
@@ -402,30 +376,10 @@ public sealed class ClientSessionRunner : IAsyncDisposable
     private async ValueTask StreamLocalWorldStepAsync(int maxChunks, CancellationToken ct)
     {
         var centerChunk = _player.FeetPosition.ToBlockPos().ToChunkPos();
-        var radius = Math.Clamp(_menu.ActiveViewDistance, 1, 16);
+        var radius = Math.Clamp(_menu.ActiveViewDistance, 1, 64);
         _localWorld.Chunks.UpsertTicket(new ChunkTicket(LocalTicketOwnerId, ChunkTicketType.Player, centerChunk, radius));
         _ = await _localWorld.Chunks.ProcessTicketsAsync(maxChunks, ct).ConfigureAwait(false);
-        SyncLocalSnapshots();
-    }
-
-    private void SyncLocalSnapshots()
-    {
-        var center = _player.FeetPosition.ToBlockPos().ToChunkPos();
-        var radius = Math.Clamp(_menu.ActiveViewDistance, 1, 16);
-
-        for (var dz = -radius; dz <= radius; dz++)
-        {
-            for (var dx = -radius; dx <= radius; dx++)
-            {
-                var pos = new ChunkPos(center.X + dx, center.Z + dz);
-                if (_localWorld.Chunks.TryGetSnapshot(pos, out var snap))
-                {
-                    _worldCache.UpsertSnapshot(snap);
-                }
-            }
-        }
-
-        _ = _worldCache.EvictOutOfRangeChunks(center, radius + 3, _renderer);
+        _worldBridge.SyncLocalSnapshots(centerChunk, radius);
     }
 
     private void DrainInboundPackets()
@@ -447,41 +401,27 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         }
 
         _moveSendTimer += dt;
-        if (_moveSendTimer < 0.05)
-        {
-            return;
-        }
-
+        if (_moveSendTimer < 0.05) return;
         _moveSendTimer = 0.0;
-        var posDeltaSq = (_player.FeetPosition - _lastSentFeetPosition).LengthSquared;
-        var rotChanged = MathF.Abs(_player.Camera.YawDegrees - _lastSentYaw) > 0.5f ||
-            MathF.Abs(_player.Camera.PitchDegrees - _lastSentPitch) > 0.5f;
 
-        if (posDeltaSq <= 0.0004 && !rotChanged)
-        {
-            return;
-        }
+        var posDeltaSq = (_player.FeetPosition - _lastSentFeetPosition).LengthSquared;
+        var rotChanged = MathF.Abs(_player.Camera.YawDegrees - _lastSentYaw) > 0.5f || MathF.Abs(_player.Camera.PitchDegrees - _lastSentPitch) > 0.5f;
+        if (posDeltaSq <= 0.0004 && !rotChanged) return;
 
         _lastSentFeetPosition = _player.FeetPosition;
         _lastSentYaw = _player.Camera.YawDegrees;
         _lastSentPitch = _player.Camera.PitchDegrees;
-        _transport.EnqueueOutbound(
-            new MovePlayerPacket(_player.FeetPosition, _lastSentYaw, _lastSentPitch, _player.OnGround));
+        _transport.EnqueueOutbound(new MovePlayerPacket(_player.FeetPosition, _lastSentYaw, _lastSentPitch, _player.OnGround));
     }
 
     private void RefreshDebugTelemetry(RenderFrameMetrics metrics, double dt)
     {
-        if (dt > 1e-6)
-        {
-            _lastFps = (_lastFps * 0.85) + ((1.0 / dt) * 0.15);
-        }
-
+        if (dt > 1e-6) _lastFps = (_lastFps * 0.85) + ((1.0 / dt) * 0.15);
         var snapshot = new F3DebugSnapshot(
             _renderer.BackendName, _lastFps, dt * 1000.0, _player.FeetPosition,
             _player.Camera.CardinalFacing, _player.Camera.YawDegrees, _player.Camera.PitchDegrees,
             BuiltInBiomes.Plains, metrics.VisibleSections, _renderer.UploadedSectionCount,
             metrics.TrianglesSubmitted * 3, GC.GetTotalMemory(forceFullCollection: false));
-
         _latestDebugText = F3OverlayFormatter.Format(in snapshot);
     }
 }

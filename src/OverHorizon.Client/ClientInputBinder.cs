@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Numerics;
 using Microsoft.Extensions.Logging;
 using OverHorizon.Audio;
@@ -8,9 +9,9 @@ using Silk.NET.Input;
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Binds Silk.NET keyboard &amp; mouse input for first-person gameplay, PvP melee, progressive Survival mining,
-/// the "C# EDITION" menus, Redesigned Tabbed Creative Catalog (<c>E</c>), Survival Inventory &amp; Crafting (<c>E</c>),
-/// <c>F4</c> GameMode toggle, live Chat (<c>T</c> / <c>/</c>), and <c>F3</c> debug telemetry.
+/// Binds Silk.NET keyboard &amp; mouse input for first-person gameplay, Creative Flight (<c>F</c> or double-tap <c>Space</c>),
+/// PvP &amp; 3D Mob melee, progressive Survival mining, draggable Options sliders, <c>2x2</c>/<c>3x3</c> Crafting &amp; Furnace containers
+/// (left-click pickup/merge/swap + right-click split/place-one), <c>F4</c> GameMode toggle, Chat, and <c>F3</c> telemetry.
 /// </summary>
 internal sealed class ClientInputBinder
 {
@@ -21,8 +22,10 @@ internal sealed class ClientInputBinder
     private readonly Func<string> _getLatestDebugText;
     private readonly Func<Vector2> _getViewportSize;
     private readonly Queue<string> _pendingUiActions = new();
+    private readonly Stopwatch _doubleTapWatch = Stopwatch.StartNew();
 
     private Vector2 _lastMousePos;
+    private double _lastSpaceTapSeconds = -10.0;
     private bool _hasLastMousePos;
     private bool _wasRawCursor;
     private bool _suppressNextKeyChar;
@@ -46,19 +49,20 @@ internal sealed class ClientInputBinder
         _getViewportSize = getViewportSize;
     }
 
-    public (float Forward, float Strafe, bool Jump, bool Sprint) PollMovement(IInputContext? input)
+    public ((float Forward, float Strafe, bool Jump, bool Sprint) Move, bool Descend) PollMovement(IInputContext? input)
     {
         if (!_menu.IsGameplayActive || input is null || input.Keyboards.Count == 0)
         {
-            return (0.0f, 0.0f, false, false);
+            return ((0.0f, 0.0f, false, false), false);
         }
 
         var kb = input.Keyboards[0];
         var fwd = (kb.IsKeyPressed(Key.W) ? 1.0f : 0.0f) - (kb.IsKeyPressed(Key.S) ? 1.0f : 0.0f);
         var strafe = (kb.IsKeyPressed(Key.D) ? 1.0f : 0.0f) - (kb.IsKeyPressed(Key.A) ? 1.0f : 0.0f);
         var jump = kb.IsKeyPressed(Key.Space);
-        var sprint = kb.IsKeyPressed(Key.ShiftLeft) || kb.IsKeyPressed(Key.ControlLeft);
-        return (fwd, strafe, jump, sprint);
+        var descend = kb.IsKeyPressed(Key.C) || (_player.IsFlying && kb.IsKeyPressed(Key.ShiftLeft));
+        var sprint = kb.IsKeyPressed(Key.ControlLeft) || (!_player.IsFlying && kb.IsKeyPressed(Key.ShiftLeft));
+        return ((fwd, strafe, jump, sprint), descend);
     }
 
     public bool IsLeftMouseHeld(IInputContext? input)
@@ -121,6 +125,7 @@ internal sealed class ClientInputBinder
                 var mouse = input.Mice[i];
                 mouse.MouseMove += OnMouseMove;
                 mouse.MouseDown += OnMouseDown;
+                mouse.MouseUp += OnMouseUp;
                 mouse.Scroll += OnMouseScroll;
             }
 
@@ -171,6 +176,7 @@ internal sealed class ClientInputBinder
 
         if (key == Key.F4 && _menu.Mode is UiOverlayMode.InGame or UiOverlayMode.BlockInventory or UiOverlayMode.SurvivalInventory)
         {
+            _menu.CloseContainerAndRefundCursor(_player);
             var next = _player.Mode == GameMode.Creative ? GameMode.Survival : GameMode.Creative;
             _player.SetGameMode(next);
             if (_menu.Mode is UiOverlayMode.BlockInventory or UiOverlayMode.SurvivalInventory)
@@ -211,13 +217,22 @@ internal sealed class ClientInputBinder
 
         if (key == Key.Escape)
         {
-            _menu.Mode = _menu.Mode switch
+            if (_menu.Mode is UiOverlayMode.BlockInventory or UiOverlayMode.SurvivalInventory or UiOverlayMode.CraftingTableScreen or UiOverlayMode.FurnaceScreen)
             {
-                UiOverlayMode.InGame => UiOverlayMode.PauseMenu,
-                UiOverlayMode.PauseMenu or UiOverlayMode.BlockInventory or UiOverlayMode.SurvivalInventory or UiOverlayMode.ChatInput => UiOverlayMode.InGame,
-                UiOverlayMode.MultiplayerMenu or UiOverlayMode.OptionsMenu => UiOverlayMode.TitleMenu,
-                _ => _menu.Mode,
-            };
+                _menu.CloseContainerAndRefundCursor(_player);
+                _menu.Mode = UiOverlayMode.InGame;
+            }
+            else
+            {
+                _menu.Mode = _menu.Mode switch
+                {
+                    UiOverlayMode.InGame => UiOverlayMode.PauseMenu,
+                    UiOverlayMode.PauseMenu or UiOverlayMode.ChatInput => UiOverlayMode.InGame,
+                    UiOverlayMode.MultiplayerMenu or UiOverlayMode.OptionsMenu => UiOverlayMode.TitleMenu,
+                    _ => _menu.Mode,
+                };
+            }
+
             _audio.PlayPositional(SoundCue.UiClick, _player.Camera.Position, gain: 0.25f * _player.MasterVolume);
             return;
         }
@@ -233,8 +248,9 @@ internal sealed class ClientInputBinder
             }
         }
 
-        if (_menu.Mode == UiOverlayMode.SurvivalInventory && key == Key.E)
+        if (_menu.Mode is UiOverlayMode.SurvivalInventory or UiOverlayMode.CraftingTableScreen or UiOverlayMode.FurnaceScreen && key == Key.E)
         {
+            _menu.CloseContainerAndRefundCursor(_player);
             _menu.Mode = UiOverlayMode.InGame;
             return;
         }
@@ -248,6 +264,25 @@ internal sealed class ClientInputBinder
 
         if (!_menu.IsGameplayActive)
         {
+            return;
+        }
+
+        // Creative Flight: Double-tap Space OR press F!
+        if (_player.Mode == GameMode.Creative && key == Key.Space)
+        {
+            var now = _doubleTapWatch.Elapsed.TotalSeconds;
+            if (now - _lastSpaceTapSeconds <= 0.32)
+            {
+                _ = _player.ToggleCreativeFlight();
+                _lastSpaceTapSeconds = -10.0;
+                return;
+            }
+
+            _lastSpaceTapSeconds = now;
+        }
+        else if (_player.Mode == GameMode.Creative && key == Key.F)
+        {
+            _ = _player.ToggleCreativeFlight();
             return;
         }
 
@@ -279,9 +314,9 @@ internal sealed class ClientInputBinder
     {
         if (!_menu.IsGameplayActive)
         {
-            if (button == MouseButton.Left)
+            if (button is MouseButton.Left or MouseButton.Right)
             {
-                var action = _menu.HandleLeftClick(mouse.Position, _getViewportSize(), _player);
+                var action = _menu.HandleContainerOrMenuClick(mouse.Position, _getViewportSize(), _player, isRightClick: button == MouseButton.Right);
                 if (!string.IsNullOrEmpty(action))
                 {
                     var cue = action is "crafted_item" or "equip_creative" ? SoundCue.ItemPop : SoundCue.UiClick;
@@ -303,6 +338,15 @@ internal sealed class ClientInputBinder
         }
     }
 
+    private void OnMouseUp(IMouse mouse, MouseButton button)
+    {
+        _ = mouse;
+        if (button == MouseButton.Left)
+        {
+            _menu.ReleaseSliderDrag();
+        }
+    }
+
     private void OnMouseScroll(IMouse mouse, ScrollWheel wheel)
     {
         _ = mouse;
@@ -311,7 +355,7 @@ internal sealed class ClientInputBinder
             return;
         }
 
-        if (_menu.Mode is UiOverlayMode.BlockInventory or UiOverlayMode.SurvivalInventory)
+        if (_menu.Mode == UiOverlayMode.BlockInventory)
         {
             _menu.ScrollInventory(wheel.Y > 0.0f ? 1 : -1);
             return;
@@ -328,10 +372,14 @@ internal sealed class ClientInputBinder
 
     private void OnMouseMove(IMouse mouse, Vector2 position)
     {
-        _ = mouse;
         _menu.MousePosition = position;
         if (!_menu.IsGameplayActive)
         {
+            if (mouse.IsButtonPressed(MouseButton.Left))
+            {
+                _menu.HandleSliderDrag(position, _getViewportSize(), _player);
+            }
+
             return;
         }
 

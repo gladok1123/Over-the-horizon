@@ -244,6 +244,7 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         gl.UniformMatrix4(prog.LocViewProjection, 1, false, (float*)&viewProj);
         gl.Uniform1(prog.LocAtlas, 0);
         gl.Uniform1(prog.LocSkyBrightness, clampedSky);
+        gl.Uniform1(prog.LocHeldTorchLight, overlay?.HeldTorchLightLevel ?? 0.0f);
         gl.Uniform1(prog.LocFogStart, underwater ? 1.5f : camera.FarPlane * 0.65f);
         gl.Uniform1(prog.LocFogEnd, underwater ? 24.0f : camera.FarPlane * 0.98f);
         gl.Uniform3(prog.LocSkyColor, skyColor.X, skyColor.Y, skyColor.Z);
@@ -255,7 +256,7 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         var (visible, culled, drawCalls, triangles) = DrawOpaqueAndCollectTranslucent(gl, prog, in frustum, camera.Position);
         var (transCalls, transTris) = DrawTranslucentPass(gl, prog, camera.Position);
         var overlayCalls = (overlay is not null && _overlayRenderer is not null)
-            ? _overlayRenderer.RenderOverlays(camera, overlay, prog.AtlasTexture)
+            ? _overlayRenderer.RenderOverlays(camera, overlay, prog.AtlasTexture, _stagedAtlas)
             : 0;
 
         gl.BindVertexArray(0);

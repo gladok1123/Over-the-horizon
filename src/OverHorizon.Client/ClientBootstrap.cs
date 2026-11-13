@@ -106,7 +106,7 @@ public static class ClientBootstrap
 
             if (string.Equals(token, "--view-distance", StringComparison.Ordinal) && i + 1 < args.Length)
             {
-                if (int.TryParse(args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var vd) && vd is >= 1 and <= 16)
+                if (int.TryParse(args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var vd) && vd is >= 1 and <= 64)
                 {
                     viewDistance = vd;
                 }
@@ -152,6 +152,13 @@ public static class ClientBootstrap
         ArgumentNullException.ThrowIfNull(services);
 
         var resolvedOptions = options ?? new ClientOptions();
+        var effectiveAssets = resolvedOptions.ExternalAssetsPath;
+        if (string.IsNullOrWhiteSpace(effectiveAssets) && Directory.Exists(Minecraft23w13aAssetSyncer.DefaultPackDirectory))
+        {
+            effectiveAssets = Minecraft23w13aAssetSyncer.DefaultPackDirectory;
+            resolvedOptions = resolvedOptions with { ExternalAssetsPath = effectiveAssets };
+        }
+
         services.AddSingleton(resolvedOptions);
         services.AddSingleton<IClock>(_ => new MonotonicClock());
 
@@ -171,11 +178,6 @@ public static class ClientBootstrap
         services.AddGameplayModule();
         services.AddPhysicsModule();
         var saveDir = resolvedOptions.Headless || resolvedOptions.HeadlessCheckOnly ? null : "./saves/SingleplayerWorld";
-        var effectiveAssets = resolvedOptions.ExternalAssetsPath;
-        if (string.IsNullOrWhiteSpace(effectiveAssets) && Directory.Exists(Minecraft23w13aAssetSyncer.DefaultPackDirectory))
-        {
-            effectiveAssets = Minecraft23w13aAssetSyncer.DefaultPackDirectory;
-        }
 
         services.AddWorldModule(worldSaveDirectory: saveDir);
         services.AddRenderingModule(new RenderingOptions(Headless: resolvedOptions.Headless));

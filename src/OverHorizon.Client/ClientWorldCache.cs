@@ -186,24 +186,37 @@ public sealed class ClientWorldCache : IVoxelCollisionReader
     }
 
     /// <summary>
-    /// Dequeues up to <paramref name="maxColumns"/> dirty <see cref="ChunkNeighborhood"/> snapshots for background meshing.
+    /// Dequeues up to <paramref name="maxColumns"/> dirty <see cref="ChunkNeighborhood"/> snapshots for background meshing,
+    /// prioritized by minimum Chebyshev distance to <paramref name="priorityCenter"/> when provided.
     /// </summary>
     /// <param name="maxColumns">Maximum dirty columns to pop.</param>
+    /// <param name="priorityCenter">Optional player chunk coordinate so nearby chunks remesh first.</param>
     /// <returns>List of dequeued chunk neighborhoods.</returns>
-    public IReadOnlyList<ChunkNeighborhood> DequeueDirtyNeighborhoods(int maxColumns = 16)
+    public IReadOnlyList<ChunkNeighborhood> DequeueDirtyNeighborhoods(int maxColumns = 16, ChunkPos? priorityCenter = null)
     {
         if (_dirtyMeshColumns.Count == 0 || maxColumns <= 0)
         {
             return [];
         }
 
-        var batchPositions = new List<ChunkPos>(Math.Min(maxColumns, _dirtyMeshColumns.Count));
-        foreach (var pos in _dirtyMeshColumns)
+        List<ChunkPos> batchPositions;
+        if (priorityCenter is { } centerChunk && _dirtyMeshColumns.Count > maxColumns)
         {
-            batchPositions.Add(pos);
-            if (batchPositions.Count >= maxColumns)
+            batchPositions = _dirtyMeshColumns
+                .OrderBy(pos => centerChunk.ChessboardDistance(pos))
+                .Take(maxColumns)
+                .ToList();
+        }
+        else
+        {
+            batchPositions = new List<ChunkPos>(Math.Min(maxColumns, _dirtyMeshColumns.Count));
+            foreach (var pos in _dirtyMeshColumns)
             {
-                break;
+                batchPositions.Add(pos);
+                if (batchPositions.Count >= maxColumns)
+                {
+                    break;
+                }
             }
         }
 
