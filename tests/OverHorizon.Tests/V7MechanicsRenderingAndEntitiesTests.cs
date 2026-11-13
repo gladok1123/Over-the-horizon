@@ -44,14 +44,14 @@ public sealed class V7MechanicsRenderingAndEntitiesTests
         // 1. Ceiling-hung Lantern (ClickedFace = Down against solid ceiling at Y=70 -> hanging=true at Y=69)
         world[new BlockPos(2, 70, 2)] = stone;
         var hangPlaced = BlockAttachmentAndShapeRules.TryResolvePlacementState(
-            blocks, Get, BuiltInBlocks.Lantern, new BlockPos(2, 69, 2), Direction.Down, Vector3.UnitZ, out var hangingLantern);
+            blocks, Get, BuiltInBlocks.Lantern, new BlockPos(2, 69, 2), Direction.Down, Vector3.UnitZ, out var hangingLantern, out _);
         hangPlaced.Should().BeTrue();
         blocks.GetStateMetadata(hangingLantern).Properties["hanging"].Should().Be("true");
-        BlockAttachmentAndShapeRules.HasValidSupport(blocks, Get, new BlockPos(2, 69, 2), hangingLantern).Should().BeTrue();
+        BlockAttachmentAndShapeRules.IsStillSupported(blocks, Get, new BlockPos(2, 69, 2), hangingLantern).Should().BeTrue();
 
         // Removing ceiling support invalidates hanging lantern!
         world.Remove(new BlockPos(2, 70, 2));
-        BlockAttachmentAndShapeRules.HasValidSupport(blocks, Get, new BlockPos(2, 69, 2), hangingLantern).Should().BeFalse();
+        BlockAttachmentAndShapeRules.IsStillSupported(blocks, Get, new BlockPos(2, 69, 2), hangingLantern).Should().BeFalse();
 
         // 2. Floor-standing Lantern, Extended Sticky Piston, and 2-part RedBed emit rich 3D shaped geometry
         var col = new ChunkColumn(new ChunkPos(0, 0));
@@ -76,7 +76,7 @@ public sealed class V7MechanicsRenderingAndEntitiesTests
         mesh.OpaqueVertices.Length.Should().BeGreaterThan(120, "3D Lantern + chain, shortened Extended Piston + Head, and 2-part RedBed with legs emit shaped geometry");
 
         // RedBed drops 1 RedBed item when broken cleanly
-        var bedDrop = BlockDropResolver.ResolveBrokenBlockDrop(blocks, items, BuiltInBlocks.RedBed, heldItem: null);
+        var bedDrop = BlockDropResolver.ResolveDrop(BuiltInBlocks.RedBed, heldTool: null, items);
         bedDrop.IsEmpty.Should().BeFalse();
         bedDrop.Count.Should().Be(1);
         items.GetById(bedDrop.ItemId)!.Key.Should().Be(BuiltInBlocks.RedBed);

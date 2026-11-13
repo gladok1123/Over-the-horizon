@@ -156,7 +156,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         // 1. Atomic 2-block RedBed breaking: breaking EITHER head or foot removes its partner without duplicate drops!
         if (primaryState.IsAir &&
             !previousState.IsAir &&
-            BlockAttachmentAndShapeRules.TryGetBedPartnerPos(_blocks, primaryPos, previousState, out var partnerBedPos))
+            BlockAttachmentAndShapeRules.TryGetPartnerBedPosition(_blocks.GetStateMetadata(previousState), primaryPos, out var partnerBedPos, out _))
         {
             var partnerState = _localWorld.GetBlockState(partnerBedPos);
             if (!partnerState.IsAir &&
@@ -254,7 +254,13 @@ internal sealed partial class ClientWorldSyncAndMobBridge
     private void RecordWorldBatchSet(IReadOnlyList<(BlockPos Pos, BlockState State)> updates)
     {
         if (updates.Count == 0) return;
-        _ = _localWorld.SetBlockStatesBatch(updates);
+        var arr = new (BlockPos Position, BlockState State)[updates.Count];
+        for (var i = 0; i < updates.Count; i++)
+        {
+            arr[i] = updates[i];
+        }
+
+        _ = _localWorld.SetBlockStatesBatch(arr);
         for (var i = 0; i < updates.Count; i++)
         {
             var pos = updates[i].Pos;

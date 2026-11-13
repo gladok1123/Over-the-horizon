@@ -183,9 +183,14 @@ public sealed partial class ClientSessionRunner
 
     private void UpdateInteractiveFrame(SilkOpenGlRenderSubsystem silkRenderer, double dt, CancellationToken sessionToken)
     {
+        while (_mainThreadQueue.TryDequeue(out var mainWork))
+        {
+            mainWork();
+        }
+
         _inputBinder.EnsureBoundAndSyncCursor(silkRenderer.InputContext);
         _menuActions.DispatchPendingActions(
-            _inputBinder, silkRenderer, SendChatOrCommand, LoadSavedWorldAsync, SaveAndReturnToTitleAsync, () => _transport, t => _transport = t, sessionToken);
+            _inputBinder, silkRenderer, SendChatOrCommand, LoadSavedWorldAsync, SaveAndReturnToTitleAsync, () => _transport, t => _transport = t, EnqueueOnMainThreadAsync, sessionToken);
         DrainInboundPackets();
 
         _menu.AdvanceAnimations(dt, _player);

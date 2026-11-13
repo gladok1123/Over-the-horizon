@@ -356,7 +356,7 @@ public sealed partial class ClientHotbar
             ItemUseAction.WaterBucket => "Right-Click: Pour flowing Water source",
             ItemUseAction.EmptyBucket => "Right-Click: Scoop Water source",
             ItemUseAction.IgniteTnt => "Right-Click: Spark Fire or ignite physics TNT",
-            ItemUseAction.ShootBow => "Hold Right-Click to draw & release 3D ballistic Arrows!",
+            ItemUseAction.DrawBow => "Hold Right-Click to draw & release 3D ballistic Arrows!",
             ItemUseAction.PlaceMinecart => "Right-Click on Rail / Powered Rail to place & ride!",
             ItemUseAction.PlaceBlock => "Placeable Voxel Block (Right-Click)",
             _ => key == BuiltInItems.Arrow ? "Ammunition for Bow (consumed in Survival)" : "Crafting & Smelting Material",
