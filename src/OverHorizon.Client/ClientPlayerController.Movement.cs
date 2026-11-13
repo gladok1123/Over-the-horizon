@@ -220,7 +220,7 @@ public sealed partial class ClientPlayerController
             vy = JumpImpulse;
             OnGround = false;
             AddExhaustion(canSprint ? 0.20f : 0.05f);
-            audio.PlayPositional(SoundCue.PlayerJump, FeetPosition, gain: 0.44f * MasterVolume, pitch: 0.96f + ((WalkBobPhase % 0.10f)));
+            audio.PlayPositional(SoundCue.PlayerJump, FeetPosition, gain: 0.44f * MasterVolume, pitch: 0.96f + (WalkBobPhase % 0.10f));
         }
 
         var groundOrAirAccel = OnGround ? 24.0 : 8.5;
