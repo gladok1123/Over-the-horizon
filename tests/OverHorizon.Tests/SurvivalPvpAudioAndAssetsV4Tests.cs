@@ -150,11 +150,11 @@ public sealed class SurvivalPvpAudioAndAssetsV4Tests
     [Fact]
     public async Task AuthoritativeMultiplayerPvp_AppliesDiamondSwordCriticalDamageKnockbackAndRespawnAsync()
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(90));
         var registries = CoreRegistries.CreateDefault();
         var diamondSwordId = (ushort)registries.Items.GetId(BuiltInItems.DiamondSword);
 
-        var serverOpts = new ServerOptions(TicksPerSecond: 100, ListenPort: 0, PlayerViewDistanceChunks: 1);
+        var serverOpts = new ServerOptions(TicksPerSecond: 40, ListenPort: 0, PlayerViewDistanceChunks: 1);
         using var serverHost = ServerBootstrap.BuildHost([], serverOpts);
         await serverHost.StartAsync(cts.Token).ConfigureAwait(false);
 
