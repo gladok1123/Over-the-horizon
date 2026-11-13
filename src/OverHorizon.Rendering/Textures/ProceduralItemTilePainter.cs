@@ -273,7 +273,9 @@ internal static class ProceduralItemTilePainter
             var indent = Math.Abs(y - 7) / 2;
             for (var x = 3 + indent; x <= 12 - indent; x++)
             {
-                var hi = y <= 6 ? 26 : (y >= 9 ? -22 : 0);
+                var hi = 0;
+                if (y <= 6) hi = 26;
+                else if (y >= 9) hi = -22;
                 SetPx(
                     atlas,
                     tile,

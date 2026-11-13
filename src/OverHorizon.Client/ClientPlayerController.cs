@@ -284,8 +284,10 @@ public sealed class ClientPlayerController
         }
 
         var canSprint = input.Sprint && (!_inFluid) && (Mode == GameMode.Creative || Hunger > 6);
-        var baseSpeed = IsFlying ? CreativeFlySpeedBlocksPerSec : (_inFluid ? SwimHorizontalSpeedBlocksPerSec : WalkSpeedBlocksPerSec);
-        var speed = baseSpeed * (canSprint ? (IsFlying ? 1.85 : SprintMultiplier) : 1.0);
+        var groundOrSwimSpeed = _inFluid ? SwimHorizontalSpeedBlocksPerSec : WalkSpeedBlocksPerSec;
+        var baseSpeed = IsFlying ? CreativeFlySpeedBlocksPerSec : groundOrSwimSpeed;
+        var sprintBoost = IsFlying ? 1.85 : SprintMultiplier;
+        var speed = baseSpeed * (canSprint ? sprintBoost : 1.0);
         if (inCobweb && !IsFlying) speed *= 0.28;
 
         var vy = Velocity.Y;
@@ -298,7 +300,8 @@ public sealed class ClientPlayerController
         else if (onLadder)
         {
             _fallDistance = 0.0;
-            vy = input.Jump || MathF.Abs(input.Forward) > 0.1f ? 3.8 : (descend ? 0.0 : Math.Max(vy, -2.4));
+            var slideSpeed = descend ? 0.0 : Math.Max(vy, -2.4);
+            vy = input.Jump || MathF.Abs(input.Forward) > 0.1f ? 3.8 : slideSpeed;
         }
         else if (inCobweb)
         {
@@ -311,7 +314,8 @@ public sealed class ClientPlayerController
             OnGround = false;
         }
 
-        var accelRate = IsFlying ? 13.5 : (OnGround ? 24.0 : 8.5);
+        var groundOrAirAccel = OnGround ? 24.0 : 8.5;
+        var accelRate = IsFlying ? 13.5 : groundOrAirAccel;
         var blendHoriz = Math.Min(1.0, clampedDt * accelRate);
         var vx = (Velocity.X * (1.0 - blendHoriz)) + (wishX * speed * blendHoriz);
         var vz = (Velocity.Z * (1.0 - blendHoriz)) + (wishZ * speed * blendHoriz);

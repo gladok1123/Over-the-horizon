@@ -359,7 +359,8 @@ public static class UiGeometryBuilder
         }
         else if (state.Mode == UiOverlayMode.InGame)
         {
-            var modeBadge = state.IsSurvivalMode ? "[SURVIVAL]" : (state.IsCreativeFlying ? "[CREATIVE - FLYING]" : "[CREATIVE]");
+            var creativeBadge = state.IsCreativeFlying ? "[CREATIVE - FLYING]" : "[CREATIVE]";
+            var modeBadge = state.IsSurvivalMode ? "[SURVIVAL]" : creativeBadge;
             DrawText(v, $"{modeBadge} E: Inv | F: Fly (Creative) | F4: Mode | Shift: Sprint | Esc: Settings", 12.0f, 12.0f, 1.35f, new Vector4(0.92f, 0.95f, 1.0f, 0.80f), shadow: true);
         }
     }

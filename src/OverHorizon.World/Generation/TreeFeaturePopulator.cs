@@ -106,9 +106,15 @@ internal sealed class TreeFeaturePopulator
 
         var biomeKey = sample.BiomeKey;
         var spawnRoll = (int)((rng >> 8) % 100UL);
-        var threshold = biomeKey == BuiltInBiomes.Forest ? 62
-            : biomeKey == BuiltInBiomes.Plains ? 14
-            : 0;
+        var threshold = 0;
+        if (biomeKey == BuiltInBiomes.Forest)
+        {
+            threshold = 62;
+        }
+        else if (biomeKey == BuiltInBiomes.Plains)
+        {
+            threshold = 14;
+        }
 
         if (spawnRoll >= threshold)
         {

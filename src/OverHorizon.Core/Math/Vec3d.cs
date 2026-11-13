@@ -122,6 +122,13 @@ public readonly record struct Vec3d(double X, double Y, double Z)
     public double DistanceSquaredTo(Vec3d other) => (this - other).LengthSquared;
 
     /// <summary>
+    /// Computes the Euclidean distance to <paramref name="other"/>.
+    /// </summary>
+    /// <param name="other">Target point.</param>
+    /// <returns>Euclidean distance.</returns>
+    public double DistanceTo(Vec3d other) => (this - other).Length;
+
+    /// <summary>
     /// Converts world-space coordinates to the containing <see cref="BlockPos"/> via floor rounding.
     /// </summary>
     /// <returns>Containing <see cref="BlockPos"/>.</returns>

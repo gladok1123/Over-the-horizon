@@ -29,7 +29,6 @@ public sealed class OverworldGenerator : IWorldGenerator
     private readonly MineshaftStructureGenerator _mineshaftGenerator;
     private readonly TreeFeaturePopulator _treePopulator;
 
-    private readonly BlockState _air;
     private readonly BlockState _bedrock;
     private readonly BlockState _stone;
     private readonly BlockState _deepslate;
@@ -65,7 +64,6 @@ public sealed class OverworldGenerator : IWorldGenerator
         _mineshaftGenerator = new MineshaftStructureGenerator(worldSeed, blocks);
         _treePopulator = new TreeFeaturePopulator(worldSeed, blocks);
 
-        _air = BlockState.Air;
         _bedrock = blocks.GetDefaultState(BuiltInBlocks.Bedrock);
         _stone = blocks.GetDefaultState(BuiltInBlocks.Stone);
         _deepslate = blocks.GetDefaultState(BuiltInBlocks.Deepslate);
@@ -295,7 +293,8 @@ public sealed class OverworldGenerator : IWorldGenerator
                     }
                     else
                     {
-                        var subBlock = biomeKey == BuiltInBiomes.Desert ? (depthRemaining == 1 ? _sandstone : _sand) : _dirt;
+                        var desertSub = depthRemaining == 1 ? _sandstone : _sand;
+                        var subBlock = biomeKey == BuiltInBiomes.Desert ? desertSub : _dirt;
                         _ = chunk.SetBlockStateRaw(lx, y, lz, subBlock);
                         depthRemaining--;
                     }

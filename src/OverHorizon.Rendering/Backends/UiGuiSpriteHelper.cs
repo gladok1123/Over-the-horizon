@@ -53,7 +53,7 @@ internal static class UiGuiSpriteHelper
     /// <summary>Draws an authentic split-cap stone button from <c>widgets.png</c> (<c>y = 46/66/86</c>).</summary>
     public static void DrawStoneButton(List<TexturedUiVertex> v, in UiButtonItem b)
     {
-        var srcY = b.IsHovered ? 86.0f : (b.IsFocused ? 86.0f : 66.0f);
+        var srcY = (b.IsHovered || b.IsFocused) ? 86.0f : 66.0f;
         DrawSplitWidgetBar(v, srcY, b.X, b.Y, b.Width, b.Height);
     }
 

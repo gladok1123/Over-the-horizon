@@ -160,10 +160,11 @@ internal sealed class ClientItemUseHandler
     private bool TryQuickEquipArmor(ClientPlayerController player, ItemDefinition held, ref double useCooldown)
     {
         var path = held.Key.Path;
-        var sub = path.EndsWith("helmet", StringComparison.Ordinal) ? 0
-            : path.EndsWith("chestplate", StringComparison.Ordinal) ? 1
-            : path.EndsWith("leggings", StringComparison.Ordinal) ? 2
-            : path.EndsWith("boots", StringComparison.Ordinal) ? 3 : -1;
+        var sub = -1;
+        if (path.EndsWith("helmet", StringComparison.Ordinal)) sub = 0;
+        else if (path.EndsWith("chestplate", StringComparison.Ordinal)) sub = 1;
+        else if (path.EndsWith("leggings", StringComparison.Ordinal)) sub = 2;
+        else if (path.EndsWith("boots", StringComparison.Ordinal)) sub = 3;
         if (sub < 0) return false;
 
         var heldItemId = (ushort)Math.Max(0, _items.GetId(held.Key));
