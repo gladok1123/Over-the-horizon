@@ -19,7 +19,6 @@ using OverHorizon.Rendering.Hud;
 using OverHorizon.Rendering.Meshing;
 using OverHorizon.Rendering.Textures;
 using OverHorizon.World.ChunkManagement;
-using OverHorizon.World.Chunks;
 using OverHorizon.World.Generation;
 using OverHorizon.World.Serialization;
 using OverHorizon.World.Storage;
