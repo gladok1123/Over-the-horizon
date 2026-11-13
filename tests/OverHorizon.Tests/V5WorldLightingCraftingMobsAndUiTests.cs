@@ -318,6 +318,7 @@ public sealed class V5WorldLightingCraftingMobsAndUiTests
         uiVerts.Should().Contain(static v => v.Uv.X <= -3.0f, "CraftingTableScreen samples real uGuiAtlas container sheet");
 
         var cache = new ClientWorldCache(blocks, atlas);
+        cache.UpsertColumn(new ChunkColumn(new ChunkPos(0, 0)));
         using var audio = new OpenAlAudioSubsystem(NullLogger<OpenAlAudioSubsystem>.Instance);
         var player = new ClientPlayerController(new Vec3d(0.5, 80.0, 0.5), blocks, registries.Items);
         player.ToggleCreativeFlight().Should().BeTrue();

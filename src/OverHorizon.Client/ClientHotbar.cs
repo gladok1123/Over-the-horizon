@@ -152,7 +152,7 @@ public sealed class ClientHotbar
 
     private readonly IBlockRegistry _blocks;
     private readonly IRegistry<ItemDefinition> _items;
-    private readonly int[] _creativeSlots = [0, 1, 53, 55, 14, 5, 31, 35, 8];
+    private readonly int[] _creativeSlots = [0, 1, 2, 3, 4, 5, 6, 7, 8];
     private readonly Vector3[] _hotbarColors = new Vector3[PlayerInventory.HotbarSlotCount];
     private readonly int[] _hotbarTiles = new int[PlayerInventory.HotbarSlotCount];
     private readonly int[] _hotbarCounts = new int[PlayerInventory.HotbarSlotCount];
