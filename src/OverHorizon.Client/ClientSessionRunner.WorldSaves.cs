@@ -234,7 +234,7 @@ public sealed partial class ClientSessionRunner
         else
         {
             _worldBridge.EmitBlockBreakParticles(targetPos, oldKey);
-            var breakCue = oldKey == BuiltInBlocks.Fire ? SoundCue.FireExtinguishFizz : BlockSoundProfile.ResolveBreakCue(oldKey);
+            var breakCue = oldKey == BuiltInBlocks.Fire ? SoundCue.Fizz : BlockSoundProfile.ResolveBreakCue(oldKey);
             _audio.PlayPositional(breakCue, center, gain: 0.74f * _player.MasterVolume, pitch: BlockSoundProfile.ResolveBreakPitch(oldKey));
         }
 
@@ -432,8 +432,8 @@ public sealed partial class ClientSessionRunner
             if (_player.LastSwingWasOffhand) flags |= 8;
             if (_player.IsSneaking) flags |= 16;
 
-            var mainId = _player.Hotbar.SelectedItem?.NumericId ?? 0;
-            var offId = _player.Hotbar.OffhandItem?.NumericId ?? 0;
+            var mainId = _player.Hotbar.SurvivalInventory.SelectedStack.ItemId;
+            var offId = _player.Hotbar.SurvivalInventory.OffhandItem.ItemId;
             var bowByte = (byte)Math.Clamp((int)MathF.Round(_player.BowChargeNormalized * 255.0f), 0, 255);
             _transport.EnqueueOutbound(new PlayerEquipmentAndModePacket(
                 (byte)_player.Mode, mainId, offId, packedLower, packedUpper, flags, bowByte, _player.SwingCounter));

@@ -96,7 +96,7 @@ internal static class ClientInboundPacketApplier
                     {
                         var brokenKey = blocks.GetStateMetadata(prevState).BlockKey;
                         worldBridge.EmitBlockBreakParticles(blockPkt.Position, brokenKey);
-                        var breakCue = brokenKey == BuiltInBlocks.Fire ? SoundCue.FireExtinguishFizz : BlockSoundProfile.ResolveBreakCue(brokenKey);
+                        var breakCue = brokenKey == BuiltInBlocks.Fire ? SoundCue.Fizz : BlockSoundProfile.ResolveBreakCue(brokenKey);
                         audio.PlayPositional(breakCue, soundPos, gain: 0.72f * player.MasterVolume, pitch: BlockSoundProfile.ResolveBreakPitch(brokenKey));
                     }
                     else
@@ -142,9 +142,9 @@ internal static class ClientInboundPacketApplier
         switch (pkt.EventKind)
         {
             case 0: // ItemGrant (picked up 3D DroppedItem on server!)
-                if (pkt.ItemId > 0 && pkt.Count > 0)
+                if (pkt.GrantedItemId > 0 && pkt.GrantedCount > 0)
                 {
-                    _ = player.Hotbar.SurvivalInventory.AddItem(new ItemStack(pkt.ItemId, pkt.Count), items);
+                    _ = player.Hotbar.SurvivalInventory.AddItem(new ItemStack(pkt.GrantedItemId, pkt.GrantedCount), items);
                     player.Hotbar.RefreshSlotVisuals(player.Mode);
                     audio.PlayPositional(SoundCue.ItemPop, player.Camera.Position, gain: 0.58f * player.MasterVolume, pitch: 1.06f);
                 }
@@ -152,27 +152,34 @@ internal static class ClientInboundPacketApplier
                 break;
 
             case 1: // Explosion
-                worldBridge.Particles.EmitExplosion(pkt.WorldPosition);
-                audio.PlayPositional(SoundCue.Explosion, pkt.WorldPosition, gain: 1.0f * player.MasterVolume);
+                worldBridge.Particles.EmitExplosion(pkt.EventPosition);
+                audio.PlayPositional(SoundCue.Explosion, pkt.EventPosition, gain: 1.0f * player.MasterVolume);
                 break;
 
             case 2: // ShieldBlock
-                audio.PlayPositional(SoundCue.ShieldBlock, pkt.WorldPosition, gain: 0.90f * player.MasterVolume);
+                audio.PlayPositional(SoundCue.ShieldBlock, pkt.EventPosition, gain: 0.90f * player.MasterVolume);
                 break;
 
             case 3: // FuseHiss (Creeper or TNT)
-                var fuseCue = pkt.Count == 1 ? SoundCue.CreeperFuseHiss : SoundCue.TntFuse;
-                audio.PlayPositional(fuseCue, pkt.WorldPosition, gain: 0.92f * player.MasterVolume);
-                worldBridge.Particles.EmitFlameAndSmoke(pkt.WorldPosition + new Vec3d(0.0, 1.1, 0.0));
+                var fuseCue = pkt.GrantedCount == 1 ? SoundCue.MobCreeperHiss : SoundCue.TntFuse;
+                audio.PlayPositional(fuseCue, pkt.EventPosition, gain: 0.92f * player.MasterVolume);
+                worldBridge.Particles.EmitFlameAndSmoke(pkt.EventPosition + new Vec3d(0.0, 1.1, 0.0));
                 break;
 
             case 4: // ArrowHit
-                audio.PlayPositional(SoundCue.ArrowHit, pkt.WorldPosition, gain: 0.80f * player.MasterVolume);
+                audio.PlayPositional(SoundCue.ArrowHit, pkt.EventPosition, gain: 0.80f * player.MasterVolume);
                 break;
 
             case 5: // RidingCartSync
-                if (pkt.Count < 0) player.DismountMinecart();
-                else player.MountMinecart(pkt.Count);
+                if (pkt.GrantedCount <= 0)
+                {
+                    player.DismountMinecart();
+                }
+                else
+                {
+                    player.MountMinecart(pkt.GrantedCount);
+                }
+
                 break;
         }
     }

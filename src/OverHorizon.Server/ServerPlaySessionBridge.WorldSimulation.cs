@@ -27,17 +27,30 @@ public sealed partial class ServerPlaySessionBridge
             return;
         }
 
+        var playerFeetList = new List<Vec3d>(_players.Count);
+        Vec3d anchorPos = default;
+        foreach (var (_, pl) in _players)
+        {
+            if (pl.GameMode != GameMode.Spectator)
+            {
+                playerFeetList.Add(pl.LastPosition);
+                anchorPos = pl.LastPosition;
+            }
+        }
+
         var blockChanges = new List<(BlockPos Position, ushort BlockStateId)>();
         var ignitedTnts = new List<BlockPos>();
         var redstoneSounds = new List<(BlockPos Pos, RedstoneSoundKind Sound)>();
         _redstone.Step(
             dtSeconds,
+            playerFeetList.ToArray(),
             _world.GetBlockState,
             (pos, st) =>
             {
                 if (_world.SetBlockState(pos, st, tickNumber))
                 {
                     blockChanges.Add((pos, st.Id));
+                    _tntAndWorld.NotifyWorldBlockChanged(pos, st, _world.GetBlockState);
                 }
             },
             ignitedTnts,
@@ -46,57 +59,48 @@ public sealed partial class ServerPlaySessionBridge
         for (var i = 0; i < ignitedTnts.Count; i++)
         {
             var tp = ignitedTnts[i];
-            if (_tntAndWorld.IgniteBlock(_world.GetBlockState, (p, s) => _world.SetBlockState(p, s, tickNumber), tp))
+            if (_world.SetBlockState(tp, BlockState.Air, tickNumber))
             {
                 blockChanges.Add((tp, BlockState.Air.Id));
+                _ = _tntAndWorld.SpawnPrimedTnt(tp);
                 broadcaster.BroadcastToPlaySessions(new InventoryGrantAndEventPacket(0, 0, 3, new Vec3d(tp.X + 0.5, tp.Y + 0.5, tp.Z + 0.5)));
             }
         }
 
         var explosions = new List<Vec3d>();
-        var explodedBlocks = new List<(BlockPos Pos, BlockState State)>();
-        var detachedBlocks = new List<(BlockPos Pos, BlockState State)>();
+        var fragileDrops = new List<(BlockPos Pos, BlockState BrokenState)>();
         _tntAndWorld.Step(
             dtSeconds,
+            _collisionReader,
+            anchorPos,
             _world.GetBlockState,
+            _ => (15, 0),
             (pos, st) =>
             {
                 if (_world.SetBlockState(pos, st, tickNumber))
                 {
                     blockChanges.Add((pos, st.Id));
                     _redstone.NotifyBlockChanged(pos);
-                    return true;
                 }
-
-                return false;
             },
             explosions,
-            explodedBlocks,
-            detachedBlocks);
+            setBlockBatch: null,
+            brokenFragileDrops: fragileDrops);
 
-        for (var i = 0; i < explodedBlocks.Count; i++)
+        for (var i = 0; i < fragileDrops.Count; i++)
         {
-            var drop = BlockDropResolver.ResolveExplosionDrop(_registries, explodedBlocks[i].State);
+            var bKey = _registries.Blocks.GetStateMetadata(fragileDrops[i].BrokenState).BlockKey;
+            var drop = BlockDropResolver.ResolveDrop(bKey, heldTool: null, _registries.Items);
             if (!drop.IsEmpty)
             {
-                var p = explodedBlocks[i].Pos;
-                _ = _droppedItems.SpawnDrop(drop, new Vec3d(p.X + 0.5, p.Y + 0.4, p.Z + 0.5));
-            }
-        }
-
-        for (var i = 0; i < detachedBlocks.Count; i++)
-        {
-            var drop = BlockDropResolver.ResolveExplosionDrop(_registries, detachedBlocks[i].State);
-            if (!drop.IsEmpty)
-            {
-                var p = detachedBlocks[i].Pos;
-                _ = _droppedItems.SpawnDrop(drop, new Vec3d(p.X + 0.5, p.Y + 0.35, p.Z + 0.5));
+                _ = _droppedItems.SpawnBlockDrop(fragileDrops[i].Pos, drop);
             }
         }
 
         for (var i = 0; i < explosions.Count; i++)
         {
             broadcaster.BroadcastToPlaySessions(new InventoryGrantAndEventPacket(0, 0, 1, explosions[i]));
+            _ = _mobs.ApplyExplosionBlast(explosions[i], radius: 8.0f, maxDamage: 26.0f);
             ApplyExplosionDamageToPlayers(explosions[i], tickNumber, broadcaster);
         }
 
@@ -149,7 +153,8 @@ public sealed partial class ServerPlaySessionBridge
         if (playerState.GameMode == GameMode.Spectator) return;
 
         var currentPos = _gameplay.TryGetEntityPosition(playerState.EntityId);
-        if (currentPos is not { } playerFeet) return;
+        if (currentPos is null) return;
+        var playerFeet = currentPos.Value;
 
         var target = action.TargetPos;
         if (target.Y < EngineConstants.WorldMinY || target.Y >= EngineConstants.WorldMaxY) return;
@@ -179,11 +184,11 @@ public sealed partial class ServerPlaySessionBridge
 
             if (playerState.GameMode == GameMode.Survival && existingMeta.BlockKey != BuiltInBlocks.Fire)
             {
-                _registries.Items.TryGetById(playerState.MainHandItemId, out var heldTool);
-                var drop = BlockDropResolver.ResolveDrop(_registries, existingState, heldTool);
+                _ = _registries.Items.TryGetById(playerState.MainHandItemId, out var heldTool);
+                var drop = BlockDropResolver.ResolveDrop(existingMeta.BlockKey, heldTool, _registries.Items);
                 if (!drop.IsEmpty)
                 {
-                    _ = _droppedItems.SpawnDrop(drop, new Vec3d(target.X + 0.5, target.Y + 0.35, target.Z + 0.5), pickupDelay: 0.28f);
+                    _ = _droppedItems.SpawnBlockDrop(target, drop);
                 }
             }
 
@@ -209,6 +214,11 @@ public sealed partial class ServerPlaySessionBridge
             return;
         }
 
+        if (_registries.Blocks.GetStateMetadata(placeEvent.PlacedState).BlockKey == BuiltInBlocks.Fire)
+        {
+            _tntAndWorld.TrackFireBlock(target);
+        }
+
         ServerWorldTimeAndBlockSync.ApplyMutationAndBroadcastCascade(
             _world, _registries, _redstone, target, placeEvent.PlacedState, tickNumber, broadcaster, _droppedItems, _tntAndWorld);
     }
@@ -228,7 +238,7 @@ public sealed partial class ServerPlaySessionBridge
             {
                 var dir = new Vector3((float)p.DirectionOrTarget.X, (float)p.DirectionOrTarget.Y, (float)p.DirectionOrTarget.Z);
                 var charge = Math.Clamp(p.AuxValue / 100.0f, 0.15f, 1.0f);
-                _ = _arrows.ShootArrow(p.Origin, dir, charge, fromSkeleton: false, ownerEntityId: state.EntityId);
+                _ = _arrows.SpawnPlayerArrow(p.Origin, dir, charge, canBePickedUp: p.CountValue != 0);
                 break;
             }
 
@@ -237,7 +247,7 @@ public sealed partial class ServerPlaySessionBridge
                 if (p.AuxValue > 0 && p.CountValue > 0 && _registries.Items.TryGetById((ushort)p.AuxValue, out _))
                 {
                     var fwd = new Vector3((float)p.DirectionOrTarget.X, (float)p.DirectionOrTarget.Y, (float)p.DirectionOrTarget.Z);
-                    _ = _droppedItems.SpawnPlayerThrow(new ItemStack((ushort)p.AuxValue, Math.Clamp(p.CountValue, 1, 64)), p.Origin, fwd);
+                    _ = _droppedItems.SpawnPlayerThrow(p.Origin, fwd, new ItemStack((ushort)p.AuxValue, Math.Clamp(p.CountValue, 1, 64)));
                 }
 
                 break;
@@ -245,8 +255,8 @@ public sealed partial class ServerPlaySessionBridge
 
             case PlayerWorldInteractionKind.PlaceMinecart:
             {
-                var railPos = p.DirectionOrTarget.ToBlockPos();
-                _ = _minecarts.TryPlaceMinecart(_world.GetBlockState, railPos);
+                var railPos = p.Origin.ToBlockPos();
+                _ = _minecarts.TrySpawnOnRail(railPos, _world.GetBlockState);
                 break;
             }
 
@@ -255,16 +265,13 @@ public sealed partial class ServerPlaySessionBridge
                 break;
 
             case PlayerWorldInteractionKind.SteerMinecart:
-                state.RiderForwardSteer = Math.Clamp(p.AuxValue / 1000.0f, -1.0f, 1.0f);
+                state.RiderForwardSteer = Math.Clamp(p.CountValue, -1, 1);
                 break;
 
             case PlayerWorldInteractionKind.SpawnMobEgg:
             {
-                if (p.AuxValue >= 0 && p.AuxValue <= (int)MobType.Creeper)
-                {
-                    _ = _mobs.SpawnMob((MobType)p.AuxValue, p.DirectionOrTarget);
-                }
-
+                var mobByte = Math.Clamp(p.CountValue, 0, (int)MobType.Creeper);
+                _ = _mobs.SpawnMob((MobType)mobByte, p.Origin);
                 break;
             }
 

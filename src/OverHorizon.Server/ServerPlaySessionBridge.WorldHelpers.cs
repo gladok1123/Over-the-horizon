@@ -4,9 +4,11 @@ using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Items;
 using OverHorizon.Core.Math;
 using OverHorizon.Gameplay;
+using OverHorizon.Gameplay.Inventory;
 using OverHorizon.Gameplay.Mobs;
 using OverHorizon.Gameplay.Redstone;
 using OverHorizon.Gameplay.Survival;
+using OverHorizon.Gameplay.Vehicles;
 using OverHorizon.Networking.Packets.Clientbound;
 using OverHorizon.Networking.Packets.Serverbound;
 using OverHorizon.Networking.Sessions;
@@ -20,29 +22,28 @@ public sealed partial class ServerPlaySessionBridge
 {
     private void StepMultiplayerMinecarts(double dtSeconds, INetworkBroadcaster broadcaster)
     {
-        if (_minecarts.ActiveMinecarts.Count == 0) return;
+        if (_minecarts.Minecarts.Count == 0) return;
 
-        long activeRiderEntityId = 0;
+        var playerFeet = Vec3d.Zero;
         var riderSteer = 0.0f;
         var riderLook = Vector3.UnitZ;
         foreach (var (_, pl) in _players)
         {
+            playerFeet = pl.LastPosition;
             if (pl.RidingMinecartId != 0)
             {
-                activeRiderEntityId = pl.EntityId;
                 riderSteer = pl.RiderForwardSteer;
-                var yawRad = pl.YawDegrees * (MathF.PI / 180.0f);
-                riderLook = new Vector3(MathF.Sin(yawRad), 0.0f, -MathF.Cos(yawRad));
+                riderLook = pl.LookForward;
                 break;
             }
         }
 
-        _ = _minecarts.Step(dtSeconds, _world.GetBlockState, activeRiderEntityId, riderSteer, riderLook);
+        _minecarts.Step(dtSeconds, _collisionReader, _world.GetBlockState, playerFeet, riderLook, riderSteer);
         foreach (var (sid, pl) in _players)
         {
             if (pl.RidingMinecartId == 0) continue;
             var cart = FindCartById(pl.RidingMinecartId);
-            if (cart is null || !cart.HasPlayerRider)
+            if (cart is null || !cart.HasPlayerPassenger)
             {
                 pl.RidingMinecartId = 0;
                 continue;
@@ -73,99 +74,113 @@ public sealed partial class ServerPlaySessionBridge
 
         if (primaryTarget is not null)
         {
-            var isSurvival = primaryTarget.GameMode == GameMode.Survival;
-            var mobStep = _mobs.Step(
-                dtSeconds,
-                _world.GetBlockState,
+            var creeperBlasts = new List<Vec3d>();
+            var fuseHissed = new List<Vec3d>();
+            var shieldBlocked = new List<Vec3d>();
+            var mobDmg = _mobs.Step(
+                _collisionReader,
+                ProbeServerSpawnSite,
                 primaryTarget.LastPosition,
+                primaryTarget.GameMode,
+                primaryTarget.GetArmorDefensePoints(),
                 WorldTime.DaylightFactor,
-                isSurvival,
-                _arrows,
-                new List<Vec3d>(),
-                out var creeperBlastPos,
-                out var fuseHissed,
-                primaryTarget.IsBlockingShield,
-                primaryTarget.YawDegrees);
+                (float)dtSeconds,
+                creeperBlasts,
+                (origin, vel) => _ = _arrows.SpawnSkeletonArrow(origin, vel),
+                mobLandingHurtEvents: null,
+                creeperFuseStartedPositions: fuseHissed,
+                isPlayerBlockingShield: primaryTarget.IsBlockingShield,
+                playerLookForward: primaryTarget.LookForward,
+                shieldBlockedPositions: shieldBlocked,
+                isFireBlock: p => _registries.Blocks.GetStateMetadata(_world.GetBlockState(p)).BlockKey == BuiltInBlocks.Fire);
 
             for (var i = 0; i < fuseHissed.Count; i++)
             {
                 broadcaster.BroadcastToPlaySessions(new InventoryGrantAndEventPacket(0, 0, 3, fuseHissed[i]));
             }
 
-            if (creeperBlastPos is { } blastCenter)
+            for (var i = 0; i < creeperBlasts.Count; i++)
             {
-                var broken = new List<(BlockPos Pos, BlockState State)>();
-                PrimedTntAndWorldTicker.ApplySphereExplosion(
-                    _registries.Blocks,
+                var blastCenter = creeperBlasts[i];
+                _ = _tntAndWorld.DetonateRaycastExplosion(
+                    blastCenter,
+                    power: 3.1f,
                     _world.GetBlockState,
                     (pos, st) =>
                     {
-                        if (!_world.SetBlockState(pos, st, tickNumber)) return false;
-                        blockChanges.Add((pos, st.Id));
-                        _redstone.NotifyBlockChanged(pos);
-                        return true;
-                    },
-                    blastCenter,
-                    radius: 3.1,
-                    broken);
+                        if (_world.SetBlockState(pos, st, tickNumber))
+                        {
+                            blockChanges.Add((pos, st.Id));
+                            _redstone.NotifyBlockChanged(pos);
+                        }
+                    });
                 broadcaster.BroadcastToPlaySessions(new InventoryGrantAndEventPacket(0, 0, 1, blastCenter));
             }
 
-            if (mobStep.ShieldBlockedDamage)
+            if (shieldBlocked.Count > 0)
             {
                 broadcaster.BroadcastToPlaySessions(new InventoryGrantAndEventPacket(0, 0, 2, primaryTarget.LastPosition));
             }
-            else if (mobStep.DamageToPlayer > 0.01f && FindSessionId(primaryTarget.EntityId) is { } targetSid)
+
+            var targetSid = FindSessionId(primaryTarget.EntityId);
+            if (mobDmg > 0.01f && !primaryTarget.IsInvulnerable && targetSid.HasValue)
             {
-                var scaled = mobStep.DamageToPlayer * primaryTarget.GetArmorDamageMultiplier();
                 ServerPvpCombatHandler.ApplyPlayerDamageAndCheckDeath(
-                    primaryTarget, targetSid, 0, scaled, mobStep.KnockbackToPlayer, tickNumber,
+                    primaryTarget, targetSid.Value, 0, mobDmg, Vec3d.Zero, tickNumber,
                     $"{primaryTarget.Username} was slain by a monster!", _gameplay, broadcaster);
             }
         }
 
-        if (_arrows.ActiveArrows.Count == 0) return;
+        if (_arrows.Arrows.Count == 0) return;
 
         var arrowTargetPos = primaryTarget?.LastPosition ?? new Vec3d(0, -9999, 0);
-        var canHitPlayer = primaryTarget is { IsInvulnerable: false };
-        var arrowRes = _arrows.Step(
+        var arrowMode = primaryTarget?.GameMode ?? GameMode.Spectator;
+        var collectedLoot = new List<ItemStack>();
+        var arrowImpacts = new List<Vec3d>();
+        var shieldDeflected = new List<Vec3d>();
+        var arrowDmg = _arrows.Step(
             dtSeconds,
+            _collisionReader,
             _world.GetBlockState,
             _mobs,
+            _registries.Items,
             arrowTargetPos,
-            canHitPlayer,
-            primaryTarget?.EntityId ?? 0,
+            arrowMode,
+            collectedLoot,
+            arrowImpacts,
             primaryTarget?.IsBlockingShield ?? false,
-            primaryTarget?.YawDegrees ?? 0.0f);
+            primaryTarget?.LookForward ?? Vector3.UnitZ,
+            shieldDeflected);
 
-        for (var i = 0; i < arrowRes.LootDrops.Count; i++)
+        if (primaryTarget is not null)
         {
-            _ = _droppedItems.SpawnDrop(arrowRes.LootDrops[i].Loot, arrowRes.LootDrops[i].Pos);
-        }
+            var hitSid = FindSessionId(primaryTarget.EntityId);
+            for (var i = 0; i < collectedLoot.Count; i++)
+            {
+                if (hitSid.HasValue)
+                {
+                    _ = broadcaster.SendToSession(hitSid.Value, new InventoryGrantAndEventPacket(collectedLoot[i].ItemId, collectedLoot[i].Count, 0, primaryTarget.LastPosition));
+                }
+            }
 
-        if (arrowRes.ShieldDeflected && primaryTarget is not null)
-        {
-            broadcaster.BroadcastToPlaySessions(new InventoryGrantAndEventPacket(0, 0, 2, primaryTarget.LastPosition));
-        }
-        else if (arrowRes.DamageToPlayer > 0.01f && primaryTarget is not null && FindSessionId(primaryTarget.EntityId) is { } hitSid)
-        {
-            var scaled = arrowRes.DamageToPlayer * primaryTarget.GetArmorDamageMultiplier();
-            ServerPvpCombatHandler.ApplyPlayerDamageAndCheckDeath(
-                primaryTarget, hitSid, 0, scaled, arrowRes.KnockbackToPlayer, tickNumber,
-                $"{primaryTarget.Username} was shot by an arrow!", _gameplay, broadcaster);
+            if (shieldDeflected.Count > 0)
+            {
+                broadcaster.BroadcastToPlaySessions(new InventoryGrantAndEventPacket(0, 0, 2, primaryTarget.LastPosition));
+            }
+            else if (arrowDmg > 0.01f && !primaryTarget.IsInvulnerable && hitSid.HasValue)
+            {
+                var scaled = arrowDmg * primaryTarget.GetArmorDamageMultiplier();
+                ServerPvpCombatHandler.ApplyPlayerDamageAndCheckDeath(
+                    primaryTarget, hitSid.Value, 0, scaled, Vec3d.Zero, tickNumber,
+                    $"{primaryTarget.Username} was shot by an arrow!", _gameplay, broadcaster);
+            }
         }
     }
 
     private void StepDroppedItemsAndVoidDamage(double dtSeconds, long tickNumber, INetworkBroadcaster broadcaster)
     {
-        var collectors = new List<(long OwnerKey, Vec3d FeetPos)>(_players.Count);
         foreach (var (sid, pl) in _players)
         {
-            if (pl.GameMode != GameMode.Spectator)
-            {
-                collectors.Add((sid, pl.LastPosition));
-            }
-
             if (pl.GameMode == GameMode.Survival &&
                 pl.LastPosition.Y < EngineConstants.WorldMinY - 12.0 &&
                 tickNumber - pl.LastVoidDamageTick >= 10L)
@@ -177,14 +192,21 @@ public sealed partial class ServerPlaySessionBridge
             }
         }
 
-        if (_droppedItems.ActiveDrops.Count > 0)
+        if (_droppedItems.Items.Count == 0) return;
+
+        _ = _droppedItems.Step(dtSeconds, _collisionReader, _registries.Items);
+        var picked = new List<(int EntityId, ItemStack Picked)>();
+        foreach (var (sid, pl) in _players)
         {
-            var collected = new List<(long OwnerKey, ItemStack Stack, Vec3d Position)>();
-            _droppedItems.StepMultiTarget(dtSeconds, _world.GetBlockState, _registries.Blocks, collectors, collected);
-            for (var i = 0; i < collected.Count; i++)
+            picked.Clear();
+            _droppedItems.CollectForMultiplayerPlayer(
+                pl.LastPosition,
+                pl.GameMode,
+                _ => ItemStack.Empty,
+                picked);
+            for (var i = 0; i < picked.Count; i++)
             {
-                var c = collected[i];
-                _ = broadcaster.SendToSession(c.OwnerKey, new InventoryGrantAndEventPacket(c.Stack.ItemId, c.Stack.Count, 0, c.Position));
+                _ = broadcaster.SendToSession(sid, new InventoryGrantAndEventPacket(picked[i].Picked.ItemId, picked[i].Picked.Count, 0, pl.LastPosition));
             }
         }
     }
@@ -197,7 +219,7 @@ public sealed partial class ServerPlaySessionBridge
             var dist = pl.LastPosition.DistanceTo(center);
             if (dist >= 6.5) continue;
 
-            if (pl.IsBlockingShield && WorldMobManager.IsFrontalShieldBlock(pl.LastPosition, pl.YawDegrees, center))
+            if (WorldMobManager.IsFrontalShieldBlock(pl.IsBlockingShield, pl.LookForward, pl.LastPosition, center))
             {
                 broadcaster.BroadcastToPlaySessions(new InventoryGrantAndEventPacket(0, 0, 2, pl.LastPosition));
                 continue;
@@ -215,7 +237,7 @@ public sealed partial class ServerPlaySessionBridge
 
     private void HandleMountOrDismountMinecart(long sessionId, ConnectedPlayerState state, PlayerWorldInteractionPacket p, INetworkBroadcaster broadcaster)
     {
-        if (p.AuxValue != 0)
+        if (p.CountValue == 0)
         {
             DismountPlayerIfRiding(state);
             BroadcastToPeers(sessionId, broadcaster, state.ToEquipmentPacket());
@@ -227,32 +249,44 @@ public sealed partial class ServerPlaySessionBridge
         if (cart is not null)
         {
             DismountPlayerIfRiding(state);
-            cart.HasPlayerRider = true;
-            cart.RiderEntityId = state.EntityId;
+            cart.HasPlayerPassenger = true;
             state.RidingMinecartId = cart.Id;
             BroadcastToPeers(sessionId, broadcaster, state.ToEquipmentPacket());
+            _ = broadcaster.SendToSession(sessionId, new InventoryGrantAndEventPacket(0, cart.Id, 5, cart.FeetPosition));
         }
     }
 
     private void HandleComponentInteraction(long sessionId, ConnectedPlayerState state, PlayerWorldInteractionPacket p, long tickNumber, INetworkBroadcaster broadcaster)
     {
-        var pos = p.DirectionOrTarget.ToBlockPos();
+        var pos = p.Origin.ToBlockPos();
         var cur = _world.GetBlockState(pos);
         if (cur.IsAir) return;
 
         var changed = new List<(BlockPos Position, ushort BlockStateId)>();
         var ignited = new List<BlockPos>();
         var sounds = new List<(BlockPos Pos, RedstoneSoundKind Sound)>();
-        if (_redstone.TryInteract(_world.GetBlockState, (bp, st) =>
-            {
-                if (_world.SetBlockState(bp, st, tickNumber)) changed.Add((bp, st.Id));
-            }, pos, ignited, sounds))
+        if (_redstone.TryInteractComponent(
+                pos,
+                _world.GetBlockState,
+                (bp, st) =>
+                {
+                    if (_world.SetBlockState(bp, st, tickNumber)) changed.Add((bp, st.Id));
+                }))
         {
+            _redstone.EvaluateImmediate(
+                _world.GetBlockState,
+                (bp, st) =>
+                {
+                    if (_world.SetBlockState(bp, st, tickNumber)) changed.Add((bp, st.Id));
+                },
+                ignited,
+                sounds);
             for (var i = 0; i < ignited.Count; i++)
             {
-                if (_tntAndWorld.IgniteBlock(_world.GetBlockState, (bp, st) => _world.SetBlockState(bp, st, tickNumber), ignited[i]))
+                if (_world.SetBlockState(ignited[i], BlockState.Air, tickNumber))
                 {
                     changed.Add((ignited[i], BlockState.Air.Id));
+                    _ = _tntAndWorld.SpawnPrimedTnt(ignited[i]);
                 }
             }
 
@@ -260,32 +294,40 @@ public sealed partial class ServerPlaySessionBridge
             return;
         }
 
-        _registries.Items.TryGetById((ushort)Math.Clamp(p.AuxValue, 0, ushort.MaxValue), out var heldItem);
-        if (ComposterAndTrapdoorMechanics.TryInteract(
-                _registries, _world.GetBlockState,
+        _ = _registries.Items.TryGetById(Math.Clamp(p.AuxValue, 0, ushort.MaxValue), out var heldItem);
+        if (ComposterAndTrapdoorMechanics.TryToggleTrapdoor(
+                _registries.Blocks,
+                pos,
+                _world.GetBlockState,
                 (bp, st) =>
                 {
-                    if (!_world.SetBlockState(bp, st, tickNumber)) return false;
-                    changed.Add((bp, st.Id));
-                    return true;
-                },
-                pos, heldItem, out _, out var spawnedBoneMeal, out _))
+                    if (_world.SetBlockState(bp, st, tickNumber)) changed.Add((bp, st.Id));
+                }))
         {
-            if (spawnedBoneMeal && _registries.Items.TryGet(BuiltInItems.BoneMeal, out var bm))
-            {
-                _ = _droppedItems.SpawnDrop(new ItemStack(bm.NumericId, 1), new Vec3d(pos.X + 0.5, pos.Y + 1.05, pos.Z + 0.5), pickupDelay: 0.15f);
-            }
-
             ServerWorldTimeAndBlockSync.BroadcastBlockChanges(changed, broadcaster);
             return;
         }
 
-        if (heldItem?.Key == BuiltInItems.FlintAndSteel &&
-            _tntAndWorld.IgniteBlock(_world.GetBlockState, (bp, st) => _world.SetBlockState(bp, st, tickNumber), pos))
+        if (ComposterAndTrapdoorMechanics.TryInteractComposter(
+                _registries.Blocks,
+                _registries.Items,
+                pos,
+                _world.GetBlockState,
+                (bp, st) =>
+                {
+                    if (_world.SetBlockState(bp, st, tickNumber)) changed.Add((bp, st.Id));
+                },
+                heldItem,
+                out _,
+                out var harvestedBoneMeal))
         {
-            changed.Add((pos, BlockState.Air.Id));
-            broadcaster.BroadcastToPlaySessions(new InventoryGrantAndEventPacket(0, 0, 3, new Vec3d(pos.X + 0.5, pos.Y + 0.5, pos.Z + 0.5)));
+            if (!harvestedBoneMeal.IsEmpty)
+            {
+                _ = _droppedItems.SpawnBlockDrop(new BlockPos(pos.X, pos.Y + 1, pos.Z), harvestedBoneMeal);
+            }
+
             ServerWorldTimeAndBlockSync.BroadcastBlockChanges(changed, broadcaster);
+            return;
         }
 
         _ = sessionId;
@@ -302,30 +344,42 @@ public sealed partial class ServerPlaySessionBridge
                 if (FindCartById(peer.RidingMinecartId) is null) peer.RidingMinecartId = 0;
             }
 
-            if (state.GameMode == GameMode.Survival && _registries.Items.TryGet(BuiltInItems.Minecart, out var mcDef))
+            var mcId = _registries.Items.GetId(BuiltInItems.Minecart);
+            if (state.GameMode == GameMode.Survival && mcId > 0)
             {
-                _ = _droppedItems.SpawnDrop(new ItemStack(mcDef.NumericId, 1), cartPos, pickupDelay: 0.2f);
+                _ = _droppedItems.SpawnScatterDrop(cartPos, new ItemStack((ushort)mcId, 1), pickupDelaySeconds: 0.25f);
             }
 
             return;
         }
 
         var dmg = 1.0f;
-        if (p.AuxValue > 0 && _registries.Items.TryGetById((ushort)p.AuxValue, out var weapon))
+        if (p.AuxValue > 0 && _registries.Items.TryGetById(p.AuxValue, out var weapon))
         {
             dmg = Math.Clamp(weapon.AttackDamage, 1.0f, 16.0f);
         }
 
         var crit = (p.CountValue & 0x01) != 0;
         var sprint = (p.CountValue & 0x02) != 0;
-        var res = _mobs.TryAttackAlongRay(p.Origin, rayDir, 4.8, dmg, crit, out var loot, out var lootPos, sprint);
-        if (res.Killed && !loot.IsEmpty)
+        if (_mobs.TryAttackAlongRay(p.Origin, rayDir, 4.8, dmg, crit, _registries.Items, out var hitMob, out var drops, sprint) && hitMob is not null)
         {
-            _ = _droppedItems.SpawnDrop(loot, new Vec3d(lootPos.X, lootPos.Y + 0.35, lootPos.Z), pickupDelay: 0.2f);
+            for (var i = 0; i < drops.Count; i++)
+            {
+                _ = _droppedItems.SpawnScatterDrop(hitMob.FeetPosition, drops[i], pickupDelaySeconds: 0.30f);
+            }
         }
 
         _ = sessionId;
         _ = broadcaster;
+    }
+
+    private (byte SkyLight, byte BlockLight, bool IsGrassTop, bool IsSolidGround, bool IsClearSpace) ProbeServerSpawnSite(BlockPos feetPos)
+    {
+        var below = _world.GetBlockState(feetPos.Below());
+        var feet = _world.GetBlockState(feetPos);
+        var head = _world.GetBlockState(feetPos.Above());
+        var belowMeta = _registries.Blocks.GetStateMetadata(below);
+        return (15, 0, belowMeta.BlockKey == BuiltInBlocks.GrassBlock, belowMeta.IsSolid, feet.IsAir && head.IsAir);
     }
 
     private void DismountPlayerIfRiding(ConnectedPlayerState state)
@@ -334,19 +388,18 @@ public sealed partial class ServerPlaySessionBridge
         var cart = FindCartById(state.RidingMinecartId);
         if (cart is not null)
         {
-            cart.HasPlayerRider = false;
-            cart.RiderEntityId = 0;
+            cart.HasPlayerPassenger = false;
         }
 
         state.RidingMinecartId = 0;
         state.RiderForwardSteer = 0.0f;
     }
 
-    private OverHorizon.Gameplay.Vehicles.MinecartEntity? FindCartById(int id)
+    private MinecartEntity? FindCartById(int id)
     {
-        for (var i = 0; i < _minecarts.ActiveMinecarts.Count; i++)
+        for (var i = 0; i < _minecarts.Minecarts.Count; i++)
         {
-            if (_minecarts.ActiveMinecarts[i].Id == id) return _minecarts.ActiveMinecarts[i];
+            if (_minecarts.Minecarts[i].Id == id) return _minecarts.Minecarts[i];
         }
 
         return null;
@@ -363,57 +416,70 @@ public sealed partial class ServerPlaySessionBridge
     }
 
     private bool HasAnyWorldEntities() =>
-        _droppedItems.ActiveDrops.Count > 0 ||
-        _arrows.ActiveArrows.Count > 0 ||
-        _minecarts.ActiveMinecarts.Count > 0 ||
-        _mobs.ActiveMobs.Count > 0 ||
-        _tntAndWorld.ActiveTnt.Count > 0 ||
+        _droppedItems.Items.Count > 0 ||
+        _arrows.Arrows.Count > 0 ||
+        _minecarts.Minecarts.Count > 0 ||
+        _mobs.Mobs.Count > 0 ||
+        _tntAndWorld.PrimedTnts.Count > 0 ||
         _tntAndWorld.FallingBlocks.Count > 0;
 
     private WorldEntitiesSnapshotPacket BuildWorldEntitiesSnapshot()
     {
-        var drops = new (int, ushort, int, Vec3d, Vec3d)[_droppedItems.ActiveDrops.Count];
+        var drops = new (int, ushort, int, Vec3d, Vec3d)[_droppedItems.Items.Count];
         for (var i = 0; i < drops.Length; i++)
         {
-            var d = _droppedItems.ActiveDrops[i];
+            var d = _droppedItems.Items[i];
             drops[i] = (d.Id, d.Stack.ItemId, d.Stack.Count, d.Position, d.Velocity);
         }
 
-        var arrows = new (int, Vec3d, float, float, float, byte)[_arrows.ActiveArrows.Count];
+        var arrows = new (int, Vec3d, float, float, float, byte)[_arrows.Arrows.Count];
         for (var i = 0; i < arrows.Length; i++)
         {
-            var a = _arrows.ActiveArrows[i];
-            var flags = (byte)((a.StuckInGround ? 1 : 0) | (a.IsCritical ? 2 : 0) | (a.FromSkeleton ? 4 : 0));
+            var a = _arrows.Arrows[i];
+            var flags = (byte)((a.IsStuckInBlock ? 1 : 0) | (a.IsCritical ? 2 : 0) | (!a.FiredByPlayer ? 4 : 0));
             arrows[i] = (a.Id, a.Position, a.YawDegrees, a.PitchDegrees, a.ShakeTimer, flags);
         }
 
-        var carts = new (int, Vec3d, float, float, float, long)[_minecarts.ActiveMinecarts.Count];
+        var carts = new (int, Vec3d, float, float, float, long)[_minecarts.Minecarts.Count];
         for (var i = 0; i < carts.Length; i++)
         {
-            var c = _minecarts.ActiveMinecarts[i];
-            carts[i] = (c.Id, c.FeetPosition, c.YawDegrees, c.SlopePitchDegrees, c.HurtWobble, c.HasPlayerRider ? c.RiderEntityId : 0L);
+            var c = _minecarts.Minecarts[i];
+            var riderEntId = 0L;
+            if (c.HasPlayerPassenger)
+            {
+                foreach (var (_, pl) in _players)
+                {
+                    if (pl.RidingMinecartId == c.Id)
+                    {
+                        riderEntId = pl.EntityId;
+                        break;
+                    }
+                }
+            }
+
+            carts[i] = (c.Id, c.FeetPosition, c.YawDegrees, c.PitchDegrees, c.HurtWobbleTimer, riderEntId);
         }
 
-        var mobs = new (int, byte, Vec3d, float, float, float, float, byte)[_mobs.ActiveMobs.Count];
+        var mobs = new (int, byte, Vec3d, float, float, float, float, byte)[_mobs.Mobs.Count];
         for (var i = 0; i < mobs.Length; i++)
         {
-            var m = _mobs.ActiveMobs[i];
-            var flags = (byte)((m.IsDead ? 1 : 0) | (m.IsBurningInSun ? 2 : 0) | (m.SkeletonIsDrawingBow ? 4 : 0) | (m.EndermanAngry ? 8 : 0) | (m.SheepSheared ? 16 : 0));
-            mobs[i] = (m.Id, (byte)m.Type, m.FeetPosition, m.YawDegrees, m.WalkPhase, m.HurtFlashTimer, m.CreeperFuseProgress, flags);
+            var m = _mobs.Mobs[i];
+            var flags = (byte)((m.IsDead ? 1 : 0) | (m.IsOnFire ? 2 : 0) | (m.IsTargetingPlayer && m.Type == MobType.Skeleton ? 4 : 0) | (m.IsSheared ? 16 : 0));
+            mobs[i] = (m.Id, (byte)m.Type, m.FeetPosition, m.YawDegrees, m.WalkPhase, m.HurtFlashTimer, Math.Clamp(m.CreeperFuseTimer / 1.5f, 0.0f, 1.0f), flags);
         }
 
-        var tnts = new (int, Vec3d, bool)[_tntAndWorld.ActiveTnt.Count];
+        var tnts = new (int, Vec3d, bool)[_tntAndWorld.PrimedTnts.Count];
         for (var i = 0; i < tnts.Length; i++)
         {
-            var t = _tntAndWorld.ActiveTnt[i];
-            tnts[i] = (t.Id, t.FeetPosition, t.FlashWhite);
+            var t = _tntAndWorld.PrimedTnts[i];
+            tnts[i] = (t.Id, t.FeetPosition, t.IsFlashingWhite);
         }
 
         var falling = new (int, ushort, int, double, int)[_tntAndWorld.FallingBlocks.Count];
         for (var i = 0; i < falling.Length; i++)
         {
             var fb = _tntAndWorld.FallingBlocks[i];
-            falling[i] = (fb.Id, fb.BlockState.Id, fb.BlockX, fb.CurrentY, fb.BlockZ);
+            falling[i] = (fb.Id, fb.State.Id, fb.BlockX, fb.CurrentY, fb.BlockZ);
         }
 
         return new WorldEntitiesSnapshotPacket(drops, arrows, carts, mobs, tnts, falling);

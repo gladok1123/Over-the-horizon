@@ -332,8 +332,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
                 RedstoneSoundKind.PistonExtend => SoundCue.PistonExtend,
                 RedstoneSoundKind.PistonRetract => SoundCue.PistonRetract,
                 RedstoneSoundKind.TorchFizz => SoundCue.Fizz,
-                RedstoneSoundKind.DoorToggle => SoundCue.DoorToggle,
-                _ => SoundCue.RedstoneClick,
+                _ => SoundCue.UiClick,
             };
             _audio.PlayPositional(cue, new Vec3d(sPos.X + 0.5, sPos.Y + 0.5, sPos.Z + 0.5), gain: 0.72f);
         }

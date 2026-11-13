@@ -89,6 +89,18 @@ public static class BlockSoundProfile
         return (SoundCue.StonePlace, 0.92f);
     }
 
+    /// <summary>Resolves the material-specific break sound cue for <paramref name="blockKey"/>.</summary>
+    public static SoundCue ResolveBreakCue(ResourceKey blockKey) => ResolveBreakSound(blockKey).Cue;
+
+    /// <summary>Resolves the material-specific break pitch for <paramref name="blockKey"/>.</summary>
+    public static float ResolveBreakPitch(ResourceKey blockKey) => ResolveBreakSound(blockKey).Pitch;
+
+    /// <summary>Resolves the material-specific placement sound cue for <paramref name="blockKey"/>.</summary>
+    public static SoundCue ResolvePlaceCue(ResourceKey blockKey) => ResolvePlaceSound(blockKey).Cue;
+
+    /// <summary>Resolves the material-specific placement pitch for <paramref name="blockKey"/>.</summary>
+    public static float ResolvePlacePitch(ResourceKey blockKey) => ResolvePlaceSound(blockKey).Pitch;
+
     private static bool IsWoodMaterial(ResourceKey k) =>
         k == BuiltInBlocks.OakPlanks || k == BuiltInBlocks.BirchPlanks ||
         k == BuiltInBlocks.OakLog || k == BuiltInBlocks.BirchLog ||

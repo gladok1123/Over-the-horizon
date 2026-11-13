@@ -102,7 +102,7 @@ public sealed partial class ServerPlaySessionBridge : IServerPlayHandler
         _droppedItems = new DroppedItemManager();
         _arrows = new ArrowProjectileManager(registries.Blocks);
         _minecarts = new MinecartManager(registries.Blocks);
-        _mobs = new WorldMobManager(registries);
+        _mobs = new WorldMobManager();
         _tntAndWorld = new PrimedTntAndWorldTicker(registries.Blocks);
     }
 

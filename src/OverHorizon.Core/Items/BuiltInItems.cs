@@ -296,6 +296,21 @@ public static partial class BuiltInItems
     /// <summary>Key for <c>overhorizon:fire_resistance_potion</c> (grants Fire Resistance immunity).</summary>
     public static readonly ResourceKey FireResistancePotion = ResourceKey.OverHorizon("fire_resistance_potion");
 
+    /// <summary>Key for <c>overhorizon:strength_potion</c> (grants melee Strength I boost).</summary>
+    public static readonly ResourceKey StrengthPotion = ResourceKey.OverHorizon("strength_potion");
+
+    /// <summary>Alias for <see cref="SwiftnessPotion"/>.</summary>
+    public static readonly ResourceKey PotionOfSwiftness = SwiftnessPotion;
+
+    /// <summary>Alias for <see cref="HealingPotion"/>.</summary>
+    public static readonly ResourceKey PotionOfRegeneration = HealingPotion;
+
+    /// <summary>Alias for <see cref="StrengthPotion"/>.</summary>
+    public static readonly ResourceKey PotionOfStrength = StrengthPotion;
+
+    /// <summary>Alias for <see cref="NightVisionPotion"/>.</summary>
+    public static readonly ResourceKey PotionOfNightVision = NightVisionPotion;
+
     /// <summary>Key for <c>overhorizon:pig_spawn_egg</c>.</summary>
     public static readonly ResourceKey PigSpawnEgg = ResourceKey.OverHorizon("pig_spawn_egg");
 
@@ -325,14 +340,54 @@ public static partial class BuiltInItems
     /// <param name="mobTypeByte">Resolved mob archetype index when returning <see langword="true"/>.</param>
     public static bool TryGetSpawnEggMobType(ResourceKey key, out byte mobTypeByte)
     {
-        if (key == PigSpawnEgg) { mobTypeByte = 0; return true; }
-        if (key == CowSpawnEgg) { mobTypeByte = 1; return true; }
-        if (key == SheepSpawnEgg) { mobTypeByte = 2; return true; }
-        if (key == ChickenSpawnEgg) { mobTypeByte = 3; return true; }
-        if (key == ZombieSpawnEgg) { mobTypeByte = 4; return true; }
-        if (key == SkeletonSpawnEgg) { mobTypeByte = 5; return true; }
-        if (key == CreeperSpawnEgg) { mobTypeByte = 6; return true; }
-        if (key == SpiderSpawnEgg) { mobTypeByte = 7; return true; }
+        if (key == PigSpawnEgg)
+        {
+            mobTypeByte = 0;
+            return true;
+        }
+
+        if (key == CowSpawnEgg)
+        {
+            mobTypeByte = 1;
+            return true;
+        }
+
+        if (key == SheepSpawnEgg)
+        {
+            mobTypeByte = 2;
+            return true;
+        }
+
+        if (key == ChickenSpawnEgg)
+        {
+            mobTypeByte = 3;
+            return true;
+        }
+
+        if (key == ZombieSpawnEgg)
+        {
+            mobTypeByte = 4;
+            return true;
+        }
+
+        if (key == SkeletonSpawnEgg)
+        {
+            mobTypeByte = 5;
+            return true;
+        }
+
+        if (key == CreeperSpawnEgg)
+        {
+            mobTypeByte = 6;
+            return true;
+        }
+
+        if (key == SpiderSpawnEgg)
+        {
+            mobTypeByte = 7;
+            return true;
+        }
+
         mobTypeByte = 0;
         return false;
     }

@@ -35,7 +35,7 @@ public static class UiGeometryBuilder
             return;
         }
 
-        if (state.Mode is UiOverlayMode.WorldSelectMenu or UiOverlayMode.CreateWorldMenu or UiOverlayMode.MultiplayerConnect)
+        if (state.Mode is UiOverlayMode.WorldSelectMenu or UiOverlayMode.CreateWorldMenu or UiOverlayMode.MultiplayerMenu)
         {
             UiTitleAndCreativeScreenBuilder.BuildDirtMenuBackdrop(vertices, width, height);
             BuildModalMenuLabelsAndButtons(vertices, width, height, state);

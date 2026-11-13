@@ -74,8 +74,7 @@ internal static class ServerPvpCombatHandler
         }
 
         // Frontal Shield block deflects melee attacks completely!
-        if (victimState.IsBlockingShield &&
-            WorldMobManager.IsFrontalShieldBlock(victimState.LastPosition, victimState.YawDegrees, attackerState.LastPosition))
+        if (WorldMobManager.IsFrontalShieldBlock(victimState.IsBlockingShield, victimState.LookForward, victimState.LastPosition, attackerState.LastPosition))
         {
             victimState.LastHurtTick = tickNumber - (HurtImmunityTicks / 2);
             broadcaster.BroadcastToPlaySessions(new InventoryGrantAndEventPacket(0, 0, EventKind: 2, victimState.LastPosition));

@@ -1,3 +1,4 @@
+using System.Numerics;
 using OverHorizon.Core.Math;
 using OverHorizon.Gameplay;
 using OverHorizon.Modding.Commands;
@@ -69,6 +70,16 @@ internal sealed class ConnectedPlayerState(
     /// <summary>Gets a value indicating whether the player is sprinting.</summary>
     public bool IsSprinting => (ActionFlags & 0x04) != 0;
 
+    /// <summary>Gets horizontal look forward vector derived from <see cref="YawDegrees"/>.</summary>
+    public Vector3 LookForward
+    {
+        get
+        {
+            var r = YawDegrees * (MathF.PI / 180.0f);
+            return new Vector3(MathF.Sin(r), 0.0f, -MathF.Cos(r));
+        }
+    }
+
     public RemotePlayerEquipmentPacket ToEquipmentPacket() =>
         new(
             EntityId,
@@ -82,16 +93,19 @@ internal sealed class ConnectedPlayerState(
             SwingCounter,
             RidingMinecartId);
 
-    /// <summary>Computes damage multiplier (<c>0.20..1.0</c>) from equipped 3D armor tiers.</summary>
-    public float GetArmorDamageMultiplier()
+    /// <summary>Computes total armor defense points (<c>0..20</c>) from equipped 3D armor tiers.</summary>
+    public int GetArmorDefensePoints()
     {
         var head = PackedArmorLower & 0x0F;
         var chest = (PackedArmorLower >> 4) & 0x0F;
         var legs = PackedArmorUpper & 0x0F;
         var boots = (PackedArmorUpper >> 4) & 0x0F;
-        var points = GetSlotDefense(head, 0) + GetSlotDefense(chest, 1) + GetSlotDefense(legs, 2) + GetSlotDefense(boots, 3);
-        return Math.Clamp(1.0f - (points * 0.04f), 0.20f, 1.0f);
+        return GetSlotDefense(head, 0) + GetSlotDefense(chest, 1) + GetSlotDefense(legs, 2) + GetSlotDefense(boots, 3);
     }
+
+    /// <summary>Computes damage multiplier (<c>0.20..1.0</c>) from equipped 3D armor tiers.</summary>
+    public float GetArmorDamageMultiplier() =>
+        Math.Clamp(1.0f - (GetArmorDefensePoints() * 0.04f), 0.20f, 1.0f);
 
     private static int GetSlotDefense(int tier, int slot) =>
         (tier, slot) switch

@@ -207,15 +207,11 @@ public sealed class MinecartManager
             vz += look2D.Z * riderForwardInput * 4.8 * dt;
         }
 
-        // Slope gravity acceleration along ascending rails!
         const double slopeGravity = 9.5;
-        switch (shape)
-        {
-            case "ascending_east": vx -= slopeGravity * dt; break;
-            case "ascending_west": vx += slopeGravity * dt; break;
-            case "ascending_north": vz += slopeGravity * dt; break;
-            case "ascending_south": vz -= slopeGravity * dt; break;
-        }
+        if (shape == "ascending_east") vx -= slopeGravity * dt;
+        else if (shape == "ascending_west") vx += slopeGravity * dt;
+        else if (shape == "ascending_north") vz += slopeGravity * dt;
+        else if (shape == "ascending_south") vz -= slopeGravity * dt;
 
         // Constrain velocity vector onto the rail's tangent / corner curve!
         ConstrainVelocityToShape(shape, cart.FeetPosition, railPos, ref vx, ref vz);

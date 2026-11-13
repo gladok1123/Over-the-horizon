@@ -125,7 +125,7 @@ internal sealed partial class ClientItemUseHandler
                 {
                     transport.EnqueueOutbound(new PlayerWorldInteractionPacket(
                         PlayerWorldInteractionKind.InteractWorldComponent, center, Vec3d.Zero, 0, 0));
-                    _audio.PlayPositional(clickedKey == BuiltInBlocks.OakTrapdoor ? SoundCue.DoorToggle : SoundCue.RedstoneClick, center, gain: 0.68f * player.MasterVolume);
+                    _audio.PlayPositional(clickedKey == BuiltInBlocks.OakTrapdoor ? SoundCue.WoodPlace : SoundCue.UiClick, center, gain: 0.68f * player.MasterVolume);
                     return true;
                 }
 
@@ -182,9 +182,10 @@ internal sealed partial class ClientItemUseHandler
             player.TriggerHandSwing(isOffhand: false);
             var emptyState = _blocks.GetState(BuiltInBlocks.Composter, new Dictionary<string, string> { ["level"] = "0" });
             _ = applyWorldBlockChange(pos, Direction.Up, emptyState);
-            if (!transport.IsConnected && _items.TryGet(BuiltInItems.BoneMeal, out var bm))
+            var bmId = _items.GetId(BuiltInItems.BoneMeal);
+            if (!transport.IsConnected && bmId > 0)
             {
-                _ = worldBridge.DroppedItems.SpawnBlockDrop(new BlockPos(pos.X, pos.Y + 1, pos.Z), new ItemStack(bm.NumericId, 1));
+                _ = worldBridge.DroppedItems.SpawnBlockDrop(new BlockPos(pos.X, pos.Y + 1, pos.Z), new ItemStack((ushort)bmId, 1));
             }
             else if (transport.IsConnected)
             {
@@ -205,7 +206,7 @@ internal sealed partial class ClientItemUseHandler
         var nextState = _blocks.GetState(BuiltInBlocks.Composter, new Dictionary<string, string> { ["level"] = nextLevel.ToString(CultureInfo.InvariantCulture) });
         _ = applyWorldBlockChange(pos, Direction.Up, nextState);
         ConsumeOneFromSlotInSurvival(player, player.Hotbar.SelectedSlot);
-        _audio.PlayPositional(nextLevel == 8 ? SoundCue.ComposterReady : SoundCue.ComposterFill, center, gain: 0.75f * player.MasterVolume);
+        _audio.PlayPositional(SoundCue.ComposterReady, center, gain: 0.75f * player.MasterVolume, pitch: nextLevel == 8 ? 1.08f : 0.88f);
         worldBridge.Particles.EmitBurst(center, ParticleKind.GrowthSparkle, 6);
         return true;
     }
@@ -225,7 +226,7 @@ internal sealed partial class ClientItemUseHandler
 
         switch (itemDef.UseAction)
         {
-            case ItemUseAction.BlockWithShield:
+            case ItemUseAction.RaiseShield:
                 return false; // Handled continuously in StepBowAndShield!
 
             case ItemUseAction.TillSoil:
@@ -250,13 +251,15 @@ internal sealed partial class ClientItemUseHandler
             case ItemUseAction.SpawnMob:
                 if (player.CurrentTarget is not { } eggHit) return false;
                 var spawnPos = new Vec3d(eggHit.AdjacentPosition.X + 0.5, eggHit.AdjacentPosition.Y + 0.05, eggHit.AdjacentPosition.Z + 0.5);
-                var mobType = (MobType)Math.Clamp(itemDef.SpawnMobType, (byte)0, (byte)7);
+                _ = BuiltInItems.TryGetSpawnEggMobType(itemDef.Key, out var mobTypeByte);
+                var mobType = (MobType)Math.Clamp(mobTypeByte, (byte)0, (byte)7);
+                var eggRawId = Math.Max(0, _items.GetId(itemDef.Key));
                 useCooldown = 0.22;
                 player.TriggerHandSwing(isOffhand);
                 if (transport.IsConnected)
                 {
                     transport.EnqueueOutbound(new PlayerWorldInteractionPacket(
-                        PlayerWorldInteractionKind.SpawnMobEgg, spawnPos, Vec3d.Zero, itemDef.NumericId, itemDef.SpawnMobType));
+                        PlayerWorldInteractionKind.SpawnMobEgg, spawnPos, Vec3d.Zero, eggRawId, mobTypeByte));
                 }
                 else
                 {
@@ -326,7 +329,7 @@ internal sealed partial class ClientItemUseHandler
                 {
                     useCooldown = 0.22;
                     player.TriggerHandSwing(isOffhand);
-                    transport.EnqueueOutbound(new PlayerWorldInteractionPacket(PlayerWorldInteractionKind.PlaceMinecart, railVec, Vec3d.Zero, itemDef.NumericId, 1));
+                    transport.EnqueueOutbound(new PlayerWorldInteractionPacket(PlayerWorldInteractionKind.PlaceMinecart, railVec, Vec3d.Zero, Math.Max(0, _items.GetId(itemDef.Key)), 1));
                     _audio.PlayPositional(SoundCue.FootstepMetal, railVec, gain: 0.75f * player.MasterVolume);
                     ConsumeOneFromSlotInSurvival(player, invSlot);
                     return true;

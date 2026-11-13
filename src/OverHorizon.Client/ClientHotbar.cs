@@ -271,14 +271,16 @@ public sealed partial class ClientHotbar
     /// <summary>Middle-Click Pick Block: selects matching hotbar slot, swaps from storage, or spawns in Creative.</summary>
     public bool TryPickBlock(ResourceKey targetItemKey, GameMode mode)
     {
-        if (!_items.TryGet(targetItemKey, out var itemDef) || targetItemKey == BuiltInBlocks.Air)
+        var rawId = _items.GetId(targetItemKey);
+        if (rawId <= 0 || targetItemKey == BuiltInBlocks.Air)
         {
             return false;
         }
 
+        var itemId = (ushort)rawId;
         for (var h = 0; h < PlayerInventory.HotbarSlotCount; h++)
         {
-            if (SurvivalInventory.GetSlot(h).ItemId == itemDef.NumericId)
+            if (SurvivalInventory.GetSlot(h).ItemId == itemId)
             {
                 SelectSlot(h);
                 RefreshSlotVisuals(mode);
@@ -289,7 +291,7 @@ public sealed partial class ClientHotbar
         for (var s = PlayerInventory.HotbarSlotCount; s < PlayerInventory.MainSlotCount; s++)
         {
             var st = SurvivalInventory.GetSlot(s);
-            if (st.ItemId == itemDef.NumericId)
+            if (st.ItemId == itemId)
             {
                 var cur = SurvivalInventory.GetSlot(_selectedSlot);
                 SurvivalInventory.SetSlot(_selectedSlot, st);
@@ -316,7 +318,7 @@ public sealed partial class ClientHotbar
             }
         }
 
-        SurvivalInventory.SetSlot(_selectedSlot, new ItemStack(itemDef.NumericId, 1));
+        SurvivalInventory.SetSlot(_selectedSlot, new ItemStack(itemId, 1));
         RefreshSlotVisuals(mode);
         return true;
     }
@@ -325,11 +327,13 @@ public sealed partial class ClientHotbar
     public bool HasArrowForBow(GameMode mode)
     {
         if (mode == GameMode.Creative) return true;
-        if (!_items.TryGet(BuiltInItems.Arrow, out var arrowDef)) return false;
-        if (SurvivalInventory.OffhandItem.ItemId == arrowDef.NumericId) return true;
+        var rawId = _items.GetId(BuiltInItems.Arrow);
+        if (rawId <= 0) return false;
+        var arrowId = (ushort)rawId;
+        if (SurvivalInventory.OffhandItem.ItemId == arrowId) return true;
         for (var i = 0; i < PlayerInventory.MainSlotCount; i++)
         {
-            if (SurvivalInventory.GetSlot(i).ItemId == arrowDef.NumericId) return true;
+            if (SurvivalInventory.GetSlot(i).ItemId == arrowId) return true;
         }
 
         return false;
@@ -339,12 +343,14 @@ public sealed partial class ClientHotbar
     public bool TryConsumeArrowForBow(GameMode mode)
     {
         if (mode == GameMode.Creative) return true;
-        if (!_items.TryGet(BuiltInItems.Arrow, out var arrowDef)) return false;
+        var rawId = _items.GetId(BuiltInItems.Arrow);
+        if (rawId <= 0) return false;
+        var arrowId = (ushort)rawId;
 
         var off = SurvivalInventory.OffhandItem;
-        if (off.ItemId == arrowDef.NumericId && off.Count > 0)
+        if (off.ItemId == arrowId && off.Count > 0)
         {
-            SurvivalInventory.OffhandItem = off.Count > 1 ? new ItemStack(arrowDef.NumericId, off.Count - 1) : ItemStack.Empty;
+            SurvivalInventory.OffhandItem = off.Count > 1 ? new ItemStack(arrowId, off.Count - 1) : ItemStack.Empty;
             RefreshSlotVisuals(mode);
             return true;
         }
@@ -352,9 +358,9 @@ public sealed partial class ClientHotbar
         for (var i = 0; i < PlayerInventory.MainSlotCount; i++)
         {
             var st = SurvivalInventory.GetSlot(i);
-            if (st.ItemId == arrowDef.NumericId && st.Count > 0)
+            if (st.ItemId == arrowId && st.Count > 0)
             {
-                SurvivalInventory.SetSlot(i, st.Count > 1 ? new ItemStack(arrowDef.NumericId, st.Count - 1) : ItemStack.Empty);
+                SurvivalInventory.SetSlot(i, st.Count > 1 ? new ItemStack(arrowId, st.Count - 1) : ItemStack.Empty);
                 RefreshSlotVisuals(mode);
                 return true;
             }

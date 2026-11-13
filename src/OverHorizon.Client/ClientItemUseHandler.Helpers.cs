@@ -21,6 +21,7 @@ internal sealed partial class ClientItemUseHandler
         else if (key == BuiltInItems.PotionOfRegeneration) player.StatusEffects.ApplyEffect(StatusEffectType.Regeneration, 30.0f);
         else if (key == BuiltInItems.PotionOfStrength) player.StatusEffects.ApplyEffect(StatusEffectType.Strength, 90.0f);
         else if (key == BuiltInItems.PotionOfNightVision) player.StatusEffects.ApplyEffect(StatusEffectType.NightVision, 120.0f);
+        else if (key == BuiltInItems.FireResistancePotion) player.StatusEffects.ApplyEffect(StatusEffectType.FireResistance, 120.0f);
     }
 
     private static bool IsCompostable(ResourceKey key) =>
@@ -49,8 +50,17 @@ internal sealed partial class ClientItemUseHandler
         var wakePos = new Vec3d(bedPos.X + 0.5, bedPos.Y + 0.65, bedPos.Z + 0.5);
         player.SpawnPosition = wakePos;
         chatHistory.AddMessage("[Bed] Respawn point set.");
-        if (!worldBridge.TimeCycle.IsNightForSleeping) { chatHistory.AddMessage("[Bed] You can sleep only at night."); return; }
-        if (player.Mode == GameMode.Survival && mobManager.HasHostileMobNear(wakePos)) { chatHistory.AddMessage("[Bed] You may not rest now; there are monsters nearby."); return; }
+        if (!worldBridge.TimeCycle.IsNightForSleeping)
+        {
+            chatHistory.AddMessage("[Bed] You can sleep only at night.");
+            return;
+        }
+
+        if (player.Mode == GameMode.Survival && mobManager.HasHostileMobNear(wakePos))
+        {
+            chatHistory.AddMessage("[Bed] You may not rest now; there are monsters nearby.");
+            return;
+        }
         worldBridge.TimeCycle.SkipNightToMorning();
         player.StartSleepVignette();
         chatHistory.AddMessage("[Bed] Good morning! Slept through the night.");
@@ -152,7 +162,12 @@ internal sealed partial class ClientItemUseHandler
             var dist = step * 0.22;
             var sample = new Vec3d(origin.X + (f.X * dist), origin.Y + (f.Y * dist), origin.Z + (f.Z * dist)).ToBlockPos();
             var def = _blocks.GetRequired(_blocks.GetStateMetadata(world.GetBlockState(sample)).BlockKey);
-            if (def.IsFluid) { fluidPos = sample; return true; }
+            if (def.IsFluid)
+            {
+                fluidPos = sample;
+                return true;
+            }
+
             if (def.IsSolid) break;
         }
 

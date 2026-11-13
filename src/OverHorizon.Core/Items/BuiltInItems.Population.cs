@@ -163,7 +163,8 @@ public static partial class BuiltInItems
         _ = registry.Register(BoneMeal, new ItemDefinition(BoneMeal, MaxStackSize: 64, DisplayName: "Bone Meal", Category: ItemCategory.FoodAndMaterials, UseAction: ItemUseAction.ApplyBoneMeal));
 
         RegisterPotion(registry, SwiftnessPotion, "Potion of Swiftness");
-        RegisterPotion(registry, HealingPotion, "Potion of Healing");
+        RegisterPotion(registry, HealingPotion, "Potion of Regeneration");
+        RegisterPotion(registry, StrengthPotion, "Potion of Strength");
         RegisterPotion(registry, NightVisionPotion, "Potion of Night Vision");
         RegisterPotion(registry, FireResistancePotion, "Potion of Fire Resistance");
 

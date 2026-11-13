@@ -82,7 +82,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         {
             var fPos = _extinguishedFireScratch[i];
             var fc = new Vec3d(fPos.X + 0.5, fPos.Y + 0.25, fPos.Z + 0.5);
-            _audio.PlayPositional(SoundCue.FireExtinguishFizz, fc, gain: 0.55f * player.MasterVolume);
+            _audio.PlayPositional(SoundCue.Fizz, fc, gain: 0.55f * player.MasterVolume);
             Particles.EmitFlameAndSmoke(fc, smokeOnly: true);
         }
 
@@ -146,7 +146,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
 
         for (var i = 0; i < _creeperFuseStarts.Count; i++)
         {
-            _audio.PlayPositional(SoundCue.CreeperFuseHiss, _creeperFuseStarts[i], gain: 0.95f * player.MasterVolume, pitch: 1.0f);
+            _audio.PlayPositional(SoundCue.MobCreeperHiss, _creeperFuseStarts[i], gain: 0.95f * player.MasterVolume, pitch: 1.0f);
             Particles.EmitFlameAndSmoke(_creeperFuseStarts[i] + new Vec3d(0, 1.35, 0), smokeOnly: true);
         }
 
@@ -336,20 +336,20 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         var mob = _mobManager.Mobs[idx];
         if (mob.FeetPosition.DistanceTo(player.Camera.Position) > 26.0) return;
 
-        var cue = mob.Type switch
+        SoundCue? cue = mob.Type switch
         {
             MobType.Pig => SoundCue.MobPigSay,
             MobType.Sheep => SoundCue.MobSheepSay,
             MobType.Cow => SoundCue.MobCowSay,
             MobType.Chicken => SoundCue.MobChickenSay,
             MobType.Zombie => SoundCue.MobZombieSay,
-            MobType.Skeleton => SoundCue.MobSkeletonStep,
+            MobType.Skeleton => SoundCue.MobSkeletonSay,
             MobType.Spider => SoundCue.MobSpiderSay,
-            _ => SoundCue.None,
+            _ => null,
         };
-        if (cue != SoundCue.None)
+        if (cue is { } validCue)
         {
-            _audio.PlayPositional(cue, mob.FeetPosition, gain: 0.62f * player.MasterVolume);
+            _audio.PlayPositional(validCue, mob.FeetPosition, gain: 0.62f * player.MasterVolume);
         }
     }
 

@@ -43,6 +43,8 @@ internal static class ServerWorldTimeAndBlockSync
             (primaryPos, primaryState.Id),
         };
 
+        tntTicker?.NotifyWorldBlockChanged(primaryPos, primaryState, world.GetBlockState);
+
         // 1. Detach any unsupported neighbor blocks and spawn 3D item drops
         var checkQueue = new Queue<BlockPos>();
         checkQueue.Enqueue(primaryPos);
@@ -60,6 +62,7 @@ internal static class ServerWorldTimeAndBlockSync
                     changed.Add((nPos, BlockState.Air.Id));
                     SpawnDropForDetachedBlock(registries, droppedItems, nPos, nState);
                     redstone.NotifyBlockChanged(nPos);
+                    tntTicker?.NotifyWorldBlockChanged(nPos, BlockState.Air, world.GetBlockState);
                     checkQueue.Enqueue(nPos);
                 }
             }
@@ -76,6 +79,7 @@ internal static class ServerWorldTimeAndBlockSync
                 if (world.SetBlockState(pos, st, tickNumber))
                 {
                     changed.Add((pos, st.Id));
+                    tntTicker?.NotifyWorldBlockChanged(pos, st, world.GetBlockState);
                 }
             },
             ignited,
@@ -84,9 +88,10 @@ internal static class ServerWorldTimeAndBlockSync
         for (var i = 0; i < ignited.Count; i++)
         {
             var tntPos = ignited[i];
-            if (tntTicker is not null && tntTicker.IgniteBlock(world.GetBlockState, (p, s) => world.SetBlockState(p, s, tickNumber), tntPos))
+            if (tntTicker is not null && world.SetBlockState(tntPos, BlockState.Air, tickNumber))
             {
                 changed.Add((tntPos, BlockState.Air.Id));
+                _ = tntTicker.SpawnPrimedTnt(tntPos);
                 broadcaster.BroadcastToPlaySessions(new InventoryGrantAndEventPacket(0, 0, EventKind: 3, new Vec3d(tntPos.X + 0.5, tntPos.Y + 0.5, tntPos.Z + 0.5)));
             }
         }
@@ -120,10 +125,11 @@ internal static class ServerWorldTimeAndBlockSync
             return;
         }
 
-        var drop = BlockDropResolver.ResolveExplosionDrop(registries, state);
+        var key = registries.Blocks.GetStateMetadata(state).BlockKey;
+        var drop = BlockDropResolver.ResolveDrop(key, heldTool: null, registries.Items);
         if (!drop.IsEmpty)
         {
-            _ = droppedItems.SpawnDrop(drop, new Vec3d(pos.X + 0.5, pos.Y + 0.35, pos.Z + 0.5), pickupDelay: 0.25f);
+            _ = droppedItems.SpawnBlockDrop(pos, drop);
         }
     }
 }

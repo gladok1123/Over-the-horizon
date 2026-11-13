@@ -275,7 +275,7 @@ public sealed partial class ClientPlayerController
                 }
                 else
                 {
-                    audio.PlayPositional(SoundCue.PlayerLand, FeetPosition, gain: 0.46f * MasterVolume, pitch: 0.94f);
+                    audio.PlayPositional(SoundCue.LandSoft, FeetPosition, gain: 0.46f * MasterVolume, pitch: 0.94f);
                 }
             }
 

@@ -242,7 +242,11 @@ internal sealed partial class ClientMenuController
     {
         if (char.IsControl(ch)) return;
         if (Mode == UiOverlayMode.ChatInput && ChatDraft.Length < 120) ChatDraft += ch;
-        else if (Mode == UiOverlayMode.BlockInventory && _creativeTabIndex != 6 && CreativeSearchQuery.Length < 22) { CreativeSearchQuery += ch; _inventoryScrollRow = 0; }
+        else if (Mode == UiOverlayMode.BlockInventory && _creativeTabIndex != 6 && CreativeSearchQuery.Length < 22)
+        {
+            CreativeSearchQuery += ch;
+            _inventoryScrollRow = 0;
+        }
         else if (Mode == UiOverlayMode.CreateWorldMenu)
         {
             if (FocusedInputField == 0 && NewWorldName.Length < 28) NewWorldName += ch;
@@ -264,7 +268,11 @@ internal sealed partial class ClientMenuController
     public void HandleBackspace()
     {
         if (Mode == UiOverlayMode.ChatInput && ChatDraft.Length > 0) ChatDraft = ChatDraft[..^1];
-        else if (Mode == UiOverlayMode.BlockInventory && CreativeSearchQuery.Length > 0) { CreativeSearchQuery = CreativeSearchQuery[..^1]; _inventoryScrollRow = 0; }
+        else if (Mode == UiOverlayMode.BlockInventory && CreativeSearchQuery.Length > 0)
+        {
+            CreativeSearchQuery = CreativeSearchQuery[..^1];
+            _inventoryScrollRow = 0;
+        }
         else if (Mode == UiOverlayMode.CreateWorldMenu)
         {
             if (FocusedInputField == 0 && NewWorldName.Length > 0) NewWorldName = NewWorldName[..^1];

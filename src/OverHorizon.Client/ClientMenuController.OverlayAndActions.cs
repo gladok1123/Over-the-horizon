@@ -266,10 +266,19 @@ internal sealed partial class ClientMenuController
         var t = Math.Clamp((mouseX - (b.X + 8.0f)) / Math.Max(1.0f, b.Width - 16.0f), 0.0f, 1.0f);
         switch (b.ActionId)
         {
-            case "slider_view_dist": ActiveViewDistance = Math.Clamp((int)MathF.Round(2.0f + (t * 62.0f)), 2, 64); break;
-            case "slider_fov": FovDegrees = MathF.Round(70.0f + (t * 40.0f)); player.Camera.FieldOfViewDegrees = FovDegrees; break;
-            case "slider_volume": player.MasterVolume = MathF.Round(t * 100.0f) / 100.0f; break;
-            case "slider_sensitivity": player.MouseSensitivity = 0.03f + (t * 0.22f); break;
+            case "slider_view_dist":
+                ActiveViewDistance = Math.Clamp((int)MathF.Round(2.0f + (t * 62.0f)), 2, 64);
+                break;
+            case "slider_fov":
+                FovDegrees = MathF.Round(70.0f + (t * 40.0f));
+                player.Camera.FieldOfViewDegrees = FovDegrees;
+                break;
+            case "slider_volume":
+                player.MasterVolume = MathF.Round(t * 100.0f) / 100.0f;
+                break;
+            case "slider_sensitivity":
+                player.MouseSensitivity = 0.03f + (t * 0.22f);
+                break;
         }
     }
 
@@ -289,7 +298,10 @@ internal sealed partial class ClientMenuController
 
         switch (id)
         {
-            case "open_world_select": RefreshSavedWorlds(); Mode = UiOverlayMode.WorldSelectMenu; return id;
+            case "open_world_select":
+                RefreshSavedWorlds();
+                Mode = UiOverlayMode.WorldSelectMenu;
+                return id;
             case "open_create_world":
                 NewWorldName = _savedWorlds.Count == 0 ? "New World" : $"New World {(_savedWorlds.Count + 1).ToString(CultureInfo.InvariantCulture)}";
                 NewWorldSeed = string.Empty;
@@ -304,8 +316,12 @@ internal sealed partial class ClientMenuController
                     _ => GameMode.Survival,
                 };
                 return id;
-            case "focus_world_name": FocusedInputField = 0; return id;
-            case "focus_world_seed": FocusedInputField = 1; return id;
+            case "focus_world_name":
+                FocusedInputField = 0;
+                return id;
+            case "focus_world_seed":
+                FocusedInputField = 1;
+                return id;
             case "delete_selected_world":
                 if (SelectedSavedWorld is { } del)
                 {
@@ -323,25 +339,62 @@ internal sealed partial class ClientMenuController
                 }
 
                 return "play_selected_world";
-            case "resume": CloseContainerAndRefundCursor(player); Mode = UiOverlayMode.InGame; return id;
-            case "respawn_player": player.Respawn(); Mode = UiOverlayMode.InGame; return id;
-            case "toggle_gamemode": _ = player.CycleNextGameMode(); return id;
-            case "toggle_xray": ToggleXRayMode(player); return id;
-            case "toggle_clouds": CloudsEnabled = !CloudsEnabled; SavePersistedSettings(player); return id;
-            case "toggle_particles": ParticlesMode = (ParticlesMode + 1) % 3; SavePersistedSettings(player); return id;
-            case "toggle_vsync": VSyncEnabled = !VSyncEnabled; SavePersistedSettings(player); return id;
-            case "toggle_invert_y": player.InvertMouseY = !player.InvertMouseY; SavePersistedSettings(player); return id;
-            case "open_multiplayer": FocusedInputField = 0; Mode = UiOverlayMode.MultiplayerMenu; return id;
-            case "open_options": _returnModeFromOptions = Mode; Mode = UiOverlayMode.OptionsMenu; return id;
-            case "options_done": CloseOptionsAndReturn(player); return id;
+            case "resume":
+                CloseContainerAndRefundCursor(player);
+                Mode = UiOverlayMode.InGame;
+                return id;
+            case "respawn_player":
+                player.Respawn();
+                Mode = UiOverlayMode.InGame;
+                return id;
+            case "toggle_gamemode":
+                _ = player.CycleNextGameMode();
+                return id;
+            case "toggle_xray":
+                ToggleXRayMode(player);
+                return id;
+            case "toggle_clouds":
+                CloudsEnabled = !CloudsEnabled;
+                SavePersistedSettings(player);
+                return id;
+            case "toggle_particles":
+                ParticlesMode = (ParticlesMode + 1) % 3;
+                SavePersistedSettings(player);
+                return id;
+            case "toggle_vsync":
+                VSyncEnabled = !VSyncEnabled;
+                SavePersistedSettings(player);
+                return id;
+            case "toggle_invert_y":
+                player.InvertMouseY = !player.InvertMouseY;
+                SavePersistedSettings(player);
+                return id;
+            case "open_multiplayer":
+                FocusedInputField = 0;
+                Mode = UiOverlayMode.MultiplayerMenu;
+                return id;
+            case "open_options":
+                _returnModeFromOptions = Mode;
+                Mode = UiOverlayMode.OptionsMenu;
+                return id;
+            case "options_done":
+                CloseOptionsAndReturn(player);
+                return id;
             case "open_inventory":
                 if (player.Mode == GameMode.Spectator) return id;
                 Mode = player.Mode == GameMode.Survival ? UiOverlayMode.SurvivalInventory : UiOverlayMode.BlockInventory;
                 return id;
-            case "back_to_title": Mode = UiOverlayMode.TitleMenu; return id;
-            case "focus_endpoint": FocusedInputField = 0; return id;
-            case "focus_username": FocusedInputField = 1; return id;
-            default: return id;
+            case "back_to_title":
+                Mode = UiOverlayMode.TitleMenu;
+                return id;
+            case "focus_endpoint":
+                FocusedInputField = 0;
+                return id;
+            case "focus_username":
+                FocusedInputField = 1;
+                return id;
+            default:
+                return id;
         }
     }
 
