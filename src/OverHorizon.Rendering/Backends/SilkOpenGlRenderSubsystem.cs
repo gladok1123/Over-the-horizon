@@ -5,10 +5,12 @@ using OverHorizon.Rendering.Camera;
 using OverHorizon.Rendering.Hud;
 using OverHorizon.Rendering.Meshing;
 using OverHorizon.Rendering.Textures;
+using Silk.NET.Core.Loader;
 using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.OpenGL;
 using Silk.NET.Windowing;
+using Silk.NET.Windowing.Glfw;
 
 namespace OverHorizon.Rendering.Backends;
 
@@ -19,6 +21,7 @@ namespace OverHorizon.Rendering.Backends;
 /// </summary>
 public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
 {
+    private static readonly Lock ResolverSyncRoot = new();
     private readonly RenderingOptions _options;
     private readonly ILogger<SilkOpenGlRenderSubsystem> _logger;
     private readonly Dictionary<ChunkPos, Dictionary<int, SectionMeshData>> _stagedColumns = [];
@@ -181,6 +184,9 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(onUpdate);
         ArgumentNullException.ThrowIfNull(onRender);
+
+        EnsureSingleFileNativeResolver();
+        GlfwWindowing.RegisterPlatform();
 
         var winOpts = WindowOptions.Default;
         winOpts.Size = new Vector2D<int>(_options.WindowWidth, _options.WindowHeight);
@@ -411,5 +417,58 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         _inputContext?.Dispose();
         _inputContext = null;
         _gl = null;
+    }
+
+    private static void EnsureSingleFileNativeResolver()
+    {
+        const string markerKey = "OverHorizon.SilkSingleFileResolverRegistered";
+        lock (ResolverSyncRoot)
+        {
+            if (AppContext.GetData(markerKey) is true || PathResolver.Default is not DefaultPathResolver resolver)
+            {
+                return;
+            }
+
+            var idx = resolver.Resolvers.IndexOf(DefaultPathResolver.MacVersioningResolver);
+            resolver.Resolvers.Insert(idx >= 0 ? idx + 1 : 0, ResolveNativeFromAppContext);
+            AppContext.SetData(markerKey, data: true);
+        }
+    }
+
+    private static List<string> ResolveNativeFromAppContext(string candidate)
+    {
+        if (string.IsNullOrWhiteSpace(candidate) || Path.IsPathRooted(candidate))
+        {
+            return [];
+        }
+
+        var fileName = Path.GetFileName(candidate);
+        if (string.IsNullOrWhiteSpace(fileName)
+            || AppContext.GetData("NATIVE_DLL_SEARCH_DIRECTORIES") is not string rawDirs
+            || string.IsNullOrWhiteSpace(rawDirs))
+        {
+            return [];
+        }
+
+        var matches = new List<string>();
+        foreach (var dir in rawDirs.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(Directory.Exists))
+        {
+            var exact = Path.Combine(dir, fileName);
+            if (File.Exists(exact))
+            {
+                matches.Add(exact);
+            }
+
+            if (fileName.Contains(".so", StringComparison.Ordinal))
+            {
+                matches.AddRange(Directory.EnumerateFiles(dir, fileName + ".*").Order(StringComparer.Ordinal));
+            }
+            else if (fileName.EndsWith(".dylib", StringComparison.Ordinal))
+            {
+                matches.AddRange(Directory.EnumerateFiles(dir, fileName[..^".dylib".Length] + ".*.dylib").Order(StringComparer.Ordinal));
+            }
+        }
+
+        return matches;
     }
 }

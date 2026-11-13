@@ -8,10 +8,12 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Silk.NET.Core" />
     <PackageReference Include="Silk.NET.Input" />
     <PackageReference Include="Silk.NET.Maths" />
     <PackageReference Include="Silk.NET.OpenGL" />
     <PackageReference Include="Silk.NET.Windowing" />
+    <PackageReference Include="Silk.NET.Windowing.Glfw" />
   </ItemGroup>
 
   <ItemGroup>

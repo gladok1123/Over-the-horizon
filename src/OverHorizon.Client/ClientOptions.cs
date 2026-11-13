@@ -12,6 +12,7 @@ namespace OverHorizon.Client;
 /// <param name="ViewDistanceChunks">Client chunk streaming and meshing radius (<c>2..64</c>).</param>
 /// <param name="StartInWorld">When <see langword="true"/>, skips the Title Screen and spawns directly into Singleplayer.</param>
 /// <param name="ExternalAssetsPath">Optional path to external resource pack directory, <c>.zip</c>, or <c>.jar</c>.</param>
+/// <param name="VerifyNativesOnly">When <see langword="true"/>, verifies GLFW and OpenAL native library loading and exits.</param>
 public sealed record ClientOptions(
     bool HeadlessCheckOnly = false,
     bool Headless = false,
@@ -21,4 +22,5 @@ public sealed record ClientOptions(
     string Username = "Explorer",
     int ViewDistanceChunks = 4,
     bool StartInWorld = false,
-    string? ExternalAssetsPath = null);
+    string? ExternalAssetsPath = null,
+    bool VerifyNativesOnly = false);

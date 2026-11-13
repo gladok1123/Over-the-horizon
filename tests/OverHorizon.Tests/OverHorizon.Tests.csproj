@@ -15,6 +15,7 @@
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="FsCheck" />
     <PackageReference Include="FsCheck.Xunit" />
+    <PackageReference Include="Silk.NET.Core" />
   </ItemGroup>
 
   <ItemGroup>

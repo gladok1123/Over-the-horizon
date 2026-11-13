@@ -13,6 +13,8 @@ internal static class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        SilkSingleFileNativeResolver.EnsureRegistered();
+
         using var cts = new CancellationTokenSource();
         ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
         {
@@ -24,6 +26,13 @@ internal static class Program
         try
         {
             var parsedOptions = ClientBootstrap.ParseOptions(args);
+            if (parsedOptions.VerifyNativesOnly)
+            {
+                var (glfwTarget, openAlTarget, platformName) = SilkSingleFileNativeResolver.VerifyNativeLibrariesLoaded();
+                await Console.Out.WriteLineAsync($"[VerifyNatives] OK: Platform={platformName}, Glfw={glfwTarget}, OpenAL={openAlTarget}").ConfigureAwait(false);
+                return 0;
+            }
+
             if (!parsedOptions.Headless && !parsedOptions.HeadlessCheckOnly)
             {
                 await Minecraft23w13aAssetSyncer.EnsureAssetsCachedAsync(parsedOptions.ExternalAssetsPath, cts.Token).ConfigureAwait(false);

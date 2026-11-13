@@ -73,6 +73,41 @@ jobs:
           grep -E "Passed!|Total tests:" test.log >> "$GITHUB_STEP_SUMMARY" || tail -n 15 test.log >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Verify single-file native loader in clean folder (GLFW + OpenAL)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            rid="win-x64"
+            bin_name="OverHorizon.Client.exe"
+          else
+            rid="linux-x64"
+            bin_name="OverHorizon.Client"
+          fi
+          dotnet publish src/OverHorizon.Client/OverHorizon.Client.csproj \
+            -c Release -r "${rid}" --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:EnableCompressionInSingleFile=true \
+            -p:DebugType=None -p:DebugSymbols=false \
+            -o ./smoke-publish
+          mkdir -p ./isolated-player-dir ./isolated-empty-home
+          cp "./smoke-publish/${bin_name}" "./isolated-player-dir/${bin_name}"
+          chmod +x "./isolated-player-dir/${bin_name}" || true
+          if command -v cygpath >/dev/null 2>&1; then
+            empty_home="$(cygpath -w "$(pwd)/isolated-empty-home")"
+          else
+            empty_home="$(pwd)/isolated-empty-home"
+          fi
+          output=$(HOME="${empty_home}" USERPROFILE="${empty_home}" "./isolated-player-dir/${bin_name}" --verify-natives 2>&1) || {
+            echo "::error::Single-file native verification failed on ${{ matrix.os }}: ${output}"
+            exit 1
+          }
+          echo "${output}"
+          echo "${output}" | grep -F "[VerifyNatives] OK: Platform=GlfwPlatform"
+          echo "::notice::SINGLEFILE_OK (${{ matrix.os }}): ${output}"
+          rm -rf ./smoke-publish ./isolated-player-dir ./isolated-empty-home
+
   build-and-test-macos:
     if: github.event_name == 'push'
     runs-on: macos-latest

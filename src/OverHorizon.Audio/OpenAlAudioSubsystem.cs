@@ -1,6 +1,7 @@
 using System.Numerics;
 using Microsoft.Extensions.Logging;
 using OverHorizon.Core.Math;
+using Silk.NET.Core.Loader;
 using Silk.NET.OpenAL;
 
 namespace OverHorizon.Audio;
@@ -13,6 +14,7 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
 {
     private const int VoicePoolSize = 8;
     private const double MaxAudibleDistanceSq = 48.0 * 48.0;
+    private static readonly Lock ResolverSyncRoot = new();
 
     private readonly ILogger<OpenAlAudioSubsystem> _logger;
     private readonly IReadOnlyDictionary<SoundCue, PcmSoundClip> _soundBank;
@@ -61,6 +63,7 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
 
         try
         {
+            EnsureSingleFileNativeResolver();
             var (alc, al) = AcquireOpenAlApis();
 
             var device = alc.OpenDevice(string.Empty);
@@ -177,6 +180,59 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
 
         ReleaseOpenAlHandles();
         _disposed = true;
+    }
+
+    private static void EnsureSingleFileNativeResolver()
+    {
+        const string markerKey = "OverHorizon.SilkSingleFileResolverRegistered";
+        lock (ResolverSyncRoot)
+        {
+            if (AppContext.GetData(markerKey) is true || PathResolver.Default is not DefaultPathResolver resolver)
+            {
+                return;
+            }
+
+            var idx = resolver.Resolvers.IndexOf(DefaultPathResolver.MacVersioningResolver);
+            resolver.Resolvers.Insert(idx >= 0 ? idx + 1 : 0, ResolveNativeFromAppContext);
+            AppContext.SetData(markerKey, data: true);
+        }
+    }
+
+    private static List<string> ResolveNativeFromAppContext(string candidate)
+    {
+        if (string.IsNullOrWhiteSpace(candidate) || Path.IsPathRooted(candidate))
+        {
+            return [];
+        }
+
+        var fileName = Path.GetFileName(candidate);
+        if (string.IsNullOrWhiteSpace(fileName)
+            || AppContext.GetData("NATIVE_DLL_SEARCH_DIRECTORIES") is not string rawDirs
+            || string.IsNullOrWhiteSpace(rawDirs))
+        {
+            return [];
+        }
+
+        var matches = new List<string>();
+        foreach (var dir in rawDirs.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(Directory.Exists))
+        {
+            var exact = Path.Combine(dir, fileName);
+            if (File.Exists(exact))
+            {
+                matches.Add(exact);
+            }
+
+            if (fileName.Contains(".so", StringComparison.Ordinal))
+            {
+                matches.AddRange(Directory.EnumerateFiles(dir, fileName + ".*").Order(StringComparer.Ordinal));
+            }
+            else if (fileName.EndsWith(".dylib", StringComparison.Ordinal))
+            {
+                matches.AddRange(Directory.EnumerateFiles(dir, fileName[..^".dylib".Length] + ".*.dylib").Order(StringComparer.Ordinal));
+            }
+        }
+
+        return matches;
     }
 
     private static (ALContext Alc, AL Al) AcquireOpenAlApis()

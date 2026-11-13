@@ -31,6 +31,7 @@ public static class ClientBootstrap
         var headlessCheckOnly = false;
         var headless = false;
         var startInWorld = false;
+        var verifyNativesOnly = false;
         int? maxFrames = null;
         string? serverHost = null;
         ushort serverPort = 25565;
@@ -59,6 +60,13 @@ public static class ClientBootstrap
             if (string.Equals(token, "--singleplayer", StringComparison.Ordinal))
             {
                 startInWorld = true;
+                i++;
+                continue;
+            }
+
+            if (string.Equals(token, "--verify-natives", StringComparison.Ordinal))
+            {
+                verifyNativesOnly = true;
                 i++;
                 continue;
             }
@@ -138,7 +146,8 @@ public static class ClientBootstrap
             Username: username,
             ViewDistanceChunks: viewDistance,
             StartInWorld: startInWorld,
-            ExternalAssetsPath: externalAssetsPath);
+            ExternalAssetsPath: externalAssetsPath,
+            VerifyNativesOnly: verifyNativesOnly);
     }
 
     /// <summary>
