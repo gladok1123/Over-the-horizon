@@ -281,7 +281,7 @@ public sealed class V6MechanicsRedstoneWorldsAndUiTests
             _ = cache.ApplyBlockUpdate(bedPos, bedFoot);
 
             var combat = new ClientSurvivalCombatController(blocks, registries.Items, audio);
-            player.ApplyAuthoritativePose(new Vec3d(5.5, 64.0, 6.2), 0.0f, -25.0f);
+            player.ApplyAuthoritativePose(new Vec3d(5.5, 64.0, 6.2), 0.0f, -38.0f);
             player.RefreshRaycastTarget(cache);
             combat.HandleRightClickUseOrPlace(
                 player, cache, bridge, mobs, chat, (p, _, s) => cache.ApplyBlockUpdate(p, s), out _, out _)

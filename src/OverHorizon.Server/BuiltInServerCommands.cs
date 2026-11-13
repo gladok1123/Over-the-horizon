@@ -15,6 +15,7 @@ namespace OverHorizon.Server;
 /// </summary>
 public static class BuiltInServerCommands
 {
+    /// <summary>Registers all built-in dedicated server slash-commands into <paramref name="dispatcher"/>.</summary>
     public static void RegisterAll(
         ICommandDispatcher dispatcher,
         IWorldSubsystem world,

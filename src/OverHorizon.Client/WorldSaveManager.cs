@@ -174,6 +174,7 @@ public static class WorldSaveManager
         return new WorldSubsystem(manager);
     }
 
+    /// <summary>Extracts the optional bed respawn coordinate from <paramref name="meta"/>.</summary>
     public static Vec3d? GetRespawnVec(SavedWorldMetadata meta) =>
         meta.RespawnX is { } rx && meta.RespawnY is { } ry && meta.RespawnZ is { } rz
             ? new Vec3d(rx, ry, rz)

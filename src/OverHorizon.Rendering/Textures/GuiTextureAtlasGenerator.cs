@@ -15,47 +15,47 @@ public static class GuiTextureAtlasGenerator
     /// <summary>Height of the composite GUI texture atlas in pixels (<c>1024</c>).</summary>
     public const int AtlasHeight = 1024;
 
-    public const int WidgetsOriginX = 0;
-    public const int WidgetsOriginY = 0;
+    internal const int WidgetsOriginX = 0;
+    internal const int WidgetsOriginY = 0;
 
-    public const int IconsOriginX = 256;
-    public const int IconsOriginY = 0;
+    internal const int IconsOriginX = 256;
+    internal const int IconsOriginY = 0;
 
-    public const int SliderOriginX = 0;
-    public const int SliderOriginY = 256;
+    internal const int SliderOriginX = 0;
+    internal const int SliderOriginY = 256;
 
-    public const int InventoryOriginX = 256;
-    public const int InventoryOriginY = 256;
+    internal const int InventoryOriginX = 256;
+    internal const int InventoryOriginY = 256;
 
-    public const int CraftingOriginX = 0;
-    public const int CraftingOriginY = 512;
+    internal const int CraftingOriginX = 0;
+    internal const int CraftingOriginY = 512;
 
-    public const int FurnaceOriginX = 256;
-    public const int FurnaceOriginY = 512;
+    internal const int FurnaceOriginX = 256;
+    internal const int FurnaceOriginY = 512;
 
-    public const int CreativeItemsOriginX = 512;
-    public const int CreativeItemsOriginY = 0;
+    internal const int CreativeItemsOriginX = 512;
+    internal const int CreativeItemsOriginY = 0;
 
-    public const int CreativeSearchOriginX = 768;
-    public const int CreativeSearchOriginY = 0;
+    internal const int CreativeSearchOriginX = 768;
+    internal const int CreativeSearchOriginY = 0;
 
-    public const int CreativeInvOriginX = 512;
-    public const int CreativeInvOriginY = 256;
+    internal const int CreativeInvOriginX = 512;
+    internal const int CreativeInvOriginY = 256;
 
-    public const int CreativeTabsOriginX = 768;
-    public const int CreativeTabsOriginY = 256;
+    internal const int CreativeTabsOriginX = 768;
+    internal const int CreativeTabsOriginY = 256;
 
-    public const int TitleLogoOriginX = 512;
-    public const int TitleLogoOriginY = 512;
+    internal const int TitleLogoOriginX = 512;
+    internal const int TitleLogoOriginY = 512;
 
-    public const int TitleEditionOriginX = 512;
-    public const int TitleEditionOriginY = 768;
+    internal const int TitleEditionOriginX = 512;
+    internal const int TitleEditionOriginY = 768;
 
-    public const int OptionsBgOriginX = 704;
-    public const int OptionsBgOriginY = 768;
+    internal const int OptionsBgOriginX = 704;
+    internal const int OptionsBgOriginY = 768;
 
-    public const int TitlePanoramaOriginX = 768;
-    public const int TitlePanoramaOriginY = 512;
+    internal const int TitlePanoramaOriginX = 768;
+    internal const int TitlePanoramaOriginY = 512;
 
     /// <summary>Generates the <c>1024x1024</c> RGBA8 composite GUI texture sheet.</summary>
     public static byte[] Generate(string? externalAssetsPath = null)

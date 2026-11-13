@@ -63,6 +63,7 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
     private float _lastSentPitch;
     private string _latestDebugText = string.Empty;
 
+    /// <summary>Initializes a new instance of the <see cref="ClientSessionRunner"/> class.</summary>
     public ClientSessionRunner(
         ClientOptions options,
         CoreRegistries registries,
@@ -113,13 +114,25 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
         _meshQueue = new ClientAsyncMeshQueue(blocks, _atlas);
     }
 
+    /// <summary>Gets the client-side world chunk &amp; light cache.</summary>
     public ClientWorldCache WorldCache => _worldCache;
+
+    /// <summary>Gets the local first-person player controller.</summary>
     public ClientPlayerController Player => _player;
+
+    /// <summary>Gets the client-side world mob manager.</summary>
     public WorldMobManager Mobs => _mobManager;
+
+    /// <summary>Gets the <c>256x256</c> block &amp; item texture atlas.</summary>
     public TextureAtlasData Atlas => _atlas;
+
+    /// <summary>Gets the number of remote multiplayer peers currently tracked.</summary>
     public int RemotePlayerCount => _remotePlayers.Count;
+
+    /// <summary>Gets the most recently formatted <c>F3</c> debug telemetry string.</summary>
     public string LatestDebugOverlayText => _latestDebugText;
 
+    /// <summary>Initializes audio, multiplayer login (if configured), or local spawn chunks.</summary>
     public async ValueTask InitializeSessionAsync(CancellationToken cancellationToken = default)
     {
         _ = _audio.TryInitializeDevice();
@@ -150,6 +163,7 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
         }
     }
 
+    /// <summary>Instantly breaks the currently targeted block in Creative/headless testing.</summary>
     public bool TryBreakTargetedBlock()
     {
         if (_player.CurrentTarget is not { } target) return false;
@@ -160,6 +174,7 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
         return ApplyWorldBlockChange(target.BlockPosition, target.HitFace, BlockState.Air);
     }
 
+    /// <summary>Uses the selected item or places a block against the targeted face.</summary>
     public bool TryPlaceSelectedBlock()
     {
         var used = _survivalCombat.HandleRightClickUseOrPlace(
@@ -173,6 +188,7 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
         return used;
     }
 
+    /// <summary>Executes a local slash-command or transmits a chat/command message.</summary>
     public void SendChatOrCommand(string message)
     {
         if (string.IsNullOrWhiteSpace(message)) return;
@@ -198,6 +214,7 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
         _chatHistory.AddMessage($"<{_menu.UsernameInput}> {trimmed}");
     }
 
+    /// <summary>Steps a deterministic sequence of headless simulation &amp; render frames.</summary>
     public async ValueTask<RenderFrameMetrics> RunHeadlessFramesAsync(
         int frameCount,
         double deltaSeconds = 1.0 / 60.0,
@@ -216,6 +233,7 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
         return lastMetrics;
     }
 
+    /// <summary>Runs the interactive Silk.NET OpenGL window loop or headless fallback.</summary>
     public async ValueTask RunAsync(CancellationToken cancellationToken = default)
     {
         if (_options.Headless || _renderer is not SilkOpenGlRenderSubsystem silkRenderer)

@@ -37,6 +37,7 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
     private long _frameCount;
     private bool _disposed;
 
+    /// <summary>Initializes a new instance of the <see cref="SilkOpenGlRenderSubsystem"/> class.</summary>
     public SilkOpenGlRenderSubsystem(RenderingOptions options, ILogger<SilkOpenGlRenderSubsystem> logger)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -57,12 +58,15 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
     /// <inheritdoc />
     public RenderFrameMetrics LastFrameMetrics { get; private set; }
 
+    /// <summary>Gets the active Silk.NET keyboard &amp; mouse input context when the window is open.</summary>
     public IInputContext? InputContext => _inputContext;
 
+    /// <summary>Gets the current window framebuffer dimensions in pixels.</summary>
     public Vector2 WindowPixelSize => _window is { } w
         ? new Vector2(w.Size.X, w.Size.Y)
         : new Vector2(_options.WindowWidth, _options.WindowHeight);
 
+    /// <summary>Gets or sets the OS window title.</summary>
     public string WindowTitle
     {
         get => _window?.Title ?? _options.WindowTitle;
@@ -75,6 +79,7 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         }
     }
 
+    /// <summary>Requests graceful window closure at the end of the current frame.</summary>
     public void RequestClose() => _window?.Close();
 
     /// <inheritdoc />
@@ -166,6 +171,7 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         }
     }
 
+    /// <summary>Creates the OpenGL 3.3 Core window and runs the interactive update/render loop until closed.</summary>
     public void RunWindowLoop(
         Action<double> onUpdate,
         Action<double> onRender,
