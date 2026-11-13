@@ -147,17 +147,22 @@ public sealed partial class PrimedTntAndWorldTicker
             _ = _activeFluidFrontier.Remove(candidates[i]);
         }
 
-        var updates = FluidSimulator.ComputeStep(candidates, getBlock, _blocks);
+        var updates = FluidSimulator.EvaluateStep(collisionWorld, candidates);
         if (updates.Count == 0)
         {
             return 0;
         }
 
+        var baseWater = _blocks.GetDefaultState(BuiltInBlocks.Water);
         var count = Math.Min(updates.Count, MaxFluidUpdatesPerStep);
         var batch = new List<(BlockPos Pos, BlockState State)>(count);
         for (var i = 0; i < count; i++)
         {
-            var (pos, nextState) = updates[i];
+            var change = updates[i];
+            var pos = change.Position;
+            var nextState = change.NewLevel == FluidChange.RemoveFluidSentinel
+                ? BlockState.Air
+                : _blocks.WithProperty(baseWater, "level", change.NewLevel.ToString(System.Globalization.CultureInfo.InvariantCulture));
             var prev = getBlock(pos);
             if (_blocks.GetStateMetadata(prev).BlockKey == BuiltInBlocks.Fire)
             {

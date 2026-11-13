@@ -170,9 +170,7 @@ public static class BuiltInRecipes
 
         // 10. v0.8.0 Redstone Comparator, Composter, Oak Trapdoor, Bone Meal & Structure Masonry
         var rTorch = Id(BuiltInBlocks.RedstoneTorch);
-        var stone = Id(BuiltInBlocks.Stone);
         var quartz = Id(BuiltInItems.Quartz);
-        var oakPlanks = Id(BuiltInBlocks.OakPlanks);
         AddShaped(registry, "comparator", 3, 3, [0, rTorch, 0, rTorch, quartz, rTorch, stone, stone, stone], Id(BuiltInBlocks.RedstoneComparator), 1);
         AddShaped(registry, "comparator_amethyst", 3, 3, [0, rTorch, 0, rTorch, Id(BuiltInBlocks.AmethystBlock), rTorch, stone, stone, stone], Id(BuiltInBlocks.RedstoneComparator), 1);
         AddShaped(registry, "composter", 3, 3, [oakPlanks, 0, oakPlanks, oakPlanks, 0, oakPlanks, oakPlanks, oakPlanks, oakPlanks], Id(BuiltInBlocks.Composter), 1);

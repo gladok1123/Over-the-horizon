@@ -42,8 +42,8 @@ public sealed class ArrowEntity
     /// <summary>Gets whether this arrow was released at full bow tension (<c>&gt;= 98%</c>).</summary>
     public bool IsCritical { get; }
 
-    /// <summary>Gets whether this arrow was fired by the player (<see langword="false"/> if fired by a Skeleton).</summary>
-    public bool FiredByPlayer { get; }
+    /// <summary>Gets or sets whether this arrow was fired by the player (<see langword="false"/> if fired by a Skeleton).</summary>
+    public bool FiredByPlayer { get; set; }
 
     /// <summary>Gets whether the player can recover this arrow into Survival inventory after it lands.</summary>
     public bool CanBePickedUp { get; }

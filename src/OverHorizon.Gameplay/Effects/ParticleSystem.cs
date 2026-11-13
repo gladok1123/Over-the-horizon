@@ -172,9 +172,11 @@ public sealed class ParticleSystem
                 continue;
             }
 
-            p.Velocity.Y -= 16.5f * p.GravityScale * clampedDt;
-            p.Velocity *= drag;
-            p.Position += new Vec3d(p.Velocity.X * clampedDt, p.Velocity.Y * clampedDt, p.Velocity.Z * clampedDt);
+            var vel = p.Velocity;
+            vel.Y -= 16.5f * p.GravityScale * clampedDt;
+            vel *= drag;
+            p.Velocity = vel;
+            p.Position += new Vec3d(vel.X * clampedDt, vel.Y * clampedDt, vel.Z * clampedDt);
         }
     }
 

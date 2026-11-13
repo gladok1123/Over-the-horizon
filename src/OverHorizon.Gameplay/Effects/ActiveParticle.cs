@@ -8,33 +8,33 @@ namespace OverHorizon.Gameplay.Effects;
 /// </summary>
 public struct ActiveParticle
 {
-    /// <summary>World-space center position.</summary>
-    public Vec3d Position;
+    /// <summary>Gets or sets world-space center position.</summary>
+    public Vec3d Position { get; set; }
 
-    /// <summary>Linear velocity in blocks/second.</summary>
-    public Vector3 Velocity;
+    /// <summary>Gets or sets linear velocity in blocks/second.</summary>
+    public Vector3 Velocity { get; set; }
 
-    /// <summary>RGB tint color.</summary>
-    public Vector3 Color;
+    /// <summary>Gets or sets RGB tint color.</summary>
+    public Vector3 Color { get; set; }
 
-    /// <summary>Billboard half-size in world blocks.</summary>
-    public float Size;
+    /// <summary>Gets or sets billboard half-size in world blocks.</summary>
+    public float Size { get; set; }
 
-    /// <summary>Elapsed age in seconds.</summary>
-    public float Age;
+    /// <summary>Gets or sets elapsed age in seconds.</summary>
+    public float Age { get; set; }
 
-    /// <summary>Maximum lifetime in seconds.</summary>
-    public float MaxLifetime;
+    /// <summary>Gets or sets maximum lifetime in seconds.</summary>
+    public float MaxLifetime { get; set; }
 
-    /// <summary>Downward gravity multiplier.</summary>
-    public float GravityScale;
+    /// <summary>Gets or sets downward gravity multiplier.</summary>
+    public float GravityScale { get; set; }
 
-    /// <summary>Atlas tile index (<c>&gt;= 0</c> for textured block debris, <c>-1</c> for untextured color quad).</summary>
-    public int AtlasTileIndex;
+    /// <summary>Gets or sets atlas tile index (<c>&gt;= 0</c> for textured block debris, <c>-1</c> for untextured color quad).</summary>
+    public int AtlasTileIndex { get; set; }
 
-    /// <summary>Sub-tile UV offset (<c>0..0.75</c>) for textured block debris chips.</summary>
-    public Vector2 SubUvOffset;
+    /// <summary>Gets or sets sub-tile UV offset (<c>0..0.75</c>) for textured block debris chips.</summary>
+    public Vector2 SubUvOffset { get; set; }
 
-    /// <summary>Particle behavior kind.</summary>
-    public ParticleKind Kind;
+    /// <summary>Gets or sets particle behavior kind.</summary>
+    public ParticleKind Kind { get; set; }
 }

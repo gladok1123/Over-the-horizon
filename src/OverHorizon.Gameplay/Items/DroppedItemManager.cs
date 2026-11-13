@@ -217,16 +217,32 @@ public sealed class DroppedItemManager
             e.Position.Y + Height,
             e.Position.Z + HalfWidth);
 
-        var sweep = VoxelSweptCollider.MoveAndSlide(world, box, desiredVel * dt);
-        e.Position = new Vec3d((sweep.MovedBounds.MinX + sweep.MovedBounds.MaxX) * 0.5, sweep.MovedBounds.MinY, (sweep.MovedBounds.MinZ + sweep.MovedBounds.MaxZ) * 0.5);
-        e.OnGround = sweep.CollidedY && desiredVel.Y < 0.0;
+        var reqMove = desiredVel * dt;
+        var sweep = VoxelSweptCollider.MoveAndCollide(world, box, reqMove);
+        e.Position = new Vec3d((sweep.Box.MinX + sweep.Box.MaxX) * 0.5, sweep.Box.MinY, (sweep.Box.MinZ + sweep.Box.MaxZ) * 0.5);
+        e.OnGround = sweep.OnGround;
 
-        var dragXZ = e.OnGround ? Math.Pow(0.18, dt * 10.0) : (inWater ? 0.82 : 0.96);
-        var nextVx = sweep.CollidedX ? -desiredVel.X * 0.25 : desiredVel.X * dragXZ;
-        var nextVz = sweep.CollidedZ ? -desiredVel.Z * 0.25 : desiredVel.Z * dragXZ;
-        var nextVy = sweep.CollidedY
-            ? (desiredVel.Y < -1.8 ? -desiredVel.Y * 0.28 : 0.0)
-            : desiredVel.Y;
+        var dragXZ = 0.96;
+        if (e.OnGround)
+        {
+            dragXZ = Math.Pow(0.18, dt * 10.0);
+        }
+        else if (inWater)
+        {
+            dragXZ = 0.82;
+        }
+
+        var hitX = Math.Abs(sweep.ActualMove.X - reqMove.X) > 1e-5;
+        var hitZ = Math.Abs(sweep.ActualMove.Z - reqMove.Z) > 1e-5;
+        var hitY = Math.Abs(sweep.ActualMove.Y - reqMove.Y) > 1e-5;
+        var nextVx = hitX ? -desiredVel.X * 0.25 : desiredVel.X * dragXZ;
+        var nextVz = hitZ ? -desiredVel.Z * 0.25 : desiredVel.Z * dragXZ;
+        var nextVy = desiredVel.Y;
+        if (hitY)
+        {
+            nextVy = desiredVel.Y < -1.8 ? -desiredVel.Y * 0.28 : 0.0;
+        }
+
         e.Velocity = new Vec3d(nextVx, nextVy, nextVz);
     }
 
