@@ -122,7 +122,7 @@ public sealed class RedstoneEngine
         ArgumentNullException.ThrowIfNull(ignitedTntPositions);
         ArgumentNullException.ThrowIfNull(soundEvents);
 
-        for (var pass = 0; pass < 3 && _dirtyNodes.Count > 0; pass++)
+        for (var pass = 0; pass < 5 && _dirtyNodes.Count > 0; pass++)
         {
             var region = new HashSet<BlockPos>(_dirtyNodes);
             _dirtyNodes.Clear();

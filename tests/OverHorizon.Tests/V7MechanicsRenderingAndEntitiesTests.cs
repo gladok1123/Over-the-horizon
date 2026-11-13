@@ -58,7 +58,7 @@ public sealed class V7MechanicsRenderingAndEntitiesTests
         _ = col.SetBlockState(2, 65, 2, blocks.GetDefaultState(BuiltInBlocks.Lantern), blocks);
         _ = col.SetBlockState(4, 66, 2, hangingLantern, blocks);
         var extSticky = blocks.WithProperty(blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.StickyPiston), "facing", "north"), "extended", "true");
-        var stickyHead = blocks.WithProperty(blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.PistonHead), "facing", "north"), "type", "sticky");
+        var stickyHead = blocks.WithProperty(blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.PistonHead), "facing", "north"), "sticky", "true");
         var bedFoot = blocks.WithProperty(blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.RedBed), "facing", "north"), "part", "foot");
         var bedHead = blocks.WithProperty(blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.RedBed), "facing", "north"), "part", "head");
 
@@ -250,6 +250,7 @@ public sealed class V7MechanicsRenderingAndEntitiesTests
         }
 
         var redstone = new RedstoneEngine(blocks);
+        redstone.NotifyBlockChanged(new BlockPos(2, 64, 0));
         redstone.Step(0.05f, [new Vec3d(0.5, 64.0, 0.5)], Get, Set, [], []);
         blocks.GetStateMetadata(Get(new BlockPos(5, 64, 0))).Properties["powered"].Should().Be("true", "RedstoneBlock energizes adjacent PoweredRail chain");
 
