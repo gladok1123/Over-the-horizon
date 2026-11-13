@@ -205,17 +205,17 @@ public sealed class RedstoneEngine
         var wires = new HashSet<BlockPos>();
         var bfs = new Queue<BlockPos>();
 
-        foreach (var p in region)
+        foreach (var p in region.Where(p => _blocks.GetStateMetadata(getBlock(p)).BlockKey == BuiltInBlocks.RedstoneWire && wires.Add(p)))
         {
-            if (_blocks.GetStateMetadata(getBlock(p)).BlockKey == BuiltInBlocks.RedstoneWire && wires.Add(p)) bfs.Enqueue(p);
+            bfs.Enqueue(p);
         }
 
         while (bfs.Count > 0 && wires.Count < 512)
         {
             var cur = bfs.Dequeue();
-            foreach (var n in EnumerateConnectedWires(cur, getBlock))
+            foreach (var n in EnumerateConnectedWires(cur, getBlock).Where(wires.Add))
             {
-                if (wires.Add(n)) bfs.Enqueue(n);
+                bfs.Enqueue(n);
             }
         }
 

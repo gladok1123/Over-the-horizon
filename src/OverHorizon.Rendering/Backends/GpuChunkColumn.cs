@@ -98,7 +98,7 @@ internal sealed class GpuChunkColumn : IDisposable
         {
             var minX0 = ChunkPosition.X * 16.0;
             var minZ0 = ChunkPosition.Z * 16.0;
-            ActiveWorldBounds = new BoundingBox(new Vec3d(minX0, -64.0, minZ0), new Vec3d(minX0 + 16.0, 320.0, minZ0 + 16.0));
+            ActiveWorldBounds = new BoundingBox(minX0, -64.0, minZ0, minX0 + 16.0, 320.0, minZ0 + 16.0);
             return;
         }
 
@@ -108,6 +108,6 @@ internal sealed class GpuChunkColumn : IDisposable
         var minZ = ChunkPosition.Z * 16.0;
         var minY = (minSlot + MinSectionY) * 16.0;
         var maxY = (maxSlot + MinSectionY + 1) * 16.0;
-        ActiveWorldBounds = new BoundingBox(new Vec3d(minX, minY, minZ), new Vec3d(minX + 16.0, maxY, minZ + 16.0));
+        ActiveWorldBounds = new BoundingBox(minX, minY, minZ, minX + 16.0, maxY, minZ + 16.0);
     }
 }

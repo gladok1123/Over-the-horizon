@@ -190,7 +190,7 @@ public sealed class PrimedTntAndWorldTicker
 
         for (var i = 0; i < chainTnts.Count; i++)
         {
-            var fuse = 0.65f + (((NextRandom() % 80U) / 100.0f));
+            var fuse = 0.65f + ((NextRandom() % 80U) / 100.0f);
             _ = SpawnPrimedTnt(chainTnts[i], fuse);
         }
 

@@ -145,13 +145,11 @@ internal static class UiTitleAndCreativeScreenBuilder
         UiGuiSpriteHelper.DrawGuiSubRect(v, sheetOx, sheetOy, 0, 0, 195, 136, winX, winY, winW, winH, Vector4.One);
 
         // 3. Selected Top Tab (drawn seamlessly in front of top border!)
-        {
-            var tx = GetTabScreenX(winX, selTab, s);
-            var ty = winY - (28.0f * s);
-            var tabSrcCol = Math.Min(selTab, 5);
-            UiGuiSpriteHelper.DrawGuiSubRect(v, GuiTextureAtlasGenerator.CreativeTabsOriginX, GuiTextureAtlasGenerator.CreativeTabsOriginY, tabSrcCol * 26.0f, 32.0f, 26.0f, 32.0f, tx, ty, 26.0f * s, 32.0f * s, Vector4.One);
-            UiSurvivalHudBuilder.DrawAtlasSprite(v, CreativeTabIconTiles[selTab], tx + (5.0f * s), ty + (8.0f * s), 16.0f * s, Vector4.One);
-        }
+        var selTabX = GetTabScreenX(winX, selTab, s);
+        var selTabY = winY - (28.0f * s);
+        var selTabSrcCol = Math.Min(selTab, 5);
+        UiGuiSpriteHelper.DrawGuiSubRect(v, GuiTextureAtlasGenerator.CreativeTabsOriginX, GuiTextureAtlasGenerator.CreativeTabsOriginY, selTabSrcCol * 26.0f, 32.0f, 26.0f, 32.0f, selTabX, selTabY, 26.0f * s, 32.0f * s, Vector4.One);
+        UiSurvivalHudBuilder.DrawAtlasSprite(v, CreativeTabIconTiles[selTab], selTabX + (5.0f * s), selTabY + (8.0f * s), 16.0f * s, Vector4.One);
 
         // 4. Category Title & Live Search Query + Scrollbar Thumb
         var labelCol = new Vector4(0.24f, 0.24f, 0.26f, 1.0f);
