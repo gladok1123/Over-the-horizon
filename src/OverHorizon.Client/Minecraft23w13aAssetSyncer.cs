@@ -3,9 +3,10 @@ using System.Diagnostics.CodeAnalysis;
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Automatically downloads and caches block textures, item sprites, GUI sheets (<c>widgets.png</c>, <c>icons.png</c>,
-/// <c>slider.png</c>, <c>container/{inventory,crafting_table,furnace}.png</c>), localization JSON, and <c>.ogg</c> sound effects
-/// from <c>https://github.com/InventivetalentDev/minecraft-assets/tree/23w13a__or__b</c> into local
+/// Automatically downloads and caches block textures, item sprites, <c>destroy_stage_0..9</c> crack overlays,
+/// GUI &amp; Creative sheets, Title logo (<c>minecraft.png</c>, <c>edition.png</c>), entity/mob/player skins (<c>steve.png</c>, etc.),
+/// localization JSON, and authentic <c>.ogg</c> sound effects from
+/// <c>https://github.com/InventivetalentDev/minecraft-assets/tree/23w13a__or__b</c> into local
 /// <c>./resourcepacks/23w13a__or__b/</c> on client startup so zero proprietary assets are redistributed in Git or releases.
 /// </summary>
 [SuppressMessage("Minor Code Smell", "S1075:URIs should not be hardcoded", Justification = "Default public GitHub asset mirror for 23w13a__or__b; overridable via --assets.")]
@@ -19,17 +20,52 @@ public static class Minecraft23w13aAssetSyncer
 
     private static readonly string[] RelativeAssetPaths =
     [
-        // Real 23w13a__or__b GUI texture sheets (textures/gui/**)
+        // Real 23w13a__or__b GUI, Title & Creative Inventory texture sheets (textures/gui/**)
         "textures/gui/widgets.png",
         "textures/gui/icons.png",
         "textures/gui/slider.png",
+        "textures/gui/options_background.png",
+        "textures/gui/world_selection.png",
+        "textures/gui/title/minecraft.png",
+        "textures/gui/title/edition.png",
         "textures/gui/container/inventory.png",
         "textures/gui/container/crafting_table.png",
         "textures/gui/container/furnace.png",
+        "textures/gui/container/creative_inventory/tab_items.png",
+        "textures/gui/container/creative_inventory/tab_item_search.png",
+        "textures/gui/container/creative_inventory/tab_inventory.png",
+        "textures/gui/container/creative_inventory/tabs.png",
+
+        // Real 23w13a__or__b Player & Mob 3D UV Skins (textures/entity/**)
+        "textures/entity/player/wide/steve.png",
+        "textures/entity/pig/pig.png",
+        "textures/entity/cow/cow.png",
+        "textures/entity/sheep/sheep.png",
+        "textures/entity/sheep/sheep_fur.png",
+        "textures/entity/chicken.png",
+        "textures/entity/zombie/zombie.png",
+        "textures/entity/skeleton/skeleton.png",
+        "textures/entity/spider/spider.png",
+        "textures/entity/creeper/creeper.png",
+        "textures/entity/bed/red.png",
+        "textures/entity/shield/base.png",
+
+        // Block Mining Crack Stages 0..9 (textures/block/destroy_stage_*.png)
+        "textures/block/destroy_stage_0.png",
+        "textures/block/destroy_stage_1.png",
+        "textures/block/destroy_stage_2.png",
+        "textures/block/destroy_stage_3.png",
+        "textures/block/destroy_stage_4.png",
+        "textures/block/destroy_stage_5.png",
+        "textures/block/destroy_stage_6.png",
+        "textures/block/destroy_stage_7.png",
+        "textures/block/destroy_stage_8.png",
+        "textures/block/destroy_stage_9.png",
 
         // Block textures (textures/block/*.png)
         "textures/block/grass_block_top.png",
         "textures/block/grass_block_side.png",
+        "textures/block/grass_block_side_overlay.png",
         "textures/block/dirt.png",
         "textures/block/farmland.png",
         "textures/block/clay.png",
@@ -56,6 +92,7 @@ public static class Minecraft23w13aAssetSyncer
         "textures/block/birch_leaves.png",
         "textures/block/birch_planks.png",
         "textures/block/water_still.png",
+        "textures/block/water_flow.png",
         "textures/block/glass.png",
         "textures/block/coal_ore.png",
         "textures/block/deepslate_coal_ore.png",
@@ -74,6 +111,7 @@ public static class Minecraft23w13aAssetSyncer
         "textures/block/emerald_ore.png",
         "textures/block/deepslate_emerald_ore.png",
         "textures/block/coal_block.png",
+        "textures/block/copper_block.png",
         "textures/block/iron_block.png",
         "textures/block/gold_block.png",
         "textures/block/lapis_block.png",
@@ -82,8 +120,6 @@ public static class Minecraft23w13aAssetSyncer
         "textures/block/emerald_block.png",
         "textures/block/snow.png",
         "textures/block/ice.png",
-        "textures/block/cactus_side.png",
-        "textures/block/cactus_top.png",
         "textures/block/bricks.png",
         "textures/block/glowstone.png",
         "textures/block/bookshelf.png",
@@ -94,6 +130,10 @@ public static class Minecraft23w13aAssetSyncer
         "textures/block/furnace_front_on.png",
         "textures/block/furnace_side.png",
         "textures/block/furnace_top.png",
+        "textures/block/barrel_side.png",
+        "textures/block/barrel_top.png",
+        "textures/block/hay_block_side.png",
+        "textures/block/hay_block_top.png",
         "textures/block/torch.png",
         "textures/block/lantern.png",
         "textures/block/ladder.png",
@@ -102,9 +142,21 @@ public static class Minecraft23w13aAssetSyncer
         "textures/block/white_wool.png",
         "textures/block/red_wool.png",
         "textures/block/blue_wool.png",
-        "textures/block/dandelion.png",
-        "textures/block/poppy.png",
-        "textures/block/tall_grass.png",
+        "textures/block/fire_0.png",
+        "textures/block/lever.png",
+        "textures/block/piston_bottom.png",
+        "textures/block/piston_side.png",
+        "textures/block/piston_top.png",
+        "textures/block/piston_top_sticky.png",
+        "textures/block/piston_inner.png",
+        "textures/block/redstone_dust_dot.png",
+        "textures/block/redstone_dust_line0.png",
+        "textures/block/redstone_lamp.png",
+        "textures/block/redstone_lamp_on.png",
+        "textures/block/redstone_torch.png",
+        "textures/block/redstone_torch_off.png",
+        "textures/block/repeater.png",
+        "textures/block/repeater_on.png",
 
         // Item, Tool, Sword, Hoe, Armor, Ore & Food sprites (textures/item/*.png)
         "textures/item/stick.png",
@@ -120,16 +172,21 @@ public static class Minecraft23w13aAssetSyncer
         "textures/item/emerald.png",
         "textures/item/lapis_lazuli.png",
         "textures/item/redstone.png",
+        "textures/item/repeater.png",
+        "textures/item/netherite_ingot.png",
         "textures/item/flint.png",
-        "textures/item/clay_ball.png",
-        "textures/item/brick.png",
         "textures/item/leather.png",
         "textures/item/feather.png",
         "textures/item/string.png",
         "textures/item/bone.png",
         "textures/item/gunpowder.png",
+        "textures/item/spider_eye.png",
         "textures/item/rotten_flesh.png",
-        "textures/item/glowstone_dust.png",
+        "textures/item/paper.png",
+        "textures/item/book.png",
+        "textures/item/slime_ball.png",
+        "textures/item/wheat.png",
+        "textures/item/sugar_cane.png",
         "textures/item/lantern.png",
         "textures/item/wooden_sword.png",
         "textures/item/stone_sword.png",
@@ -142,6 +199,7 @@ public static class Minecraft23w13aAssetSyncer
         "textures/item/iron_pickaxe.png",
         "textures/item/golden_pickaxe.png",
         "textures/item/diamond_pickaxe.png",
+        "textures/item/netherite_pickaxe.png",
         "textures/item/wooden_axe.png",
         "textures/item/stone_axe.png",
         "textures/item/iron_axe.png",
@@ -193,20 +251,59 @@ public static class Minecraft23w13aAssetSyncer
         "textures/misc/underwater.png",
         "lang/en_us.json",
 
-        // Real Ogg Vorbis sounds from 23w13a__or__b
+        // Authentic Ogg Vorbis sounds from 23w13a__or__b (steps, dig, water, combat, fire, TNT, pistons & all 8 mobs)
+        "sounds/step/stone1.ogg",
         "sounds/step/grass1.ogg",
+        "sounds/step/wood1.ogg",
+        "sounds/step/sand1.ogg",
+        "sounds/step/gravel1.ogg",
+        "sounds/step/cloth1.ogg",
+        "sounds/step/ladder1.ogg",
         "sounds/dig/stone1.ogg",
+        "sounds/dig/grass1.ogg",
+        "sounds/dig/wood1.ogg",
         "sounds/dig/gravel1.ogg",
+        "sounds/dig/sand1.ogg",
+        "sounds/dig/cloth1.ogg",
+        "sounds/random/glass1.ogg",
+        "sounds/random/click.ogg",
+        "sounds/random/pop.ogg",
+        "sounds/random/eat1.ogg",
+        "sounds/random/burp.ogg",
+        "sounds/random/fizz.ogg",
+        "sounds/random/fuse.ogg",
+        "sounds/random/explode1.ogg",
         "sounds/liquid/splash.ogg",
         "sounds/liquid/swim1.ogg",
+        "sounds/ambient/underwater/enter1.ogg",
+        "sounds/ambient/underwater/exit1.ogg",
         "sounds/ambient/underwater/underwater_ambience.ogg",
         "sounds/entity/player/attack/sweep1.ogg",
         "sounds/entity/player/attack/strong1.ogg",
         "sounds/entity/player/attack/crit1.ogg",
         "sounds/damage/hit1.ogg",
-        "sounds/random/eat1.ogg",
-        "sounds/random/click.ogg",
-        "sounds/random/levelup.ogg",
+        "sounds/fire/ignite.ogg",
+        "sounds/fire/fire.ogg",
+        "sounds/tile/piston/out.ogg",
+        "sounds/tile/piston/in.ogg",
+        "sounds/mob/pig/say1.ogg",
+        "sounds/mob/pig/death.ogg",
+        "sounds/mob/cow/say1.ogg",
+        "sounds/mob/cow/hurt1.ogg",
+        "sounds/mob/sheep/say1.ogg",
+        "sounds/mob/sheep/shear.ogg",
+        "sounds/mob/chicken/say1.ogg",
+        "sounds/mob/chicken/hurt1.ogg",
+        "sounds/mob/zombie/say1.ogg",
+        "sounds/mob/zombie/hurt1.ogg",
+        "sounds/mob/zombie/death.ogg",
+        "sounds/mob/skeleton/say1.ogg",
+        "sounds/mob/skeleton/hurt1.ogg",
+        "sounds/mob/skeleton/death.ogg",
+        "sounds/mob/spider/say1.ogg",
+        "sounds/mob/spider/death.ogg",
+        "sounds/mob/creeper/say1.ogg",
+        "sounds/mob/creeper/death.ogg",
     ];
 
     /// <summary>
@@ -237,14 +334,14 @@ public static class Minecraft23w13aAssetSyncer
 
         using var http = new HttpClient
         {
-            Timeout = TimeSpan.FromSeconds(8),
+            Timeout = TimeSpan.FromSeconds(10),
         };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("OverHorizon-Client/0.5.0-alpha");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("OverHorizon-Client/0.6.0-alpha");
 
         var downloaded = 0;
         var parallelOptions = new ParallelOptions
         {
-            MaxDegreeOfParallelism = 12,
+            MaxDegreeOfParallelism = 16,
             CancellationToken = ct,
         };
 
@@ -270,7 +367,7 @@ public static class Minecraft23w13aAssetSyncer
                 }
                 catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
                 {
-                    // Offline or rate-limited: engine falls back to embedded CC0 OGG audio + clean-room sprites.
+                    // Offline or rate-limited: engine falls back to clean-room procedural assets.
                 }
             }).ConfigureAwait(false);
         }

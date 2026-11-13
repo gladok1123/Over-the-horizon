@@ -5,6 +5,7 @@ using OverHorizon.Core.Entities;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
 using OverHorizon.Gameplay;
+using OverHorizon.Gameplay.Redstone;
 using OverHorizon.Modding.Commands;
 using OverHorizon.Modding.Events;
 using OverHorizon.Networking.Packets;
@@ -39,7 +40,11 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
     private readonly IEventBus _eventBus;
     private readonly ICommandDispatcher _commands;
     private readonly Func<INetworkBroadcaster>? _getBroadcaster;
+    private readonly RedstoneEngine _redstone;
     private readonly ConcurrentDictionary<long, ConnectedPlayerState> _players = new();
+
+    /// <summary>Gets the authoritative server day/night clock.</summary>
+    public WorldTimeCycle WorldTime { get; } = new();
 
     /// <summary>Gets or sets a value indicating whether multiplayer PvP damage is enabled on this server.</summary>
     public bool IsPvpEnabled { get; set; } = true;
@@ -81,6 +86,7 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
         _eventBus = eventBus;
         _commands = commands;
         _getBroadcaster = getBroadcaster;
+        _redstone = new RedstoneEngine(registries.Blocks);
     }
 
     /// <summary>
@@ -346,13 +352,20 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
         }
 
         _ = _gameplay.TrySetEntityKinematics(playerState.EntityId, target, Vec3d.Zero, move.OnGround);
-        playerState.LastPosition = target;
-        playerState.YawDegrees = move.YawDegrees;
-        playerState.PitchDegrees = move.PitchDegrees;
-        BroadcastToPeers(
-            session.SessionId,
-            broadcaster,
-            new RemotePlayerMovePacket(playerState.EntityId, target, move.YawDegrees, move.PitchDegrees));
+        var movedSignificantly = (target - playerState.LastPosition).LengthSquared > 0.0004 ||
+            MathF.Abs(move.YawDegrees - playerState.YawDegrees) > 0.35f ||
+            MathF.Abs(move.PitchDegrees - playerState.PitchDegrees) > 0.35f;
+
+        if (movedSignificantly)
+        {
+            playerState.LastPosition = target;
+            playerState.YawDegrees = move.YawDegrees;
+            playerState.PitchDegrees = move.PitchDegrees;
+            BroadcastToPeers(
+                session.SessionId,
+                broadcaster,
+                new RemotePlayerMovePacket(playerState.EntityId, target, move.YawDegrees, move.PitchDegrees));
+        }
 
         var newChunk = target.ToBlockPos().ToChunkPos();
         if (newChunk != playerState.CenterChunk)
@@ -415,11 +428,7 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
                 return;
             }
 
-            if (_world.SetBlockState(target, BlockState.Air, tickNumber))
-            {
-                broadcaster.BroadcastToPlaySessions(new BlockUpdatePacket(target, BlockState.Air.Id));
-            }
-
+            ServerWorldTimeAndBlockSync.ApplyMutationAndBroadcastCascade(_world, _registries.Blocks, _redstone, target, BlockState.Air, tickNumber, broadcaster);
             return;
         }
 
@@ -448,10 +457,7 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
             return;
         }
 
-        if (_world.SetBlockState(target, placeEvent.PlacedState, tickNumber))
-        {
-            broadcaster.BroadcastToPlaySessions(new BlockUpdatePacket(target, placeEvent.PlacedState.Id));
-        }
+        ServerWorldTimeAndBlockSync.ApplyMutationAndBroadcastCascade(_world, _registries.Blocks, _redstone, target, placeEvent.PlacedState, tickNumber, broadcaster);
     }
 
     private void CollectUnsentChunksAround(

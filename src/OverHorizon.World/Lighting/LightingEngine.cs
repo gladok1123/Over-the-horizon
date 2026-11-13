@@ -9,7 +9,7 @@ namespace OverHorizon.World.Lighting;
 /// <summary>
 /// Deterministic, zero-allocation (pooled) sky and block light propagation engine for <see cref="ChunkColumn"/>s.
 /// </summary>
-public static class LightingEngine
+public static partial class LightingEngine
 {
     /// <summary>Minimum voxel illumination level (pitch-dark cave).</summary>
     public const byte MinLightLevel = 0;

@@ -1,21 +1,18 @@
 using System.Globalization;
 using Microsoft.Extensions.Logging;
-using OverHorizon.Core.Math;
 using OverHorizon.Rendering.Backends;
 using OverHorizon.Rendering.Hud;
-using OverHorizon.World;
 
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Executes asynchronous UI menu transitions (connecting to a friend's server, hosting a local server,
-/// or saving singleplayer chunks and returning to the "C# EDITION" Title Screen).
+/// Executes asynchronous UI menu transitions: creating/opening Singleplayer worlds in <c>./saves/</c>,
+/// connecting to or hosting Multiplayer servers, and saving world chunks + metadata on Quit to Title.
 /// </summary>
 internal sealed class ClientMenuSessionActions : IDisposable
 {
     private readonly ClientMenuController _menu;
     private readonly ClientChatHistory _chatHistory;
-    private readonly IWorldSubsystem _localWorld;
     private readonly ILogger _logger;
     private readonly LocalServerLauncher _localServerLauncher = new();
 
@@ -24,21 +21,19 @@ internal sealed class ClientMenuSessionActions : IDisposable
     public ClientMenuSessionActions(
         ClientMenuController menu,
         ClientChatHistory chatHistory,
-        IWorldSubsystem localWorld,
         ILogger logger)
     {
         _menu = menu;
         _chatHistory = chatHistory;
-        _localWorld = localWorld;
         _logger = logger;
     }
 
     public void DispatchPendingActions(
         ClientInputBinder inputBinder,
         SilkOpenGlRenderSubsystem silkRenderer,
-        ClientPlayerController player,
-        double localSpawnY,
         Action<string> sendChat,
+        Func<SavedWorldMetadata, CancellationToken, Task> loadSavedWorldAsync,
+        Func<CancellationToken, Task> saveAndReturnToTitleAsync,
         Func<ClientMultiplayerTransport> getTransport,
         Action<ClientMultiplayerTransport> setTransport,
         CancellationToken ct)
@@ -47,9 +42,20 @@ internal sealed class ClientMenuSessionActions : IDisposable
         {
             switch (action)
             {
-                case "singleplayer":
-                    player.ApplyAuthoritativePose(new Vec3d(0.5, localSpawnY, 0.5), 0.0f, 0.0f);
-                    _chatHistory.AddMessage("Entered Singleplayer World. Press E for Creative Blocks, T for Chat.");
+                case "play_selected_world":
+                    if (_pendingTask is { IsCompleted: false }) break;
+                    if (_menu.SelectedSavedWorld is { } existingWorld)
+                    {
+                        _pendingTask = loadSavedWorldAsync(existingWorld, ct);
+                    }
+
+                    break;
+
+                case "confirm_create_world":
+                    if (_pendingTask is { IsCompleted: false }) break;
+                    var created = WorldSaveManager.CreateWorld(_menu.NewWorldName, _menu.NewWorldGameMode, _menu.NewWorldSeed);
+                    _menu.RefreshSavedWorlds();
+                    _pendingTask = loadSavedWorldAsync(created, ct);
                     break;
 
                 case "quit_game":
@@ -63,25 +69,18 @@ internal sealed class ClientMenuSessionActions : IDisposable
                     break;
 
                 case "join_server":
-                    if (_pendingTask is { IsCompleted: false })
-                    {
-                        break;
-                    }
-
+                    if (_pendingTask is { IsCompleted: false }) break;
                     _pendingTask = ConnectFromMenuAsync(hostLocalFirst: false, getTransport, setTransport, ct);
                     break;
 
                 case "host_and_join":
-                    if (_pendingTask is { IsCompleted: false })
-                    {
-                        break;
-                    }
-
+                    if (_pendingTask is { IsCompleted: false }) break;
                     _pendingTask = ConnectFromMenuAsync(hostLocalFirst: true, getTransport, setTransport, ct);
                     break;
 
                 case "save_and_title":
-                    _pendingTask = ReturnToTitleAsync(getTransport, setTransport);
+                    if (_pendingTask is { IsCompleted: false }) break;
+                    _pendingTask = saveAndReturnToTitleAsync(ct);
                     break;
             }
         }
@@ -89,11 +88,7 @@ internal sealed class ClientMenuSessionActions : IDisposable
 
     public async ValueTask AwaitPendingAsync()
     {
-        if (_pendingTask is null)
-        {
-            return;
-        }
-
+        if (_pendingTask is null) return;
         try
         {
             await _pendingTask.ConfigureAwait(false);
@@ -148,29 +143,11 @@ internal sealed class ClientMenuSessionActions : IDisposable
 
             _menu.StatusMessage = string.Empty;
             _menu.Mode = UiOverlayMode.InGame;
-            _chatHistory.AddMessage($"Connected to {host}:{port} as {user}!");
+            _chatHistory.AddMessage($"Connected to {host}:{port} as {user}! Type /help for commands.");
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             _menu.StatusMessage = $"Connection failed: {ex.Message}";
         }
-    }
-
-    private async Task ReturnToTitleAsync(
-        Func<ClientMultiplayerTransport> getTransport,
-        Action<ClientMultiplayerTransport> setTransport)
-    {
-        var current = getTransport();
-        if (current.IsConnected)
-        {
-            await current.DisposeAsync().ConfigureAwait(false);
-            setTransport(new ClientMultiplayerTransport());
-        }
-        else
-        {
-            _ = await _localWorld.Chunks.SaveDirtyChunksAsync(CancellationToken.None).ConfigureAwait(false);
-        }
-
-        _menu.Mode = UiOverlayMode.TitleMenu;
     }
 }

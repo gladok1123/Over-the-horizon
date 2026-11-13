@@ -84,6 +84,15 @@ public sealed class ActiveMob
     /// <summary>Gets or sets whether this Sheep has been sheared.</summary>
     public bool IsSheared { get; set; }
 
+    /// <summary>Gets or sets remaining sunlight/fire burn timer in seconds (<c>&gt; 0</c> when burning).</summary>
+    public float BurnTimer { get; set; }
+
+    /// <summary>Gets or sets accumulated burn damage tick timer in seconds.</summary>
+    public float BurnDamageTickTimer { get; set; }
+
+    /// <summary>Gets whether this mob is currently engulfed in flames.</summary>
+    public bool IsOnFire => BurnTimer > 0.01f;
+
     /// <summary>Gets whether this mob has zero health remaining.</summary>
     public bool IsDead => Health <= 0.0f;
 

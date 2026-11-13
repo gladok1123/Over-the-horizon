@@ -94,17 +94,39 @@ internal static class UiSurvivalHudBuilder
         float hotbarTopY,
         FrameOverlayState state)
     {
-        var cx = width * 0.5f;
-        var cy = height * 0.5f;
+        _ = width;
+        _ = height;
 
-        if (state.MiningProgress is > 0.01f and < 1.0f && state.Mode == UiOverlayMode.InGame)
+        // Offhand HUD slot to the left of the 9-slot hotbar whenever an Offhand item is equipped
+        if (!state.OffhandIsEmpty && (state.Mode == UiOverlayMode.InGame || state.Mode == UiOverlayMode.ChatInput))
         {
-            const float barW = 74.0f;
-            const float barH = 7.0f;
-            var bx = cx - (barW * 0.5f);
-            var by = cy + 18.0f;
-            DrawRect(v, bx - 2.0f, by - 2.0f, barW + 4.0f, barH + 4.0f, new Vector4(0.05f, 0.06f, 0.08f, 0.85f));
-            DrawRect(v, bx, by, barW * Math.Clamp(state.MiningProgress, 0.0f, 1.0f), barH, new Vector4(0.35f, 0.92f, 0.42f, 0.96f));
+            var hudScale = hotbarWidth / 182.0f;
+            var offX = hotbarStartX - (29.0f * hudScale);
+            UiGuiSpriteHelper.DrawGuiSubRect(
+                v,
+                GuiTextureAtlasGenerator.WidgetsOriginX,
+                GuiTextureAtlasGenerator.WidgetsOriginY,
+                24.0f, 23.0f, 22.0f, 22.0f,
+                offX, hotbarTopY,
+                22.0f * hudScale, 22.0f * hudScale,
+                Vector4.One);
+
+            var offTile = state.OffhandItemSpriteTile;
+            if (offTile < 0)
+            {
+                offTile = state.OffhandFrontTile >= 0 ? state.OffhandFrontTile : state.OffhandSideTile;
+            }
+
+            if (offTile >= 0)
+            {
+                DrawAtlasSprite(v, offTile, offX + (3.0f * hudScale), hotbarTopY + (3.0f * hudScale), 16.0f * hudScale, Vector4.One);
+            }
+
+            if (state.OffhandCount > 1)
+            {
+                var cntStr = state.OffhandCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                UiGeometryBuilder.DrawText(v, cntStr, offX + (19.0f * hudScale) - (cntStr.Length * 9.0f), hotbarTopY + (13.0f * hudScale), 1.5f, Vector4.One, shadow: true);
+            }
         }
 
         if (!state.IsSurvivalMode)

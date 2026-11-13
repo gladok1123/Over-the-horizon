@@ -4,14 +4,16 @@ using OverHorizon.Core.Items;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
 using OverHorizon.Gameplay;
+using OverHorizon.Gameplay.Survival;
 using OverHorizon.Physics;
 using OverHorizon.Rendering.Camera;
 
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Client-side first-person player kinematics with crisp ground acceleration/braking, Creative Flight (<c>F</c> or double-tap <c>Space</c>),
-/// ladder climbing, cobweb slowness, water swimming, Survival vitals (Hearts, Armor reduction, Hunger, Oxygen, Fall Damage), and DDA raycasting.
+/// Client-side first-person player kinematics with crisp ground acceleration/braking, Creative Flight,
+/// ladder climbing, cobweb slowness, water swimming, Survival vitals (<see cref="HungerAndVitalsModel"/>, Hearts, Armor, Oxygen, Fall Damage),
+/// Offhand swapping, and sub-voxel selection raycasting.
 /// </summary>
 public sealed class ClientPlayerController
 {
@@ -60,7 +62,7 @@ public sealed class ClientPlayerController
     /// <summary>Gets the player's current world-space feet position.</summary>
     public Vec3d FeetPosition { get; private set; }
 
-    /// <summary>Gets or sets the player's respawn feet position.</summary>
+    /// <summary>Gets or sets the player's respawn feet position (updated by sleeping in a <c>RedBed</c> or world spawn).</summary>
     public Vec3d SpawnPosition { get; set; }
 
     /// <summary>Gets the player's current linear velocity (blocks/s).</summary>
@@ -84,8 +86,14 @@ public sealed class ClientPlayerController
     /// <summary>Gets current health points (<c>0..20</c>).</summary>
     public float Health { get; private set; } = 20.0f;
 
+    /// <summary>Gets the underlying Hunger + Saturation + Exhaustion model.</summary>
+    public HungerAndVitalsModel HungerModel { get; } = new();
+
     /// <summary>Gets current hunger points (<c>0..20</c>).</summary>
-    public int Hunger { get; private set; } = 20;
+    public int Hunger => HungerModel.Hunger;
+
+    /// <summary>Gets current food saturation reserve (<c>0..20</c>).</summary>
+    public float Saturation => HungerModel.Saturation;
 
     /// <summary>Gets remaining underwater breath in seconds (<c>0..15</c>).</summary>
     public double AirSupplySeconds { get; private set; } = MaxAirSeconds;
@@ -120,7 +128,7 @@ public sealed class ClientPlayerController
     /// <summary>Gets the synchronized first-person 3D camera.</summary>
     public FirstPersonCamera Camera { get; }
 
-    /// <summary>Gets the 9-slot hotbar, 41-slot Survival inventory, and Creative Catalog.</summary>
+    /// <summary>Gets the 9-slot hotbar, 41-slot inventory, Offhand state, and Creative Catalog.</summary>
     public ClientHotbar Hotbar { get; }
 
     /// <summary>Gets the block currently targeted by the player's crosshair within 6 blocks, if any.</summary>
@@ -134,7 +142,7 @@ public sealed class ClientPlayerController
         if (mode == GameMode.Creative || Health <= 0.0f)
         {
             Health = 20.0f;
-            Hunger = 20;
+            HungerModel.Reset();
             AirSupplySeconds = MaxAirSeconds;
         }
 
@@ -143,7 +151,7 @@ public sealed class ClientPlayerController
         Hotbar.RefreshSlotVisuals(mode);
     }
 
-    /// <summary>Toggles Creative Mode flight (<c>F</c> or double-tap <c>Space</c>).</summary>
+    /// <summary>Toggles Creative Mode flight (double-tap <c>Space</c> or <c>G</c>).</summary>
     public bool ToggleCreativeFlight()
     {
         if (Mode != GameMode.Creative)
@@ -163,25 +171,33 @@ public sealed class ClientPlayerController
         return IsFlying;
     }
 
-    /// <summary>Triggers the first-person block/sword swing animation.</summary>
+    /// <summary>Triggers the first-person block/sword/empty-hand swing animation.</summary>
     public void TriggerHandSwing() => _handSwingTimer = HandSwingDurationSeconds;
 
-    /// <summary>Applies Survival damage (mitigated by equipped Armor defense points) and triggers red hurt feedback.</summary>
-    public bool ApplyDamage(float amount, IAudioSubsystem? audio = null, bool bypassArmor = false)
+    /// <summary>Applies Survival damage (mitigated by equipped Armor + Shield defense points) and triggers red hurt feedback.</summary>
+    public bool ApplyDamage(float amount, IAudioSubsystem? audio = null, bool bypassArmor = false, SoundCue customCue = SoundCue.PlayerHurt)
     {
         if (Mode != GameMode.Survival || amount <= 0.0f || IsDead) return false;
         var finalDmg = bypassArmor ? amount : amount * (1.0f - (Hotbar.TotalArmorDefense * 0.04f));
         Health = MathF.Max(0.0f, Health - MathF.Max(0.25f, finalDmg));
+        HungerModel.AddExhaustion(0.10f);
         HurtFlashStrength = 1.0f;
-        audio?.PlayPositional(SoundCue.PlayerHurt, Camera.Position, gain: 0.75f * MasterVolume);
+        audio?.PlayPositional(customCue, Camera.Position, gain: 0.75f * MasterVolume);
         return true;
     }
 
-    /// <summary>Restores hunger and bonus health from eating food.</summary>
-    public void ConsumeFood(int nutrition, float bonusHeal = 0.0f)
+    /// <summary>Restores hunger, saturation, and bonus health from eating food.</summary>
+    public void ConsumeFood(int nutrition, float bonusHeal = 0.0f, float saturation = 0.0f)
     {
-        Hunger = Math.Clamp(Hunger + nutrition, 0, 20);
+        var satGain = saturation > 0.0f ? saturation : nutrition * 1.2f;
+        HungerModel.Eat(nutrition, satGain);
         if (bonusHeal > 0.0f) Health = MathF.Min(20.0f, Health + bonusHeal);
+    }
+
+    /// <summary>Adds activity exhaustion (combat swing, block harvest, jump).</summary>
+    public void AddExhaustion(float amount)
+    {
+        if (Mode == GameMode.Survival) HungerModel.AddExhaustion(amount);
     }
 
     /// <summary>Applies authoritative multiplayer PvP combat damage, knockback impulse, and respawn reset.</summary>
@@ -191,7 +207,7 @@ public sealed class ClientPlayerController
         if (targetDied)
         {
             Health = 20.0f;
-            Hunger = 20;
+            HungerModel.Reset();
             AirSupplySeconds = MaxAirSeconds;
             Velocity = Vec3d.Zero;
             _fallDistance = 0.0;
@@ -206,21 +222,25 @@ public sealed class ClientPlayerController
     /// <summary>Respawns the player at <see cref="SpawnPosition"/> with full vitals.</summary>
     public void Respawn()
     {
+        var bedOrSpawn = SpawnPosition;
         Health = 20.0f;
-        Hunger = 20;
+        HungerModel.Reset();
         AirSupplySeconds = MaxAirSeconds;
         HurtFlashStrength = 0.0f;
         MiningProgress = 0.0f;
         _fallDistance = 0.0;
         _vitals.ResetTimers();
-        ApplyAuthoritativePose(SpawnPosition, 0.0f, 0.0f);
+        FeetPosition = bedOrSpawn;
+        Velocity = Vec3d.Zero;
+        Camera.SetRotation(0.0f, 0.0f);
+        Camera.Position = bedOrSpawn + new Vec3d(0.0, EyeHeight, 0.0);
     }
 
     /// <summary>Applies an authoritative server teleport or spawn synchronization.</summary>
-    public void ApplyAuthoritativePose(Vec3d feetPosition, float yawDegrees, float pitchDegrees)
+    public void ApplyAuthoritativePose(Vec3d feetPosition, float yawDegrees, float pitchDegrees, bool updateSpawn = true)
     {
         FeetPosition = feetPosition;
-        SpawnPosition = feetPosition;
+        if (updateSpawn) SpawnPosition = feetPosition;
         Velocity = Vec3d.Zero;
         _fallDistance = 0.0;
         Camera.SetRotation(yawDegrees, pitchDegrees);
@@ -234,6 +254,15 @@ public sealed class ClientPlayerController
         Velocity = new Vec3d(0.0, Math.Min(0.0, Velocity.Y), 0.0);
         _fallDistance = 0.0;
         Camera.Position = feetPosition + new Vec3d(0.0, EyeHeight, 0.0);
+    }
+
+    /// <summary>Directly restores saved world vitals when loading a persisted world.</summary>
+    public void RestoreSavedVitals(float health, int hunger, float saturation, Vec3d? respawnPoint)
+    {
+        Health = Math.Clamp(health, 1.0f, 20.0f);
+        HungerModel.Hunger = Math.Clamp(hunger, 0, 20);
+        HungerModel.Saturation = Math.Clamp(saturation, 0.0f, HungerModel.Hunger);
+        if (respawnPoint is { } rp) SpawnPosition = rp;
     }
 
     /// <summary>Recomputes <see cref="CurrentTarget"/> against <paramref name="world"/> along the current camera look ray.</summary>
@@ -283,7 +312,7 @@ public sealed class ClientPlayerController
             wishZ /= wishLen;
         }
 
-        var canSprint = input.Sprint && !_inFluid && (Mode == GameMode.Creative || Hunger > 6);
+        var canSprint = input.Sprint && !_inFluid && (Mode == GameMode.Creative || HungerModel.CanSprint);
         var groundOrSwimSpeed = _inFluid ? SwimHorizontalSpeedBlocksPerSec : WalkSpeedBlocksPerSec;
         var baseSpeed = IsFlying ? CreativeFlySpeedBlocksPerSec : groundOrSwimSpeed;
         var sprintBoost = IsFlying ? 1.85 : SprintMultiplier;
@@ -312,6 +341,7 @@ public sealed class ClientPlayerController
         {
             vy = JumpImpulse;
             OnGround = false;
+            AddExhaustion(canSprint ? 0.20f : 0.05f);
         }
 
         var groundOrAirAccel = OnGround ? 24.0 : 8.5;
@@ -341,7 +371,11 @@ public sealed class ClientPlayerController
         OnGround = step.OnGround;
         _inFluid = step.InFluid;
 
-        if (!wasInFluid && _inFluid) audio.PlayPositional(SoundCue.WaterSplash, FeetPosition, gain: 0.65f * MasterVolume, pitch: 1.0f);
+        if (!wasInFluid && _inFluid)
+        {
+            var heavy = preStepVelY < -8.0;
+            audio.PlayPositional(SoundCue.WaterSplash, FeetPosition, gain: (heavy ? 0.72f : 0.48f) * MasterVolume, pitch: heavy ? 0.88f : 1.04f);
+        }
 
         if (_inFluid || IsFlying || onLadder || inCobweb)
         {
@@ -355,6 +389,7 @@ public sealed class ClientPlayerController
         {
             if (!wasOnGround && Mode == GameMode.Survival && _fallDistance > 3.35 && preStepVelY < -6.5)
             {
+                audio.PlayPositional(_fallDistance > 6.5 ? SoundCue.FallBig : SoundCue.FallSmall, FeetPosition, gain: 0.65f * MasterVolume);
                 _ = ApplyDamage((float)Math.Floor(_fallDistance - 3.0), audio, bypassArmor: true);
             }
 
@@ -362,6 +397,7 @@ public sealed class ClientPlayerController
         }
 
         var dx = FeetPosition.X - previousFeet.X;
+        var dy = FeetPosition.Y - previousFeet.Y;
         var dz = FeetPosition.Z - previousFeet.Z;
         var horizMoved = Math.Sqrt((dx * dx) + (dz * dz));
         if ((OnGround || _inFluid) && !IsFlying && horizMoved > 1e-4) WalkBobPhase += (float)(horizMoved * 3.1);
@@ -370,14 +406,14 @@ public sealed class ClientPlayerController
         Camera.Position = FeetPosition + new Vec3d(0.0, EyeHeight + bobOffsetY, 0.0);
 
         IsHeadUnderwater = _vitals.UpdateUnderwaterState(
-            world, blocks, audio, Camera.Position, FeetPosition, IsHeadUnderwater, MasterVolume, clampedDt, _inFluid && (horizMoved > 0.01 || input.Jump));
-        _vitals.StepSurvivalVitals(this, MaxAirSeconds, clampedDt, horizMoved > 1e-3 && OnGround && !IsFlying, canSprint, audio);
+            world, blocks, audio, Camera.Position, FeetPosition, IsHeadUnderwater, MasterVolume, clampedDt, _inFluid && (horizMoved > 0.008 || input.Jump));
+        _vitals.StepSurvivalVitals(this, feetBlockKey, MaxAirSeconds, clampedDt, horizMoved, canSprint, _inFluid, audio);
         RefreshRaycastTarget(world);
         audio.UpdateListener(Camera.Position, Camera.Forward, Camera.Up, MasterVolume);
-        _vitals.UpdateFootstepAudio(this, world, blocks, audio, horizMoved);
+        _vitals.UpdateFootstepAudio(this, world, blocks, audio, horizMoved, dy, onLadder);
     }
 
     internal void SetAirSupplyInternal(double val) => AirSupplySeconds = val;
-    internal void SetHungerInternal(int val) => Hunger = val;
-    internal void SetHealthInternal(float val) => Health = val;
+    internal void SetHungerInternal(int val) => HungerModel.Hunger = Math.Clamp(val, 0, 20);
+    internal void SetHealthInternal(float val) => Health = Math.Clamp(val, 0.0f, 20.0f);
 }

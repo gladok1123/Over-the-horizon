@@ -24,6 +24,7 @@ public sealed class ServerTickLoopService : BackgroundService
     private readonly INetworkServer? _networkServer;
     private readonly IEventBus? _eventBus;
     private readonly IWorldSubsystem? _worldSubsystem;
+    private readonly ServerPlaySessionBridge? _playBridge;
     private long _completedTicks;
 
     /// <summary>
@@ -37,7 +38,8 @@ public sealed class ServerTickLoopService : BackgroundService
         ILogger<ServerTickLoopService> logger,
         INetworkServer? networkServer = null,
         IEventBus? eventBus = null,
-        IWorldSubsystem? worldSubsystem = null)
+        IWorldSubsystem? worldSubsystem = null,
+        ServerPlaySessionBridge? playBridge = null)
     {
         ArgumentNullException.ThrowIfNull(subsystems);
         ArgumentNullException.ThrowIfNull(clock);
@@ -61,6 +63,7 @@ public sealed class ServerTickLoopService : BackgroundService
         _networkServer = networkServer;
         _eventBus = eventBus;
         _worldSubsystem = worldSubsystem;
+        _playBridge = playBridge;
     }
 
     /// <summary>
@@ -112,6 +115,16 @@ public sealed class ServerTickLoopService : BackgroundService
                 {
                     var tickEvent = new ServerTickEvent(tickNumber);
                     _eventBus.Publish(ref tickEvent);
+                }
+
+                if (_playBridge is not null)
+                {
+                    _playBridge.WorldTime.AdvanceSeconds(1.0 / _options.TicksPerSecond);
+                    if (_networkServer is not null && (tickNumber % 100) == 0)
+                    {
+                        _networkServer.BroadcastPlayPacket(
+                            new Networking.Packets.Clientbound.WorldTimeUpdatePacket(_playBridge.WorldTime.TotalTicks));
+                    }
                 }
 
                 if (_worldSubsystem is not null &&

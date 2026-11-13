@@ -68,7 +68,15 @@ public static class GreedySectionMesher
             }
         }
 
-        ShapedBlockMesher.AppendSectionShapes(in neighborhood, sectionIndex, blocks, atlas, opaqueVerts, opaqueIndices);
+        ShapedBlockMesher.AppendSectionShapes(
+            in neighborhood,
+            sectionIndex,
+            blocks,
+            atlas,
+            opaqueVerts,
+            opaqueIndices,
+            transVerts,
+            transIndices);
 
         return new SectionMeshData(
             secPos,
@@ -104,7 +112,7 @@ public static class GreedySectionMesher
                 }
 
                 var meta = blocks.GetStateMetadata(state);
-                if ((!meta.IsSolid && !meta.IsFluid) || ShapedBlockMesher.IsCustomShape(meta.BlockKey))
+                if ((!meta.IsSolid && !meta.IsFluid) || ShapedBlockMesher.IsCustomShape(meta))
                 {
                     continue;
                 }

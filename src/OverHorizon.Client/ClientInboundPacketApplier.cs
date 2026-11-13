@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using OverHorizon.Audio;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
+using OverHorizon.Gameplay;
 using OverHorizon.Networking.Packets;
 using OverHorizon.Networking.Packets.Clientbound;
 using OverHorizon.Rendering;
@@ -10,7 +11,8 @@ using OverHorizon.World.Serialization;
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Applies inbound authoritative server packets to the client world cache, player pose, PvP combat state, remote avatars, and chat log.
+/// Applies inbound authoritative server packets (including batched <see cref="MultiBlockUpdatePacket"/> and
+/// <see cref="WorldTimeUpdatePacket"/>) to the client world cache, player pose, PvP combat state, and chat log.
 /// </summary>
 internal static class ClientInboundPacketApplier
 {
@@ -20,6 +22,7 @@ internal static class ClientInboundPacketApplier
         ClientRemotePlayerTracker remotePlayers,
         ClientPlayerController player,
         ClientWorldCache worldCache,
+        WorldTimeCycle worldTimeCycle,
         IBlockRegistry blocks,
         IAudioSubsystem audio,
         IRenderSubsystem renderer,
@@ -74,10 +77,28 @@ internal static class ClientInboundPacketApplier
                 if (worldCache.GetBlockState(blockPkt.Position) != newState &&
                     worldCache.ApplyBlockUpdate(blockPkt.Position, newState))
                 {
+                    worldCache.RemeshAroundBlockImmediate(blockPkt.Position, renderer);
                     var soundPos = new Vec3d(blockPkt.Position.X + 0.5, blockPkt.Position.Y + 0.5, blockPkt.Position.Z + 0.5);
                     audio.PlayPositional(newState.IsAir ? SoundCue.BlockBreak : SoundCue.BlockPlace, soundPos, gain: 0.7f * player.MasterVolume);
                 }
 
+                break;
+
+            case MultiBlockUpdatePacket multiPkt:
+                for (var i = 0; i < multiPkt.Updates.Count; i++)
+                {
+                    var (pos, stateId) = multiPkt.Updates[i];
+                    var st = new BlockState(stateId);
+                    if (worldCache.GetBlockState(pos) != st && worldCache.ApplyBlockUpdate(pos, st) && multiPkt.Updates.Count <= 16)
+                    {
+                        worldCache.RemeshAroundBlockImmediate(pos, renderer);
+                    }
+                }
+
+                break;
+
+            case WorldTimeUpdatePacket timePkt:
+                worldTimeCycle.SetTime(timePkt.WorldTimeTicks);
                 break;
 
             case SystemChatPacket chatPkt:

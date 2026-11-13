@@ -22,6 +22,7 @@ public sealed class ChunkSection
     private readonly PalettedContainer<ushort> _biomes;
     private byte[]? _skyLightNibbles;
     private byte[]? _blockLightNibbles;
+    private ChunkSectionSnapshot? _cachedSnapshot;
 
     /// <summary>
     /// Initializes a new air-filled instance of the <see cref="ChunkSection"/> class.
@@ -117,6 +118,12 @@ public sealed class ChunkSection
     public BlockState SetBlockState(int localX, int localY, int localZ, BlockState newState)
     {
         var previous = _blocks.GetAndSet(GetBlockIndex(localX, localY, localZ), newState);
+        if (previous == newState)
+        {
+            return previous;
+        }
+
+        _cachedSnapshot = null;
         if (!previous.IsAir)
         {
             NonEmptyBlockCount--;
@@ -143,8 +150,11 @@ public sealed class ChunkSection
     /// <param name="quartY">Quartet Y in <c>[0, 3]</c>.</param>
     /// <param name="quartZ">Quartet Z in <c>[0, 3]</c>.</param>
     /// <param name="biomeId">Biome raw ID.</param>
-    public void SetBiomeId(int quartX, int quartY, int quartZ, ushort biomeId) =>
+    public void SetBiomeId(int quartX, int quartY, int quartZ, ushort biomeId)
+    {
+        _cachedSnapshot = null;
         _biomes.Set(GetBiomeIndex(quartX, quartY, quartZ), biomeId);
+    }
 
     /// <summary>Reads the 4-bit sky light level (<c>0..15</c>) at section-local coordinates.</summary>
     /// <param name="localX">Local X in <c>[0, 15]</c>.</param>
@@ -166,8 +176,15 @@ public sealed class ChunkSection
             return;
         }
 
+        var idx = GetBlockIndex(localX, localY, localZ);
+        if (_skyLightNibbles is not null && ReadNibble(_skyLightNibbles, idx) == level)
+        {
+            return;
+        }
+
+        _cachedSnapshot = null;
         _skyLightNibbles ??= new byte[LightNibbleByteCount];
-        WriteNibble(_skyLightNibbles, GetBlockIndex(localX, localY, localZ), level);
+        WriteNibble(_skyLightNibbles, idx, level);
     }
 
     /// <summary>Reads the 4-bit block light level (<c>0..15</c>) at section-local coordinates.</summary>
@@ -190,22 +207,34 @@ public sealed class ChunkSection
             return;
         }
 
+        var idx = GetBlockIndex(localX, localY, localZ);
+        if (_blockLightNibbles is not null && ReadNibble(_blockLightNibbles, idx) == level)
+        {
+            return;
+        }
+
+        _cachedSnapshot = null;
         _blockLightNibbles ??= new byte[LightNibbleByteCount];
-        WriteNibble(_blockLightNibbles, GetBlockIndex(localX, localY, localZ), level);
+        WriteNibble(_blockLightNibbles, idx, level);
     }
 
     /// <summary>Clears both sky and block light buffers back to zero.</summary>
     public void ClearLight()
     {
+        if (_skyLightNibbles is not null || _blockLightNibbles is not null)
+        {
+            _cachedSnapshot = null;
+        }
+
         _skyLightNibbles = null;
         _blockLightNibbles = null;
     }
 
     /// <summary>
-    /// Creates an immutable Copy-on-Write <see cref="ChunkSectionSnapshot"/> for concurrent readers.
+    /// Creates or returns a cached immutable Copy-on-Write <see cref="ChunkSectionSnapshot"/> for concurrent readers.
     /// </summary>
     /// <returns>Immutable <see cref="ChunkSectionSnapshot"/>.</returns>
-    public ChunkSectionSnapshot CreateSnapshot() => new(
+    public ChunkSectionSnapshot CreateSnapshot() => _cachedSnapshot ??= new ChunkSectionSnapshot(
         SectionY,
         NonEmptyBlockCount,
         _blocks.Clone(),
@@ -232,6 +261,7 @@ public sealed class ChunkSection
 
     internal void LoadLightNibbleArrays(ReadOnlySpan<byte> skyLight, ReadOnlySpan<byte> blockLight)
     {
+        _cachedSnapshot = null;
         if (!skyLight.IsEmpty)
         {
             if (skyLight.Length != LightNibbleByteCount)

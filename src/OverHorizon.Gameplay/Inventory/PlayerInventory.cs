@@ -104,6 +104,11 @@ public sealed class PlayerInventory
     }
 
     /// <summary>
+    /// Swaps the selected hotbar main-hand slot with the offhand slot (<see cref="OffhandSlotIndex"/>).
+    /// </summary>
+    public void SwapMainHandAndOffhand() => SwapSlots(_selectedHotbarSlot, OffhandSlotIndex);
+
+    /// <summary>
     /// Splits up to <paramref name="amount"/> items out of <paramref name="slotIndex"/>, updating the slot with the remainder.
     /// </summary>
     /// <param name="slotIndex">Target slot index.</param>

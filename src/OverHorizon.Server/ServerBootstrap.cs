@@ -184,7 +184,8 @@ public static class ServerBootstrap
             sp.GetRequiredService<ILogger<ServerTickLoopService>>(),
             sp.GetService<INetworkServer>(),
             sp.GetService<IEventBus>(),
-            sp.GetService<IWorldSubsystem>()));
+            sp.GetService<IWorldSubsystem>(),
+            sp.GetService<ServerPlaySessionBridge>()));
         services.AddSingleton<IHostedService>(static sp => sp.GetRequiredService<ServerTickLoopService>());
 
         return services;

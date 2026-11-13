@@ -1,296 +1,239 @@
-using System.Collections.Frozen;
-using System.IO.Compression;
+using System.Reflection;
 
 namespace OverHorizon.Audio;
 
 /// <summary>
-/// Builds the OpenAL sound bank exclusively from real recorded <c>.ogg</c> and <c>.wav</c> audio:
-/// embedded CC0 Public-Domain foley recordings by default, automatically overridden by external
-/// <c>minecraft-assets</c> (<c>23w13a__or__b</c>) or user resource-pack <c>.ogg</c>/<c>.wav</c> files.
+/// Loads embedded CC0 baseline <c>.ogg</c>/<c>.wav</c> effects, synthesizes clean-room fallbacks for extended cues,
+/// and automatically overrides cues with real <c>.ogg</c> assets from <c>./resourcepacks/23w13a__or__b/assets/minecraft/sounds/</c>.
 /// </summary>
 public static class ProceduralSoundBank
 {
-    private static readonly (SoundCue Cue, string ResourceName)[] EmbeddedRealClips =
+    /// <summary>Standard sample rate (Hz) of decoded clips.</summary>
+    public const int SampleRate = 22_050;
+
+    private static readonly (SoundCue Cue, string ResourceSuffix)[] EmbeddedManifest =
     [
-        (SoundCue.FootstepStone, "OverHorizon.Audio.EmbeddedSfx.footstep_stone.ogg"),
-        (SoundCue.FootstepGrass, "OverHorizon.Audio.EmbeddedSfx.footstep_grass.ogg"),
-        (SoundCue.FootstepWood, "OverHorizon.Audio.EmbeddedSfx.footstep_wood.ogg"),
-        (SoundCue.BlockBreak, "OverHorizon.Audio.EmbeddedSfx.block_break.ogg"),
-        (SoundCue.BlockPlace, "OverHorizon.Audio.EmbeddedSfx.block_place.ogg"),
-        (SoundCue.WaterSplash, "OverHorizon.Audio.EmbeddedSfx.water_splash.wav"),
-        (SoundCue.UiClick, "OverHorizon.Audio.EmbeddedSfx.ui_click.ogg"),
-        (SoundCue.SwordSwing, "OverHorizon.Audio.EmbeddedSfx.sword_swing.wav"),
-        (SoundCue.PlayerHit, "OverHorizon.Audio.EmbeddedSfx.player_hit.ogg"),
-        (SoundCue.PlayerHurt, "OverHorizon.Audio.EmbeddedSfx.player_hurt.ogg"),
-        (SoundCue.EatFood, "OverHorizon.Audio.EmbeddedSfx.eat_food.ogg"),
-        (SoundCue.ItemPop, "OverHorizon.Audio.EmbeddedSfx.item_pop.wav"),
-        (SoundCue.UnderwaterEnter, "OverHorizon.Audio.EmbeddedSfx.underwater_enter.wav"),
+        (SoundCue.FootstepStone, "EmbeddedSfx.footstep_stone.ogg"),
+        (SoundCue.FootstepGrass, "EmbeddedSfx.footstep_grass.ogg"),
+        (SoundCue.FootstepWood, "EmbeddedSfx.footstep_wood.ogg"),
+        (SoundCue.BlockBreak, "EmbeddedSfx.block_break.ogg"),
+        (SoundCue.BlockPlace, "EmbeddedSfx.block_place.ogg"),
+        (SoundCue.UiClick, "EmbeddedSfx.ui_click.ogg"),
+        (SoundCue.WaterSplash, "EmbeddedSfx.water_splash.wav"),
+        (SoundCue.UnderwaterEnter, "EmbeddedSfx.underwater_enter.wav"),
+        (SoundCue.PlayerHurt, "EmbeddedSfx.player_hurt.ogg"),
+        (SoundCue.PlayerHit, "EmbeddedSfx.player_hit.ogg"),
+        (SoundCue.SwordSwing, "EmbeddedSfx.sword_swing.wav"),
+        (SoundCue.EatFood, "EmbeddedSfx.eat_food.ogg"),
+        (SoundCue.ItemPop, "EmbeddedSfx.item_pop.wav"),
+    ];
+
+    private static readonly (SoundCue Cue, string RelativeOgg)[] MinecraftSoundMappings =
+    [
+        (SoundCue.FootstepStone, "sounds/step/stone1.ogg"),
+        (SoundCue.FootstepGrass, "sounds/step/grass1.ogg"),
+        (SoundCue.FootstepWood, "sounds/step/wood1.ogg"),
+        (SoundCue.FootstepSand, "sounds/step/sand1.ogg"),
+        (SoundCue.FootstepGravel, "sounds/step/gravel1.ogg"),
+        (SoundCue.FootstepCloth, "sounds/step/cloth1.ogg"),
+        (SoundCue.FootstepLadder, "sounds/step/ladder1.ogg"),
+        (SoundCue.BlockBreak, "sounds/dig/stone1.ogg"),
+        (SoundCue.BlockPlace, "sounds/dig/wood1.ogg"),
+        (SoundCue.GlassBreak, "sounds/random/glass1.ogg"),
+        (SoundCue.UiClick, "sounds/random/click.ogg"),
+        (SoundCue.ItemPop, "sounds/random/pop.ogg"),
+        (SoundCue.WaterSplash, "sounds/liquid/splash.ogg"),
+        (SoundCue.WaterSwim, "sounds/liquid/swim1.ogg"),
+        (SoundCue.UnderwaterEnter, "sounds/ambient/underwater/enter1.ogg"),
+        (SoundCue.UnderwaterExit, "sounds/ambient/underwater/exit1.ogg"),
+        (SoundCue.UnderwaterAmbience, "sounds/ambient/underwater/underwater_ambience.ogg"),
+        (SoundCue.PlayerHurt, "sounds/damage/hit1.ogg"),
+        (SoundCue.PlayerHit, "sounds/entity/player/attack/strong1.ogg"),
+        (SoundCue.SwordSwing, "sounds/entity/player/attack/sweep1.ogg"),
+        (SoundCue.EatFood, "sounds/random/eat1.ogg"),
+        (SoundCue.Burp, "sounds/random/burp.ogg"),
+        (SoundCue.FireIgnite, "sounds/fire/ignite.ogg"),
+        (SoundCue.FireCrackle, "sounds/fire/fire.ogg"),
+        (SoundCue.Fizz, "sounds/random/fizz.ogg"),
+        (SoundCue.TntFuse, "sounds/random/fuse.ogg"),
+        (SoundCue.Explosion, "sounds/random/explode1.ogg"),
+        (SoundCue.PistonExtend, "sounds/tile/piston/out.ogg"),
+        (SoundCue.PistonRetract, "sounds/tile/piston/in.ogg"),
+        (SoundCue.MobPigSay, "sounds/mob/pig/say1.ogg"),
+        (SoundCue.MobPigDeath, "sounds/mob/pig/death.ogg"),
+        (SoundCue.MobCowSay, "sounds/mob/cow/say1.ogg"),
+        (SoundCue.MobCowHurt, "sounds/mob/cow/hurt1.ogg"),
+        (SoundCue.MobSheepSay, "sounds/mob/sheep/say1.ogg"),
+        (SoundCue.MobSheepShear, "sounds/mob/sheep/shear.ogg"),
+        (SoundCue.MobChickenSay, "sounds/mob/chicken/say1.ogg"),
+        (SoundCue.MobChickenHurt, "sounds/mob/chicken/hurt1.ogg"),
+        (SoundCue.MobZombieSay, "sounds/mob/zombie/say1.ogg"),
+        (SoundCue.MobZombieHurt, "sounds/mob/zombie/hurt1.ogg"),
+        (SoundCue.MobZombieDeath, "sounds/mob/zombie/death.ogg"),
+        (SoundCue.MobSkeletonSay, "sounds/mob/skeleton/say1.ogg"),
+        (SoundCue.MobSkeletonHurt, "sounds/mob/skeleton/hurt1.ogg"),
+        (SoundCue.MobSkeletonDeath, "sounds/mob/skeleton/death.ogg"),
+        (SoundCue.MobSpiderSay, "sounds/mob/spider/say1.ogg"),
+        (SoundCue.MobSpiderDeath, "sounds/mob/spider/death.ogg"),
+        (SoundCue.MobCreeperHiss, "sounds/mob/creeper/say1.ogg"),
+        (SoundCue.MobCreeperDeath, "sounds/mob/creeper/death.ogg"),
     ];
 
     /// <summary>
-    /// Creates a frozen bank containing real decoded <see cref="PcmSoundClip"/>s for every <see cref="SoundCue"/>,
-    /// overriding defaults with <c>.ogg</c> or <c>.wav</c> files from <paramref name="externalAssetsPath"/> or <c>./resourcepacks</c>.
+    /// Decodes all built-in sound clips and applies external <c>23w13a__or__b</c> <c>.ogg</c> overrides when present.
     /// </summary>
-    /// <param name="externalAssetsPath">Optional resource pack directory, <c>.zip</c>, or <c>.jar</c> path.</param>
-    /// <returns>Frozen lookup dictionary from <see cref="SoundCue"/> to <see cref="PcmSoundClip"/>.</returns>
-    public static FrozenDictionary<SoundCue, PcmSoundClip> CreateDefaultBank(string? externalAssetsPath = null)
+    /// <param name="externalAssetsPath">Optional external resource-pack root path.</param>
+    /// <returns>Complete dictionary mapping every <see cref="SoundCue"/> to a decoded <see cref="PcmSoundClip"/>.</returns>
+    public static IReadOnlyDictionary<SoundCue, PcmSoundClip> CreateAll(string? externalAssetsPath = null)
     {
-        var bank = new Dictionary<SoundCue, PcmSoundClip>();
-        var asm = typeof(ProceduralSoundBank).Assembly;
+        var asm = Assembly.GetExecutingAssembly();
+        var resourceNames = asm.GetManifestResourceNames();
+        var clips = new Dictionary<SoundCue, PcmSoundClip>(64);
 
-        for (var i = 0; i < EmbeddedRealClips.Length; i++)
+        foreach (var (cue, suffix) in EmbeddedManifest)
         {
-            var (cue, resourceName) = EmbeddedRealClips[i];
-            using var stream = asm.GetManifestResourceStream(resourceName);
-            if (stream is null)
-            {
-                continue;
-            }
+            var fullName = Array.Find(resourceNames, n => n.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                ?? throw new InvalidOperationException($"Missing embedded audio asset '{suffix}'.");
 
+            using var stream = asm.GetManifestResourceStream(fullName)
+                ?? throw new InvalidOperationException($"Failed to open embedded audio stream '{fullName}'.");
             using var ms = new MemoryStream();
             stream.CopyTo(ms);
-            var bytes = ms.ToArray();
+            var rawBytes = ms.ToArray();
 
-            if (resourceName.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase) &&
-                OggVorbisDecoder.TryDecode(cue, bytes, out var oggClip))
+            var decoded = suffix.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase)
+                ? OggVorbisDecoder.TryDecode(rawBytes, out var oggClip) ? oggClip : null
+                : WavPcmDecoder.TryDecode(rawBytes, out var wavClip) ? wavClip : null;
+
+            clips[cue] = decoded ?? SynthesizeFallbackClip(cue);
+        }
+
+        // Populate clean-room fallback clips for all extended v0.6.0 cues so offline/CI always has every cue ready!
+        foreach (var cue in Enum.GetValues<SoundCue>())
+        {
+            if (!clips.ContainsKey(cue))
             {
-                bank[cue] = oggClip;
-            }
-            else if (WavPcmDecoder.TryDecode(cue, bytes, out var wavClip))
-            {
-                bank[cue] = wavClip;
+                clips[cue] = SynthesizeFallbackClip(cue);
             }
         }
 
-        ApplyExternalAudioOverrides(bank, externalAssetsPath);
-        return bank.ToFrozenDictionary();
-    }
-
-    private static void ApplyExternalAudioOverrides(Dictionary<SoundCue, PcmSoundClip> bank, string? externalAssetsPath)
-    {
-        var candidates = new List<string>();
+        var searchRoots = new List<string>();
         if (!string.IsNullOrWhiteSpace(externalAssetsPath))
         {
-            candidates.Add(externalAssetsPath);
+            searchRoots.Add(externalAssetsPath);
         }
 
         foreach (var baseDir in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
         {
-            candidates.Add(Path.Combine(baseDir, "resourcepacks"));
-            candidates.Add(Path.Combine(baseDir, "assets"));
-            candidates.Add(Path.Combine(baseDir, "minecraft-assets"));
+            searchRoots.Add(Path.Combine(baseDir, "resourcepacks", "23w13a__or__b"));
+            searchRoots.Add(Path.Combine(baseDir, "resourcepacks"));
+            searchRoots.Add(Path.Combine(baseDir, "assets"));
+            searchRoots.Add(Path.Combine(baseDir, "minecraft-assets"));
         }
 
-        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < candidates.Count; i++)
+        foreach (var root in searchRoots.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var candidate = candidates[i];
-            if (string.IsNullOrWhiteSpace(candidate))
+            TryLoadExactMappings(root, clips);
+        }
+
+        return clips;
+    }
+
+    private static void TryLoadExactMappings(string root, Dictionary<SoundCue, PcmSoundClip> clips)
+    {
+        if (!Directory.Exists(root))
+        {
+            return;
+        }
+
+        string[] prefixes =
+        [
+            Path.Combine(root, "assets", "minecraft"),
+            Path.Combine(root, "minecraft"),
+            root,
+        ];
+
+        for (var p = 0; p < prefixes.Length; p++)
+        {
+            var prefix = prefixes[p];
+            if (!Directory.Exists(prefix))
             {
                 continue;
             }
 
-            var full = Path.GetFullPath(candidate);
-            if (!visited.Add(full))
+            for (var i = 0; i < MinecraftSoundMappings.Length; i++)
             {
-                continue;
-            }
-
-            if (File.Exists(full))
-            {
-                TryLoadFromArchive(bank, full);
-            }
-            else if (Directory.Exists(full))
-            {
-                TryLoadFromDirectory(bank, full);
-                var files = Directory.GetFiles(full);
-                for (var f = 0; f < files.Length; f++)
+                var (cue, relOgg) = MinecraftSoundMappings[i];
+                var file = Path.Combine(prefix, relOgg.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(file))
                 {
-                    var ext = Path.GetExtension(files[f]);
-                    if (string.Equals(ext, ".zip", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(ext, ".jar", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                }
+
+                try
+                {
+                    var bytes = File.ReadAllBytes(file);
+                    if (OggVorbisDecoder.TryDecode(bytes, out var decoded) && decoded.Samples.Length > 0)
                     {
-                        TryLoadFromArchive(bank, files[f]);
+                        clips[cue] = decoded;
                     }
                 }
+                catch (IOException)
+                {
+                    // Keep existing fallback clip if file is locked.
+                }
             }
         }
     }
 
-    private static void TryLoadFromDirectory(Dictionary<SoundCue, PcmSoundClip> bank, string dir)
+    private static PcmSoundClip SynthesizeFallbackClip(SoundCue cue)
     {
-        try
+        var (durationSec, baseFreq, noiseMix, sweep) = cue switch
         {
-            foreach (var file in Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories))
-            {
-                var ext = Path.GetExtension(file);
-                var isOgg = string.Equals(ext, ".ogg", StringComparison.OrdinalIgnoreCase);
-                var isWav = string.Equals(ext, ".wav", StringComparison.OrdinalIgnoreCase);
-                if (!isOgg && !isWav)
-                {
-                    continue;
-                }
+            SoundCue.Explosion => (0.55, 68.0, 0.85, -35.0),
+            SoundCue.TntFuse or SoundCue.Fizz or SoundCue.MobCreeperHiss => (0.38, 1200.0, 0.92, -300.0),
+            SoundCue.PistonExtend => (0.18, 185.0, 0.40, 95.0),
+            SoundCue.PistonRetract => (0.18, 260.0, 0.40, -95.0),
+            SoundCue.FireIgnite => (0.14, 920.0, 0.65, 320.0),
+            SoundCue.FireCrackle => (0.28, 340.0, 0.82, 40.0),
+            SoundCue.WaterSwim => (0.26, 240.0, 0.68, -70.0),
+            SoundCue.UnderwaterExit => (0.24, 310.0, 0.55, 140.0),
+            SoundCue.UnderwaterAmbience => (0.60, 110.0, 0.35, 12.0),
+            SoundCue.GlassBreak => (0.22, 1650.0, 0.72, -450.0),
+            SoundCue.Burp => (0.24, 135.0, 0.25, -35.0),
+            SoundCue.MobPigSay or SoundCue.MobPigDeath => (0.24, 310.0, 0.20, 65.0),
+            SoundCue.MobCowSay or SoundCue.MobCowHurt => (0.42, 148.0, 0.15, -24.0),
+            SoundCue.MobSheepSay => (0.34, 265.0, 0.18, -18.0),
+            SoundCue.MobSheepShear => (0.15, 1380.0, 0.55, 220.0),
+            SoundCue.MobChickenSay or SoundCue.MobChickenHurt => (0.16, 620.0, 0.18, 150.0),
+            SoundCue.MobZombieSay or SoundCue.MobZombieHurt or SoundCue.MobZombieDeath => (0.38, 122.0, 0.42, -28.0),
+            SoundCue.MobSkeletonSay or SoundCue.MobSkeletonHurt or SoundCue.MobSkeletonDeath => (0.20, 840.0, 0.62, -180.0),
+            SoundCue.MobSpiderSay or SoundCue.MobSpiderDeath => (0.24, 520.0, 0.78, -120.0),
+            _ => (0.14, 280.0, 0.52, -40.0),
+        };
 
-                if (!TryMapPathToCue(file.Replace('\\', '/'), out var cue))
-                {
-                    continue;
-                }
+        var count = Math.Max(256, (int)(SampleRate * durationSec));
+        var pcm = new short[count];
+        var rng = 0x9E3779B9U ^ ((uint)cue * 2654435761U);
+        var phase = 0.0;
 
-                var bytes = File.ReadAllBytes(file);
-                if (isOgg && OggVorbisDecoder.TryDecode(cue, bytes, out var oggClip))
-                {
-                    bank[cue] = oggClip;
-                }
-                else if (isWav && WavPcmDecoder.TryDecode(cue, bytes, out var wavClip))
-                {
-                    bank[cue] = wavClip;
-                }
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        for (var i = 0; i < count; i++)
         {
-            // Ignore unreadable external directories gracefully.
-        }
-    }
+            var t = (double)i / count;
+            var env = Math.Sin(Math.PI * Math.Min(1.0, t * 8.0)) * (1.0 - (t * 0.88));
+            var freq = Math.Max(40.0, baseFreq + (sweep * t));
+            phase += (2.0 * Math.PI * freq) / SampleRate;
+            var tone = Math.Sin(phase);
 
-    private static void TryLoadFromArchive(Dictionary<SoundCue, PcmSoundClip> bank, string archivePath)
-    {
-        try
-        {
-            using var zip = ZipFile.OpenRead(archivePath);
-            foreach (var entry in zip.Entries)
-            {
-                if (entry.Length is <= 32 or > 4_194_304)
-                {
-                    continue;
-                }
+            rng ^= rng << 13;
+            rng ^= rng >> 17;
+            rng ^= rng << 5;
+            var noise = ((rng & 0xFFFF) / 32768.0) - 1.0;
 
-                var norm = entry.FullName.Replace('\\', '/');
-                var isOgg = norm.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase);
-                var isWav = norm.EndsWith(".wav", StringComparison.OrdinalIgnoreCase);
-                if ((!isOgg && !isWav) || !TryMapPathToCue(norm, out var cue))
-                {
-                    continue;
-                }
-
-                var buf = new byte[entry.Length];
-                using (var s = entry.Open())
-                {
-                    var total = 0;
-                    while (total < buf.Length)
-                    {
-                        var n = s.Read(buf, total, buf.Length - total);
-                        if (n <= 0)
-                        {
-                            break;
-                        }
-
-                        total += n;
-                    }
-                }
-
-                if (isOgg && OggVorbisDecoder.TryDecode(cue, buf, out var oggClip))
-                {
-                    bank[cue] = oggClip;
-                }
-                else if (isWav && WavPcmDecoder.TryDecode(cue, buf, out var wavClip))
-                {
-                    bank[cue] = wavClip;
-                }
-            }
-        }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
-        {
-            // Ignore corrupted external archives gracefully.
-        }
-    }
-
-    private static bool TryMapPathToCue(string normalizedPath, out SoundCue cue)
-    {
-        var stem = Path.GetFileNameWithoutExtension(normalizedPath).ToUpperInvariant();
-        var inStep = normalizedPath.Contains("/step/", StringComparison.OrdinalIgnoreCase);
-        var inDig = normalizedPath.Contains("/dig/", StringComparison.OrdinalIgnoreCase);
-
-        if (inStep)
-        {
-            if (stem.StartsWith("STONE", StringComparison.Ordinal))
-            {
-                cue = SoundCue.FootstepStone;
-                return true;
-            }
-
-            if (stem.StartsWith("GRASS", StringComparison.Ordinal))
-            {
-                cue = SoundCue.FootstepGrass;
-                return true;
-            }
-
-            if (stem.StartsWith("WOOD", StringComparison.Ordinal))
-            {
-                cue = SoundCue.FootstepWood;
-                return true;
-            }
+            var sample = ((tone * (1.0 - noiseMix)) + (noise * noiseMix)) * env * 0.42;
+            pcm[i] = (short)Math.Clamp(sample * short.MaxValue, short.MinValue, short.MaxValue);
         }
 
-        if (inDig)
-        {
-            if (stem.StartsWith("STONE", StringComparison.Ordinal) || stem.StartsWith("GRAVEL", StringComparison.Ordinal))
-            {
-                cue = SoundCue.BlockBreak;
-                return true;
-            }
-
-            if (stem.StartsWith("WOOD", StringComparison.Ordinal))
-            {
-                cue = SoundCue.BlockPlace;
-                return true;
-            }
-        }
-
-        switch (stem)
-        {
-            case "STONE1" or "FOOTSTEP_STONE":
-                cue = SoundCue.FootstepStone;
-                return true;
-            case "GRASS1" or "FOOTSTEP_GRASS":
-                cue = SoundCue.FootstepGrass;
-                return true;
-            case "WOOD1" or "FOOTSTEP_WOOD":
-                cue = SoundCue.FootstepWood;
-                return true;
-            case "BREAK" or "BLOCK_BREAK":
-                cue = SoundCue.BlockBreak;
-                return true;
-            case "BLOCK_PLACE":
-                cue = SoundCue.BlockPlace;
-                return true;
-            case "SPLASH" or "SPLASH1" or "WATER_SPLASH":
-                cue = SoundCue.WaterSplash;
-                return true;
-            case "CLICK" or "UI_CLICK":
-                cue = SoundCue.UiClick;
-                return true;
-            case "SWEEP1" or "SWING" or "SWORD_SWING":
-                cue = SoundCue.SwordSwing;
-                return true;
-            case "STRONG1" or "CRIT1" or "PLAYER_HIT":
-                cue = SoundCue.PlayerHit;
-                return true;
-            case "HIT1" or "CLASSIC_HURT" or "FALLSMALL" or "PLAYER_HURT":
-                cue = SoundCue.PlayerHurt;
-                return true;
-            case "EAT1" or "EAT2" or "EAT_FOOD":
-                cue = SoundCue.EatFood;
-                return true;
-            case "POP" or "ORB" or "ITEM_POP":
-                cue = SoundCue.ItemPop;
-                return true;
-            case "ENTER1" or "UNDERWATER_ENTER":
-                cue = SoundCue.UnderwaterEnter;
-                return true;
-            default:
-                cue = default;
-                return false;
-        }
+        return new PcmSoundClip(SampleRate, pcm);
     }
 }

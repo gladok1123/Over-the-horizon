@@ -4,103 +4,117 @@ using OverHorizon.Core.Math;
 namespace OverHorizon.Physics;
 
 /// <summary>
-/// Allocation-free Amanatides &amp; Woo 3D DDA voxel raycaster for block breaking, placement, and selection highlighting.
+/// Exact Amanatides &amp; Woo 3D DDA voxel raycaster with sub-voxel AABB selection support (<see cref="IVoxelSelectionReader"/>)
+/// for block breaking, placement, Torches, Ladders, Redstone components, and Beds.
 /// </summary>
 public static class VoxelRaycaster
 {
     /// <summary>
-    /// Marches a ray from <paramref name="origin"/> along <paramref name="direction"/> up to <paramref name="maxDistance"/> blocks
-    /// and returns the first solid block encountered in <paramref name="world"/>.
+    /// Casts a ray from <paramref name="origin"/> along <paramref name="direction"/> up to <paramref name="maxDistance"/>
+    /// blocks and returns the first selectable voxel intersected.
     /// </summary>
-    /// <param name="world">Read-only voxel solidity reader.</param>
-    /// <param name="origin">64-bit world-space ray origin (typically player eye position).</param>
-    /// <param name="direction">Ray direction vector.</param>
-    /// <param name="maxDistance">Maximum reach distance in blocks.</param>
-    /// <param name="hit">Populated hit details when a solid block is intersected.</param>
-    /// <returns><see langword="true"/> if a solid block was hit within <paramref name="maxDistance"/>; otherwise <see langword="false"/>.</returns>
     public static bool TryRaycast(
         IVoxelCollisionReader world,
         Vec3d origin,
-        Vector3 direction,
+        Vec3d direction,
         double maxDistance,
         out VoxelRaycastHit hit)
     {
         ArgumentNullException.ThrowIfNull(world);
 
-        var dirLen = direction.Length();
-        if (dirLen <= 1e-6f || maxDistance <= 0.0)
+        var lenSq = direction.LengthSquared;
+        if (lenSq < 1e-12 || maxDistance <= 0.0)
         {
             hit = default;
             return false;
         }
 
-        double dx = direction.X / dirLen;
-        double dy = direction.Y / dirLen;
-        double dz = direction.Z / dirLen;
+        var dir = direction.Normalize();
+        var selectionReader = world as IVoxelSelectionReader;
+        var currentPos = origin.ToBlockPos();
 
-        var x = (int)Math.Floor(origin.X);
-        var y = (int)Math.Floor(origin.Y);
-        var z = (int)Math.Floor(origin.Z);
+        var stepX = Math.Sign(dir.X);
+        var stepY = Math.Sign(dir.Y);
+        var stepZ = Math.Sign(dir.Z);
 
-        var stepX = Math.Sign(dx);
-        var stepY = Math.Sign(dy);
-        var stepZ = Math.Sign(dz);
+        var tDeltaX = stepX != 0 ? Math.Abs(1.0 / dir.X) : double.PositiveInfinity;
+        var tDeltaY = stepY != 0 ? Math.Abs(1.0 / dir.Y) : double.PositiveInfinity;
+        var tDeltaZ = stepZ != 0 ? Math.Abs(1.0 / dir.Z) : double.PositiveInfinity;
 
-        var tDeltaX = stepX != 0 ? Math.Abs(1.0 / dx) : double.PositiveInfinity;
-        var tDeltaY = stepY != 0 ? Math.Abs(1.0 / dy) : double.PositiveInfinity;
-        var tDeltaZ = stepZ != 0 ? Math.Abs(1.0 / dz) : double.PositiveInfinity;
+        var nextBoundaryX = stepX > 0 ? currentPos.X + 1.0 : currentPos.X;
+        var nextBoundaryY = stepY > 0 ? currentPos.Y + 1.0 : currentPos.Y;
+        var nextBoundaryZ = stepZ > 0 ? currentPos.Z + 1.0 : currentPos.Z;
 
-        var tMaxX = ComputeInitialBoundaryT(origin.X, x, stepX, dx);
-        var tMaxY = ComputeInitialBoundaryT(origin.Y, y, stepY, dy);
-        var tMaxZ = ComputeInitialBoundaryT(origin.Z, z, stepZ, dz);
+        var tMaxX = stepX != 0 ? (nextBoundaryX - origin.X) / dir.X : double.PositiveInfinity;
+        var tMaxY = stepY != 0 ? (nextBoundaryY - origin.Y) / dir.Y : double.PositiveInfinity;
+        var tMaxZ = stepZ != 0 ? (nextBoundaryZ - origin.Z) / dir.Z : double.PositiveInfinity;
 
-        var distance = 0.0;
-        var lastFace = Direction.Up;
-        var prevPos = new BlockPos(x, y, z);
+        var traveled = 0.0;
+        var entryFace = DominantOppositeDirection(dir);
 
-        // Guard with an upper bound on grid steps in addition to parametric distance.
-        var maxSteps = (int)Math.Ceiling(maxDistance * 3.5) + 4;
-        for (var i = 0; i < maxSteps && distance <= maxDistance; i++)
+        for (var step = 0; step < 512 && traveled <= maxDistance; step++)
         {
-            var currentPos = new BlockPos(x, y, z);
-            if (i > 0 && world.IsSolidBlock(currentPos))
+            if (world.IsColumnLoaded(currentPos))
             {
-                hit = new VoxelRaycastHit(currentPos, prevPos, lastFace, distance);
-                return true;
-            }
+                if (selectionReader is not null)
+                {
+                    if (selectionReader.TryGetSelectionBox(currentPos, out var localBox))
+                    {
+                        var worldBox = new BoundingBox(
+                            currentPos.X + localBox.MinX,
+                            currentPos.Y + localBox.MinY,
+                            currentPos.Z + localBox.MinZ,
+                            currentPos.X + localBox.MaxX,
+                            currentPos.Y + localBox.MaxY,
+                            currentPos.Z + localBox.MaxZ);
 
-            prevPos = currentPos;
+                        if (TryIntersectRayBox(origin, dir, maxDistance, worldBox, entryFace, out var boxT, out var boxFace))
+                        {
+                            var hitPoint = origin + (dir * boxT);
+                            hit = new VoxelRaycastHit(currentPos, currentPos.Offset(boxFace), boxFace, hitPoint, boxT);
+                            return true;
+                        }
+                    }
+                }
+                else if (world.IsSolidBlock(currentPos))
+                {
+                    var hitPoint = origin + (dir * traveled);
+                    var adjacent = currentPos.Offset(entryFace);
+                    hit = new VoxelRaycastHit(currentPos, adjacent, entryFace, hitPoint, traveled);
+                    return true;
+                }
+            }
 
             if (tMaxX < tMaxY)
             {
                 if (tMaxX < tMaxZ)
                 {
-                    distance = tMaxX;
+                    traveled = tMaxX;
                     tMaxX += tDeltaX;
-                    x += stepX;
-                    lastFace = stepX > 0 ? Direction.West : Direction.East;
+                    currentPos = new BlockPos(currentPos.X + stepX, currentPos.Y, currentPos.Z);
+                    entryFace = stepX > 0 ? Direction.West : Direction.East;
                 }
                 else
                 {
-                    distance = tMaxZ;
+                    traveled = tMaxZ;
                     tMaxZ += tDeltaZ;
-                    z += stepZ;
-                    lastFace = stepZ > 0 ? Direction.North : Direction.South;
+                    currentPos = new BlockPos(currentPos.X, currentPos.Y, currentPos.Z + stepZ);
+                    entryFace = stepZ > 0 ? Direction.North : Direction.South;
                 }
             }
             else if (tMaxY < tMaxZ)
             {
-                distance = tMaxY;
+                traveled = tMaxY;
                 tMaxY += tDeltaY;
-                y += stepY;
-                lastFace = stepY > 0 ? Direction.Down : Direction.Up;
+                currentPos = new BlockPos(currentPos.X, currentPos.Y + stepY, currentPos.Z);
+                entryFace = stepY > 0 ? Direction.Down : Direction.Up;
             }
             else
             {
-                distance = tMaxZ;
+                traveled = tMaxZ;
                 tMaxZ += tDeltaZ;
-                z += stepZ;
-                lastFace = stepZ > 0 ? Direction.North : Direction.South;
+                currentPos = new BlockPos(currentPos.X, currentPos.Y, currentPos.Z + stepZ);
+                entryFace = stepZ > 0 ? Direction.North : Direction.South;
             }
         }
 
@@ -108,18 +122,100 @@ public static class VoxelRaycaster
         return false;
     }
 
-    private static double ComputeInitialBoundaryT(double coord, int cell, int step, double dir)
+    /// <summary>
+    /// Overload accepting a single-precision <see cref="Vector3"/> camera forward vector.
+    /// </summary>
+    public static bool TryRaycast(
+        IVoxelCollisionReader world,
+        Vec3d origin,
+        Vector3 direction,
+        double maxDistance,
+        out VoxelRaycastHit hit) =>
+        TryRaycast(world, origin, new Vec3d(direction.X, direction.Y, direction.Z), maxDistance, out hit);
+
+    private static bool TryIntersectRayBox(
+        Vec3d origin,
+        Vec3d dir,
+        double maxDistance,
+        BoundingBox box,
+        Direction fallbackFace,
+        out double hitT,
+        out Direction hitFace)
     {
-        if (step > 0)
+        var tMin = 0.0;
+        var tMax = maxDistance;
+        var bestFace = fallbackFace;
+
+        if (!ClipSlab(origin.X, dir.X, box.MinX, box.MaxX, Direction.West, Direction.East, ref tMin, ref tMax, ref bestFace) ||
+            !ClipSlab(origin.Y, dir.Y, box.MinY, box.MaxY, Direction.Down, Direction.Up, ref tMin, ref tMax, ref bestFace) ||
+            !ClipSlab(origin.Z, dir.Z, box.MinZ, box.MaxZ, Direction.North, Direction.South, ref tMin, ref tMax, ref bestFace))
         {
-            return ((cell + 1.0) - coord) / dir;
+            hitT = 0.0;
+            hitFace = fallbackFace;
+            return false;
         }
 
-        if (step < 0)
+        hitT = tMin;
+        hitFace = bestFace;
+        return hitT <= maxDistance;
+    }
+
+    private static bool ClipSlab(
+        double ro,
+        double rd,
+        double bMin,
+        double bMax,
+        Direction minFace,
+        Direction maxFace,
+        ref double tMin,
+        ref double tMax,
+        ref Direction enterFace)
+    {
+        if (Math.Abs(rd) < 1e-9)
         {
-            return (cell - coord) / dir;
+            return ro >= bMin && ro <= bMax;
         }
 
-        return double.PositiveInfinity;
+        var inv = 1.0 / rd;
+        var t1 = (bMin - ro) * inv;
+        var t2 = (bMax - ro) * inv;
+        var face = minFace;
+        if (t1 > t2)
+        {
+            (t1, t2) = (t2, t1);
+            face = maxFace;
+        }
+
+        if (t1 > tMin)
+        {
+            tMin = t1;
+            enterFace = face;
+        }
+
+        if (t2 < tMax)
+        {
+            tMax = t2;
+        }
+
+        return tMin <= tMax;
+    }
+
+    private static Direction DominantOppositeDirection(Vec3d dir)
+    {
+        var ax = Math.Abs(dir.X);
+        var ay = Math.Abs(dir.Y);
+        var az = Math.Abs(dir.Z);
+
+        if (ax >= ay && ax >= az)
+        {
+            return dir.X >= 0.0 ? Direction.West : Direction.East;
+        }
+
+        if (ay >= ax && ay >= az)
+        {
+            return dir.Y >= 0.0 ? Direction.Down : Direction.Up;
+        }
+
+        return dir.Z >= 0.0 ? Direction.North : Direction.South;
     }
 }

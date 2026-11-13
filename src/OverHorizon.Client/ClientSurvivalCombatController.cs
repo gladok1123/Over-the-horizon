@@ -12,7 +12,8 @@ using OverHorizon.Rendering.Hud;
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Executes PvP &amp; 3D Mob melee raycast attacks, progressive Survival block mining with tool tiers,
+/// Executes PvP &amp; 3D Mob melee raycast attacks (with species-authentic hurt/death <c>.ogg</c> audio),
+/// empty-air 1st-person hand swings, progressive Survival block mining with on-block crack stages,
 /// and delegates right-click block/item interactions to <see cref="ClientItemUseHandler"/>.
 /// </summary>
 internal sealed class ClientSurvivalCombatController
@@ -69,10 +70,11 @@ internal sealed class ClientSurvivalCombatController
         }
 
         if (mobManager.TryAttackAlongRay(
-            player.Camera.Position, f, maxReach, weaponDmg, isCritical, _items, out _, out var mobDrops))
+            player.Camera.Position, f, maxReach, weaponDmg, isCritical, _items, out var hitMob, out var mobDrops))
         {
             _attackCooldown = 0.26;
             player.TriggerHandSwing();
+            player.AddExhaustion(HungerAndVitalsModel.ExhaustionPerAttack);
 
             for (var i = 0; i < mobDrops.Count; i++)
             {
@@ -88,10 +90,16 @@ internal sealed class ClientSurvivalCombatController
                 _audio.PlayPositional(SoundCue.ItemPop, player.Camera.Position, gain: 0.55f * player.MasterVolume);
             }
 
+            if (hitMob is not null)
+            {
+                var mobCue = ResolveMobHurtOrDeathCue(hitMob.Type, hitMob.IsDead);
+                _audio.PlayPositional(mobCue, hitMob.FeetPosition, gain: 0.88f * player.MasterVolume);
+            }
+
             _audio.PlayPositional(
                 isCritical ? SoundCue.PlayerHit : SoundCue.SwordSwing,
                 player.Camera.Position,
-                gain: 0.85f * player.MasterVolume,
+                gain: 0.80f * player.MasterVolume,
                 pitch: isCritical ? 0.90f : 1.0f);
             return true;
         }
@@ -114,6 +122,7 @@ internal sealed class ClientSurvivalCombatController
 
         _attackCooldown = 0.28;
         player.TriggerHandSwing();
+        player.AddExhaustion(HungerAndVitalsModel.ExhaustionPerAttack);
 
         var heldId = heldDef is not null ? (ushort)Math.Max(0, _items.GetId(heldDef.Key)) : (ushort)0;
         transport.EnqueueOutbound(new PlayerAttackEntityPacket(targetEntityId, heldId, isCritical));
@@ -140,6 +149,16 @@ internal sealed class ClientSurvivalCombatController
             return;
         }
 
+        // Air Swing: left-clicking anywhere (including empty sky/air!) ALWAYS triggers full 1st-person hand swing!
+        if (leftClickJustPressed)
+        {
+            player.TriggerHandSwing();
+            if (player.CurrentTarget is null)
+            {
+                _audio.PlayPositional(SoundCue.SwordSwing, player.Camera.Position, gain: 0.42f * player.MasterVolume);
+            }
+        }
+
         if (player.Mode == GameMode.Creative)
         {
             player.MiningProgress = 0.0f;
@@ -148,7 +167,6 @@ internal sealed class ClientSurvivalCombatController
                 var existing = world.GetBlockState(creativeHit.BlockPosition);
                 if (!existing.IsAir && existing != _blocks.GetDefaultState(BuiltInBlocks.Bedrock))
                 {
-                    player.TriggerHandSwing();
                     _ = applyWorldBlockChange(creativeHit.BlockPosition, creativeHit.HitFace, BlockState.Air);
                 }
             }
@@ -190,11 +208,13 @@ internal sealed class ClientSurvivalCombatController
             _hitSoundCooldown = 0.22;
             player.TriggerHandSwing();
             var center = new Vec3d(hit.BlockPosition.X + 0.5, hit.BlockPosition.Y + 0.5, hit.BlockPosition.Z + 0.5);
-            _audio.PlayPositional(SoundCue.FootstepStone, center, gain: 0.45f * player.MasterVolume, pitch: 0.85f);
+            var hitCue = ClientPlayerVitalsAndAudio.ResolveFootstepCue(blockKey.Path);
+            _audio.PlayPositional(hitCue, center, gain: 0.45f * player.MasterVolume, pitch: 0.84f);
         }
 
         if (_miningElapsedSeconds >= duration)
         {
+            player.AddExhaustion(HungerAndVitalsModel.ExhaustionPerBlockMined);
             var drop = BlockDropResolver.ResolveDrop(blockKey, player.Hotbar.SelectedItem, _items, _dropSequence++);
             if (!drop.IsEmpty)
             {
@@ -213,7 +233,9 @@ internal sealed class ClientSurvivalCombatController
     public bool HandleRightClickUseOrPlace(
         ClientPlayerController player,
         ClientWorldCache world,
+        ClientWorldSyncAndMobBridge worldBridge,
         WorldMobManager mobManager,
+        ClientChatHistory chatHistory,
         Func<BlockPos, Direction, BlockState, bool> applyWorldBlockChange,
         out UiOverlayMode? openContainerMode,
         out BlockPos? openedContainerPos)
@@ -226,6 +248,23 @@ internal sealed class ClientSurvivalCombatController
         }
 
         return _useHandler.TryUseOrPlace(
-            player, world, mobManager, applyWorldBlockChange, ref _useCooldown, out openContainerMode, out openedContainerPos);
+            player, world, worldBridge, mobManager, chatHistory, applyWorldBlockChange, ref _useCooldown, out openContainerMode, out openedContainerPos);
     }
+
+    internal static SoundCue ResolveMobHurtOrDeathCue(MobType type, bool isDead) => (type, isDead) switch
+    {
+        (MobType.Pig, true) => SoundCue.MobPigDeath,
+        (MobType.Pig, false) => SoundCue.MobPigSay,
+        (MobType.Cow, _) => SoundCue.MobCowHurt,
+        (MobType.Sheep, _) => SoundCue.MobSheepSay,
+        (MobType.Chicken, _) => SoundCue.MobChickenHurt,
+        (MobType.Zombie, true) => SoundCue.MobZombieDeath,
+        (MobType.Zombie, false) => SoundCue.MobZombieHurt,
+        (MobType.Skeleton, true) => SoundCue.MobSkeletonDeath,
+        (MobType.Skeleton, false) => SoundCue.MobSkeletonHurt,
+        (MobType.Spider, true) => SoundCue.MobSpiderDeath,
+        (MobType.Spider, false) => SoundCue.MobSpiderSay,
+        (MobType.Creeper, true) => SoundCue.MobCreeperDeath,
+        _ => SoundCue.MobCreeperHiss,
+    };
 }

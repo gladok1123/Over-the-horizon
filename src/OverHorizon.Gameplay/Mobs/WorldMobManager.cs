@@ -1,7 +1,4 @@
-using System.Numerics;
-using OverHorizon.Core.Items;
 using OverHorizon.Core.Math;
-using OverHorizon.Core.Registry;
 using OverHorizon.Physics;
 
 namespace OverHorizon.Gameplay.Mobs;
@@ -9,9 +6,9 @@ namespace OverHorizon.Gameplay.Mobs;
 /// <summary>
 /// Simulates peaceful (<see cref="MobType.Pig"/>, <see cref="MobType.Cow"/>, <see cref="MobType.Sheep"/>, <see cref="MobType.Chicken"/>)
 /// and hostile (<see cref="MobType.Zombie"/>, <see cref="MobType.Skeleton"/>, <see cref="MobType.Spider"/>, <see cref="MobType.Creeper"/>)
-/// 3D mobs, light-gated spawning, Creative-mode pacifism, and raycast sword melee combat.
+/// 3D mobs, light-gated spawning, undead sunlight burning, Creative-mode pacifism, explosion blast damage, and melee combat.
 /// </summary>
-public sealed class WorldMobManager
+public sealed partial class WorldMobManager
 {
     private const int MaxPeacefulMobs = 18;
     private const int MaxHostileMobs = 18;
@@ -25,7 +22,7 @@ public sealed class WorldMobManager
     /// <summary>Gets all currently active world mobs.</summary>
     public IReadOnlyList<ActiveMob> Mobs => _mobs;
 
-    /// <summary>Spawns a specific mob directly (used by world spawner and deterministic unit tests).</summary>
+    /// <summary>Spawns a specific mob directly (used by world spawner, <c>/summon</c>, and unit tests).</summary>
     public ActiveMob SpawnMob(MobType type, Vec3d feetPosition, float yawDegrees = 0.0f)
     {
         var mob = new ActiveMob(_nextMobId++, type, feetPosition, yawDegrees);
@@ -37,8 +34,7 @@ public sealed class WorldMobManager
     public void Clear() => _mobs.Clear();
 
     /// <summary>
-    /// Advances mob spawning, AI behavior, swept-voxel kinematics, and Survival melee attacks.
-    /// Hostile mobs strictly ignore and NEVER attack players in <see cref="GameMode.Creative"/>.
+    /// Advances mob spawning, undead sunlight burning, AI behavior, swept-voxel kinematics, and Survival melee/Creeper attacks.
     /// </summary>
     public float Step(
         IVoxelCollisionReader collisionWorld,
@@ -47,7 +43,8 @@ public sealed class WorldMobManager
         GameMode playerMode,
         int playerArmorDefense,
         float skyBrightness,
-        float deltaSeconds)
+        float deltaSeconds,
+        List<Vec3d>? creeperDetonations = null)
     {
         ArgumentNullException.ThrowIfNull(collisionWorld);
         ArgumentNullException.ThrowIfNull(spawnProbe);
@@ -77,8 +74,12 @@ public sealed class WorldMobManager
             mob.AttackCooldownTimer = MathF.Max(0.0f, mob.AttackCooldownTimer - dt);
             mob.PanicTimer = MathF.Max(0.0f, mob.PanicTimer - dt);
 
-            UpdateMobAiAndAttack(mob, playerFeetPos, playerCanBeTargeted, dt, ref totalDamageToPlayer);
-            StepMobPhysics(collisionWorld, mob, dt);
+            UpdateSunlightBurning(collisionWorld, spawnProbe, mob, skyBrightness, dt);
+            if (!mob.IsDead)
+            {
+                UpdateMobAiAndAttack(mob, playerFeetPos, playerCanBeTargeted, dt, ref totalDamageToPlayer, creeperDetonations);
+                StepMobPhysics(collisionWorld, mob, dt);
+            }
 
             if (mob.IsDead)
             {
@@ -95,108 +96,45 @@ public sealed class WorldMobManager
         return playerCanBeTargeted ? totalDamageToPlayer : 0.0f;
     }
 
-    /// <summary>
-    /// Performs a 3D melee weapon raycast from <paramref name="rayOrigin"/> along <paramref name="rayDirection"/>
-    /// up to <paramref name="maxReach"/>, hitting the closest living mob, applying weapon damage &amp; knockback,
-    /// and returning loot drops if killed.
-    /// </summary>
-    public bool TryAttackAlongRay(
-        Vec3d rayOrigin,
-        Vector3 rayDirection,
-        double maxReach,
-        float weaponDamage,
-        bool isCriticalStrike,
-        IRegistry<ItemDefinition> items,
-        out ActiveMob? hitMob,
-        out List<ItemStack> drops)
+    private static void UpdateSunlightBurning(
+        IVoxelCollisionReader world,
+        Func<BlockPos, (byte SkyLight, byte BlockLight, bool IsGrassTop, bool IsSolidGround, bool IsClearSpace)> probe,
+        ActiveMob mob,
+        float skyBrightness,
+        float dt)
     {
-        ArgumentNullException.ThrowIfNull(items);
-
-        hitMob = null;
-        drops = [];
-
-        var bestT = maxReach + 0.001;
-        for (var i = 0; i < _mobs.Count; i++)
+        var feetBlock = mob.FeetPosition.ToBlockPos();
+        if (world.IsColumnLoaded(feetBlock) && world.GetFluidLevelOrNegative(feetBlock) >= 0)
         {
-            var candidate = _mobs[i];
-            if (candidate.IsDead)
-            {
-                continue;
-            }
+            mob.BurnTimer = 0.0f;
+            mob.BurnDamageTickTimer = 0.0f;
+            return;
+        }
 
-            // Expand hitbox slightly by 0.18m (like Minecraft's targeting margin) so sword swings feel crisp & accurate!
-            var paddedBox = candidate.Hitbox.Inflate(0.18, 0.14, 0.18);
-            if (TryIntersectRayBox(rayOrigin, rayDirection, maxReach, paddedBox, out var hitDist) && hitDist < bestT)
+        if (mob.Type is MobType.Zombie or MobType.Skeleton && skyBrightness >= 0.78f)
+        {
+            var headPos = new Vec3d(mob.FeetPosition.X, mob.FeetPosition.Y + 1.5, mob.FeetPosition.Z).ToBlockPos();
+            if (probe(headPos).SkyLight >= 15)
             {
-                bestT = hitDist;
-                hitMob = candidate;
+                mob.BurnTimer = 2.5f;
             }
         }
 
-        if (hitMob is null)
+        if (mob.BurnTimer > 0.0f)
         {
-            return false;
-        }
-
-        if (hitMob.InvulnerabilityTimer > 0.05f)
-        {
-            return true;
-        }
-
-        var dmg = Math.Max(1.0f, weaponDamage) * (isCriticalStrike ? 1.5f : 1.0f);
-        hitMob.Health = MathF.Max(0.0f, hitMob.Health - dmg);
-        hitMob.HurtFlashTimer = 1.0f;
-        hitMob.InvulnerabilityTimer = 0.28f;
-
-        if (!hitMob.IsHostile)
-        {
-            hitMob.PanicTimer = 4.0f;
-            hitMob.YawDegrees = (float)(Math.Atan2(rayDirection.X, rayDirection.Z) * (180.0 / Math.PI));
-        }
-
-        var horizLen = MathF.Sqrt((rayDirection.X * rayDirection.X) + (rayDirection.Z * rayDirection.Z));
-        var kx = horizLen > 1e-4f ? (rayDirection.X / horizLen) * 6.8 : 0.0;
-        var kz = horizLen > 1e-4f ? (rayDirection.Z / horizLen) * 6.8 : 0.0;
-        hitMob.Velocity = new Vec3d(kx, 4.6, kz);
-        hitMob.OnGround = false;
-
-        if (hitMob.IsDead)
-        {
-            PopulateDeathDrops(hitMob, items, drops);
-            _ = _mobs.Remove(hitMob);
-        }
-
-        return true;
-    }
-
-    /// <summary>Shears a targeted <see cref="MobType.Sheep"/> within reach, yielding <c>1..3</c> White Wool.</summary>
-    public bool TryShearAlongRay(
-        Vec3d rayOrigin,
-        Vector3 rayDirection,
-        double maxReach,
-        IRegistry<ItemDefinition> items,
-        out ItemStack woolDrop)
-    {
-        woolDrop = ItemStack.Empty;
-        for (var i = 0; i < _mobs.Count; i++)
-        {
-            var mob = _mobs[i];
-            if (mob.Type != MobType.Sheep || mob.IsSheared || mob.IsDead)
+            mob.BurnTimer = MathF.Max(0.0f, mob.BurnTimer - dt);
+            mob.BurnDamageTickTimer += dt;
+            if (mob.BurnDamageTickTimer >= 0.95f)
             {
-                continue;
-            }
-
-            if (TryIntersectRayBox(rayOrigin, rayDirection, maxReach, mob.Hitbox.Inflate(0.18, 0.14, 0.18), out _))
-            {
-                mob.IsSheared = true;
-                var woolId = (ushort)items.GetId(OverHorizon.Core.Blocks.BuiltInBlocks.WhiteWool);
-                var count = 1 + (int)(NextRandom() % 3U);
-                woolDrop = woolId > 0 ? new ItemStack(woolId, count) : ItemStack.Empty;
-                return !woolDrop.IsEmpty;
+                mob.BurnDamageTickTimer -= 0.95f;
+                mob.Health = MathF.Max(0.0f, mob.Health - 1.0f);
+                mob.HurtFlashTimer = MathF.Max(mob.HurtFlashTimer, 0.75f);
             }
         }
-
-        return false;
+        else
+        {
+            mob.BurnDamageTickTimer = 0.0f;
+        }
     }
 
     private void UpdateMobAiAndAttack(
@@ -204,7 +142,8 @@ public sealed class WorldMobManager
         Vec3d playerFeetPos,
         bool playerCanBeTargeted,
         float dt,
-        ref float totalDamageToPlayer)
+        ref float totalDamageToPlayer,
+        List<Vec3d>? creeperDetonations)
     {
         if (!mob.IsHostile)
         {
@@ -219,7 +158,6 @@ public sealed class WorldMobManager
             return;
         }
 
-        // CRITICAL RULE: Hostile mobs NEVER aggro or attack when the player is in Creative Mode!
         if (!playerCanBeTargeted)
         {
             mob.IsTargetingPlayer = false;
@@ -250,6 +188,7 @@ public sealed class WorldMobManager
                     {
                         var blastFactor = (float)Math.Clamp(1.0 - (dist / 4.5), 0.25, 1.0);
                         totalDamageToPlayer += mob.AttackDamage * blastFactor;
+                        creeperDetonations?.Add(new Vec3d(mob.FeetPosition.X, mob.FeetPosition.Y + 0.8, mob.FeetPosition.Z));
                         mob.Health = 0.0f;
                     }
                 }
@@ -303,13 +242,11 @@ public sealed class WorldMobManager
         var blend = Math.Min(1.0, dt * 10.0);
         var vx = (mob.Velocity.X * (1.0 - blend)) + (wishVx * blend);
         var vz = (mob.Velocity.Z * (1.0 - blend)) + (wishVz * blend);
-        var vy = mob.Velocity.Y;
 
         var prevPos = mob.FeetPosition;
-        var step = KinematicsIntegrator.StepEntity(world, mob.FeetPosition, new Vec3d(vx, vy, vz), mob.Width, mob.Height, dt, swimUp: true);
+        var step = KinematicsIntegrator.StepEntity(world, mob.FeetPosition, new Vec3d(vx, mob.Velocity.Y, vz), mob.Width, mob.Height, dt, swimUp: true);
         var nextVel = step.Velocity;
 
-        // Auto-hop 1-block terrain steps while walking/chasing!
         if (step.OnGround && step.CollidedHorizontally && mob.DesiredSpeed > 0.2f)
         {
             nextVel = new Vec3d(wishVx, 8.8, wishVz);
@@ -371,107 +308,19 @@ public sealed class WorldMobManager
                 var effectiveLight = MathF.Max(info.SkyLight * skyBrightness, info.BlockLight);
                 if (!tryUnderground && peacefulCount < MaxPeacefulMobs && info.IsGrassTop && info.SkyLight >= 9)
                 {
-                    var kind = (MobType)(NextRandom() % 4U);
-                    _ = SpawnMob(kind, new Vec3d(wx + 0.5, pos.Y + 1.0, wz + 0.5), NextRandom() % 360U);
+                    _ = SpawnMob((MobType)(NextRandom() % 4U), new Vec3d(wx + 0.5, pos.Y + 1.0, wz + 0.5), NextRandom() % 360U);
                     peacefulCount++;
                     break;
                 }
 
                 if (hostileCount < MaxHostileMobs && effectiveLight <= 7.0f)
                 {
-                    var kind = (MobType)(4 + (NextRandom() % 4U));
-                    _ = SpawnMob(kind, new Vec3d(wx + 0.5, pos.Y + 1.0, wz + 0.5), NextRandom() % 360U);
+                    _ = SpawnMob((MobType)(4 + (NextRandom() % 4U)), new Vec3d(wx + 0.5, pos.Y + 1.0, wz + 0.5), NextRandom() % 360U);
                     hostileCount++;
                     break;
                 }
             }
         }
-    }
-
-    private void PopulateDeathDrops(ActiveMob mob, IRegistry<ItemDefinition> items, List<ItemStack> drops)
-    {
-        void Add(OverHorizon.Core.Registry.ResourceKey key, int min, int max)
-        {
-            var id = items.GetId(key);
-            var qty = min + (int)(NextRandom() % (uint)(max - min + 1));
-            if (id > 0 && qty > 0)
-            {
-                drops.Add(new ItemStack((ushort)id, qty));
-            }
-        }
-
-        switch (mob.Type)
-        {
-            case MobType.Pig:
-                Add(BuiltInItems.RawPorkchop, 1, 3);
-                break;
-            case MobType.Cow:
-                Add(BuiltInItems.RawBeef, 1, 3);
-                Add(BuiltInItems.Leather, 0, 2);
-                break;
-            case MobType.Sheep:
-                Add(BuiltInItems.RawMutton, 1, 2);
-                if (!mob.IsSheared)
-                {
-                    Add(OverHorizon.Core.Blocks.BuiltInBlocks.WhiteWool, 1, 1);
-                }
-
-                break;
-            case MobType.Chicken:
-                Add(BuiltInItems.RawChicken, 1, 1);
-                Add(BuiltInItems.Feather, 1, 2);
-                break;
-            case MobType.Zombie:
-                Add(BuiltInItems.RottenFlesh, 1, 2);
-                break;
-            case MobType.Skeleton:
-                Add(BuiltInItems.Bone, 1, 2);
-                break;
-            case MobType.Spider:
-                Add(BuiltInItems.String, 1, 2);
-                Add(BuiltInItems.SpiderEye, 0, 1);
-                break;
-            case MobType.Creeper:
-                Add(BuiltInItems.Gunpowder, 1, 2);
-                break;
-        }
-    }
-
-    private static bool TryIntersectRayBox(Vec3d origin, Vector3 dir, double maxDist, BoundingBox box, out double hitT)
-    {
-        hitT = 0.0;
-        var tMin = 0.0;
-        var tMax = maxDist;
-
-        if (!SlabAxis(origin.X, dir.X, box.MinX, box.MaxX, ref tMin, ref tMax) ||
-            !SlabAxis(origin.Y, dir.Y, box.MinY, box.MaxY, ref tMin, ref tMax) ||
-            !SlabAxis(origin.Z, dir.Z, box.MinZ, box.MaxZ, ref tMin, ref tMax))
-        {
-            return false;
-        }
-
-        hitT = Math.Max(0.0, tMin);
-        return hitT <= maxDist;
-    }
-
-    private static bool SlabAxis(double ro, double rd, double bMin, double bMax, ref double tMin, ref double tMax)
-    {
-        if (Math.Abs(rd) < 1e-8)
-        {
-            return ro >= bMin && ro <= bMax;
-        }
-
-        var inv = 1.0 / rd;
-        var t1 = (bMin - ro) * inv;
-        var t2 = (bMax - ro) * inv;
-        if (t1 > t2)
-        {
-            (t1, t2) = (t2, t1);
-        }
-
-        tMin = Math.Max(tMin, t1);
-        tMax = Math.Min(tMax, t2);
-        return tMin <= tMax;
     }
 
     private uint NextRandom()

@@ -4,8 +4,8 @@ using OverHorizon.Core.Math;
 namespace OverHorizon.Rendering.Hud;
 
 /// <summary>
-/// Per-frame dynamic 3D world overlays, <c>0..15</c> hand &amp; dynamic torch lighting, 3D mobs,
-/// container GUI state, and 2D menu state passed to <see cref="IRenderSubsystem"/>.
+/// Per-frame dynamic 3D world overlays, <c>0..15</c> hand &amp; offhand viewmodels, dynamic torch lighting,
+/// 3D mobs &amp; primed TNT, day/night sky state, container GUI state, and 2D menu state passed to <see cref="IRenderSubsystem"/>.
 /// </summary>
 public sealed record FrameOverlayState(
     BlockPos? TargetedBlock,
@@ -58,4 +58,23 @@ public sealed record FrameOverlayState(
     float FurnaceBurnNormalized = 0.0f,
     float FurnaceCookNormalized = 0.0f,
     IReadOnlyList<WorldMobVisual>? WorldMobs = null,
-    bool IsCreativeFlying = false);
+    bool IsCreativeFlying = false,
+    bool HeldIsShield = false,
+    bool OffhandIsEmpty = true,
+    bool OffhandIsBlock3D = false,
+    bool OffhandIsTorchStyle = false,
+    bool OffhandIsToolOrWeapon = false,
+    bool OffhandIsShield = false,
+    int OffhandTopTile = -1,
+    int OffhandSideTile = -1,
+    int OffhandFrontTile = -1,
+    int OffhandBottomTile = -1,
+    int OffhandItemSpriteTile = -1,
+    int OffhandCount = 0,
+    BoundingBox? TargetedSelectionBox = null,
+    long WorldTimeTicks = 1000,
+    IReadOnlyList<PrimedTntVisual>? PrimedTnts = null,
+    bool ShowInventoryPlayerModel = false,
+    Vector4 InventoryPlayerPreviewRect = default,
+    int CreativeSelectedTab = 0,
+    float CreativeScrollNormalized = 0.0f);

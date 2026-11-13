@@ -33,6 +33,35 @@ internal sealed class ClientContainerSlotController
     public CraftingGrid Grid3x3 { get; } = new(3, 3);
     public ItemStack CursorStack => _cursorStack;
 
+    public void ClearCursor() => _cursorStack = ItemStack.Empty;
+
+    public void PickOrPlaceCreativeCatalogItem(int catalogIndex, bool fullStack, ClientHotbar hotbar, GameMode mode)
+    {
+        var entry = hotbar.GetDetailedCatalogEntry(catalogIndex);
+        if (!_items.TryGet(entry.Key, out var itemDef))
+        {
+            hotbar.EquipPaletteBlock(catalogIndex);
+            return;
+        }
+
+        var itemId = _items.GetId(itemDef);
+        var count = fullStack ? itemDef.MaxStackSize : 1;
+        if (_cursorStack.IsEmpty)
+        {
+            _cursorStack = new ItemStack(itemId, count);
+        }
+        else if (_cursorStack.ItemId == itemId && !fullStack)
+        {
+            _cursorStack = new ItemStack(itemId, Math.Min(itemDef.MaxStackSize, _cursorStack.Count + 1));
+        }
+        else
+        {
+            _cursorStack = ItemStack.Empty;
+        }
+
+        hotbar.RefreshSlotVisuals(mode);
+    }
+
     public FurnaceBlockEntity? ActiveFurnace =>
         _openedFurnacePos is { } fp && _furnaces.TryGetValue(fp, out var fe) ? fe : null;
 

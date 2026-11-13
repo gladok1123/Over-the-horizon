@@ -13,21 +13,22 @@ using Silk.NET.Windowing;
 namespace OverHorizon.Rendering.Backends;
 
 /// <summary>
-/// Silk.NET OpenGL 3.3 Core Profile voxel chunk renderer with lazy window/context initialization,
-/// per-section VAO/VBO/EBO residency, camera-relative anti-jitter uniforms, frustum culling,
+/// Silk.NET OpenGL 3.3 Core Profile voxel chunk renderer with <see cref="ChunkPos"/>-indexed <see cref="GpuChunkColumn"/>
+/// <c>O(1)</c> residency, column-level spherical distance + frustum culling, dynamic Day/Sunset/Night sky &amp; held-torch lighting,
 /// and two-pass opaque + translucent drawing.
 /// </summary>
 public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
 {
-    private static readonly Vector3 DaySkyColor = new(0.49f, 0.69f, 0.98f);
-
     private readonly RenderingOptions _options;
     private readonly ILogger<SilkOpenGlRenderSubsystem> _logger;
-    private readonly Dictionary<SectionPos, SectionMeshData> _stagedMeshes = [];
-    private readonly Dictionary<SectionPos, GpuSectionBuffer> _gpuSections = [];
+    private readonly Dictionary<ChunkPos, Dictionary<int, SectionMeshData>> _stagedColumns = [];
+    private readonly Dictionary<ChunkPos, GpuChunkColumn> _gpuColumns = [];
     private readonly List<(GpuSectionBuffer Buffer, float DistanceSq)> _translucentSortScratch = [];
 
     private TextureAtlasData? _stagedAtlas;
+    private TextureAtlasData? _stagedEntityAtlas;
+    private int _stagedSectionCount;
+    private int _gpuSectionCount;
     private IWindow? _window;
     private IInputContext? _inputContext;
     private GL? _gl;
@@ -36,12 +37,6 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
     private long _frameCount;
     private bool _disposed;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="SilkOpenGlRenderSubsystem"/> class.
-    /// Does not create an OS window until <see cref="RunWindowLoop"/> is invoked.
-    /// </summary>
-    /// <param name="options">Rendering window and VSync configuration.</param>
-    /// <param name="logger">Structured logger.</param>
     public SilkOpenGlRenderSubsystem(RenderingOptions options, ILogger<SilkOpenGlRenderSubsystem> logger)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -57,20 +52,17 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
     public bool IsContextInitialized => _gl is not null && !_disposed;
 
     /// <inheritdoc />
-    public int UploadedSectionCount => IsContextInitialized ? _gpuSections.Count : _stagedMeshes.Count;
+    public int UploadedSectionCount => IsContextInitialized ? _gpuSectionCount : _stagedSectionCount;
 
     /// <inheritdoc />
     public RenderFrameMetrics LastFrameMetrics { get; private set; }
 
-    /// <summary>Gets the active Silk.NET input context while the window loop is running, or <see langword="null"/> prior to load.</summary>
     public IInputContext? InputContext => _inputContext;
 
-    /// <summary>Gets the current logical window pixel dimensions.</summary>
     public Vector2 WindowPixelSize => _window is { } w
         ? new Vector2(w.Size.X, w.Size.Y)
         : new Vector2(_options.WindowWidth, _options.WindowHeight);
 
-    /// <summary>Gets or sets the OS window title when a window is open.</summary>
     public string WindowTitle
     {
         get => _window?.Title ?? _options.WindowTitle;
@@ -83,7 +75,6 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         }
     }
 
-    /// <summary>Requests graceful closure of the active OS window, if open.</summary>
     public void RequestClose() => _window?.Close();
 
     /// <inheritdoc />
@@ -100,6 +91,16 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         }
     }
 
+    /// <summary>Uploads or replaces the <c>512x256</c> entity skin sheet (<c>steve.png</c> + 8 mobs).</summary>
+    public void UploadEntityAtlas(TextureAtlasData entityAtlas)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(entityAtlas);
+
+        _stagedEntityAtlas = entityAtlas;
+        _program?.UploadEntityAtlas(entityAtlas);
+    }
+
     /// <inheritdoc />
     public void UploadOrReplaceSectionMesh(SectionMeshData mesh)
     {
@@ -112,61 +113,59 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
             return;
         }
 
+        var chunkPos = new ChunkPos(mesh.SectionPosition.X, mesh.SectionPosition.Z);
         if (_gl is null)
         {
-            _stagedMeshes[mesh.SectionPosition] = mesh;
+            if (!_stagedColumns.TryGetValue(chunkPos, out var colMap))
+            {
+                colMap = [];
+                _stagedColumns[chunkPos] = colMap;
+            }
+
+            if (!colMap.ContainsKey(mesh.SectionPosition.Y))
+            {
+                _stagedSectionCount++;
+            }
+
+            colMap[mesh.SectionPosition.Y] = mesh;
             return;
         }
 
-        _stagedMeshes.Remove(mesh.SectionPosition);
+        RemoveStagedSection(mesh.SectionPosition);
         UploadMeshToGpu(_gl, mesh);
     }
 
     /// <inheritdoc />
     public void RemoveSectionMesh(SectionPos sectionPosition)
     {
-        _stagedMeshes.Remove(sectionPosition);
-        if (_gpuSections.Remove(sectionPosition, out var existing))
+        RemoveStagedSection(sectionPosition);
+        var chunkPos = new ChunkPos(sectionPosition.X, sectionPosition.Z);
+        if (_gpuColumns.TryGetValue(chunkPos, out var col))
         {
-            existing.Dispose();
+            _gpuSectionCount -= col.RemoveSection(sectionPosition.Y);
+            if (col.IsEmpty)
+            {
+                _gpuColumns.Remove(chunkPos);
+                col.Dispose();
+            }
         }
     }
 
     /// <inheritdoc />
     public void RemoveChunkMeshes(ChunkPos chunkPosition)
     {
-        RemoveMatchingColumn(_stagedMeshes, chunkPosition);
-
-        if (_gpuSections.Count == 0)
+        if (_stagedColumns.Remove(chunkPosition, out var stagedCol))
         {
-            return;
+            _stagedSectionCount -= stagedCol.Count;
         }
 
-        var keys = new List<SectionPos>();
-        foreach (var key in _gpuSections.Keys)
+        if (_gpuColumns.Remove(chunkPosition, out var gpuCol))
         {
-            if (key.X == chunkPosition.X && key.Z == chunkPosition.Z)
-            {
-                keys.Add(key);
-            }
-        }
-
-        foreach (var key in keys)
-        {
-            if (_gpuSections.Remove(key, out var buffer))
-            {
-                buffer.Dispose();
-            }
+            _gpuSectionCount -= gpuCol.Count;
+            gpuCol.Dispose();
         }
     }
 
-    /// <summary>
-    /// Opens the Silk.NET OpenGL 3.3 window and drives update/render callbacks until closed or cancelled.
-    /// </summary>
-    /// <param name="onUpdate">Per-frame simulation/input callback receiving delta seconds.</param>
-    /// <param name="onRender">Per-frame render callback receiving delta seconds.</param>
-    /// <param name="onResize">Optional framebuffer resize callback receiving new pixel width/height.</param>
-    /// <param name="cancellationToken">Cancellation token that requests window close when signalled.</param>
     public void RunWindowLoop(
         Action<double> onUpdate,
         Action<double> onRender,
@@ -226,8 +225,7 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         var prog = _program;
         var clampedSky = Math.Clamp(skyBrightness, 0.08f, 1.0f);
         var underwater = overlay?.IsUnderwater == true;
-        var baseSky = underwater ? new Vector3(0.03f, 0.21f, 0.44f) : DaySkyColor;
-        var skyColor = baseSky * clampedSky;
+        var skyColor = SilkOpenGlChunkPassDrawer.ComputeSkyAtmosphereColor(clampedSky, overlay?.WorldTimeTicks ?? 1000L, underwater);
 
         gl.ClearColor(skyColor.X, skyColor.Y, skyColor.Z, 1.0f);
         gl.Clear((uint)(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit));
@@ -245,18 +243,19 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         gl.Uniform1(prog.LocAtlas, 0);
         gl.Uniform1(prog.LocSkyBrightness, clampedSky);
         gl.Uniform1(prog.LocHeldTorchLight, overlay?.HeldTorchLightLevel ?? 0.0f);
-        gl.Uniform1(prog.LocFogStart, underwater ? 1.5f : camera.FarPlane * 0.65f);
-        gl.Uniform1(prog.LocFogEnd, underwater ? 24.0f : camera.FarPlane * 0.98f);
+        gl.Uniform1(prog.LocFogStart, underwater ? 1.5f : camera.FarPlane * 0.62f);
+        gl.Uniform1(prog.LocFogEnd, underwater ? 24.0f : camera.FarPlane * 0.96f);
         gl.Uniform3(prog.LocSkyColor, skyColor.X, skyColor.Y, skyColor.Z);
         gl.Uniform1(prog.LocUnderwater, underwater ? 1.0f : 0.0f);
 
         gl.ActiveTexture(TextureUnit.Texture0);
         gl.BindTexture(TextureTarget.Texture2D, prog.AtlasTexture);
 
-        var (visible, culled, drawCalls, triangles) = DrawOpaqueAndCollectTranslucent(gl, prog, in frustum, camera.Position);
-        var (transCalls, transTris) = DrawTranslucentPass(gl, prog, camera.Position);
+        var maxHorizDistSq = (camera.FarPlane + 24.0f) * (camera.FarPlane + 24.0f);
+        var (visible, culled, drawCalls, triangles) = SilkOpenGlChunkPassDrawer.DrawOpaqueAndCollectTranslucent(gl, prog, _gpuColumns, _translucentSortScratch, in frustum, camera.Position, maxHorizDistSq);
+        var (transCalls, transTris) = SilkOpenGlChunkPassDrawer.DrawTranslucentPass(gl, prog, _translucentSortScratch, camera.Position);
         var overlayCalls = (overlay is not null && _overlayRenderer is not null)
-            ? _overlayRenderer.RenderOverlays(camera, overlay, prog.AtlasTexture, _stagedAtlas)
+            ? _overlayRenderer.RenderOverlays(camera, overlay, prog.AtlasTexture, prog.EntityAtlasTexture, _stagedAtlas)
             : 0;
 
         gl.BindVertexArray(0);
@@ -279,118 +278,24 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         }
 
         ReleaseGpuResources();
-        _stagedMeshes.Clear();
+        _stagedColumns.Clear();
+        _stagedSectionCount = 0;
         _stagedAtlas = null;
+        _stagedEntityAtlas = null;
         _disposed = true;
     }
 
-    private static Vector3 ComputeCameraRelativeOffset(SectionPos sectionPos, Vec3d cameraPos) =>
-        new(
-            (float)((sectionPos.X * 16.0) - cameraPos.X),
-            (float)((sectionPos.Y * 16.0) - cameraPos.Y),
-            (float)((sectionPos.Z * 16.0) - cameraPos.Z));
-
-    private static void RemoveMatchingColumn<TValue>(Dictionary<SectionPos, TValue> map, ChunkPos chunkPos)
+    private void RemoveStagedSection(SectionPos sectionPos)
     {
-        if (map.Count == 0)
+        var chunkPos = new ChunkPos(sectionPos.X, sectionPos.Z);
+        if (_stagedColumns.TryGetValue(chunkPos, out var colMap) && colMap.Remove(sectionPos.Y))
         {
-            return;
-        }
-
-        var keys = new List<SectionPos>();
-        foreach (var key in map.Keys)
-        {
-            if (key.X == chunkPos.X && key.Z == chunkPos.Z)
+            _stagedSectionCount--;
+            if (colMap.Count == 0)
             {
-                keys.Add(key);
+                _stagedColumns.Remove(chunkPos);
             }
         }
-
-        foreach (var key in keys)
-        {
-            map.Remove(key);
-        }
-    }
-
-    private unsafe (int Visible, int Culled, int DrawCalls, int Triangles) DrawOpaqueAndCollectTranslucent(
-        GL gl,
-        SilkOpenGlProgramResources prog,
-        in Frustum frustum,
-        Vec3d cameraPos)
-    {
-        var visible = 0;
-        var culled = 0;
-        var drawCalls = 0;
-        var triangles = 0;
-
-        _translucentSortScratch.Clear();
-        gl.Disable(EnableCap.Blend);
-        gl.DepthMask(true);
-
-        foreach (var section in _gpuSections.Values)
-        {
-            if (!frustum.Intersects(section.WorldBounds))
-            {
-                culled++;
-                continue;
-            }
-
-            visible++;
-            var relOffset = ComputeCameraRelativeOffset(section.SectionPosition, cameraPos);
-
-            if (section.OpaqueIndexCount > 0)
-            {
-                gl.Uniform3(prog.LocSectionOffset, relOffset.X, relOffset.Y, relOffset.Z);
-                gl.BindVertexArray(section.OpaqueVao);
-                gl.DrawElements(PrimitiveType.Triangles, (uint)section.OpaqueIndexCount, DrawElementsType.UnsignedInt, null);
-                drawCalls++;
-                triangles += section.OpaqueIndexCount / 3;
-            }
-
-            if (section.TranslucentIndexCount > 0)
-            {
-                var centerOffset = relOffset + new Vector3(8.0f, 8.0f, 8.0f);
-                _translucentSortScratch.Add((section, centerOffset.LengthSquared()));
-            }
-        }
-
-        return (visible, culled, drawCalls, triangles);
-    }
-
-    private unsafe (int DrawCalls, int Triangles) DrawTranslucentPass(
-        GL gl,
-        SilkOpenGlProgramResources prog,
-        Vec3d cameraPos)
-    {
-        if (_translucentSortScratch.Count == 0)
-        {
-            return (0, 0);
-        }
-
-        _translucentSortScratch.Sort(static (a, b) => b.DistanceSq.CompareTo(a.DistanceSq));
-
-        gl.Disable(EnableCap.CullFace);
-        gl.Enable(EnableCap.Blend);
-        gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
-        gl.DepthMask(false);
-
-        var drawCalls = 0;
-        var triangles = 0;
-
-        foreach (var (section, _) in _translucentSortScratch)
-        {
-            var relOffset = ComputeCameraRelativeOffset(section.SectionPosition, cameraPos);
-            gl.Uniform3(prog.LocSectionOffset, relOffset.X, relOffset.Y, relOffset.Z);
-            gl.BindVertexArray(section.TranslucentVao);
-            gl.DrawElements(PrimitiveType.Triangles, (uint)section.TranslucentIndexCount, DrawElementsType.UnsignedInt, null);
-            drawCalls++;
-            triangles += section.TranslucentIndexCount / 3;
-        }
-
-        gl.DepthMask(true);
-        gl.Disable(EnableCap.Blend);
-        gl.Enable(EnableCap.CullFace);
-        return (drawCalls, triangles);
     }
 
     private void InitializeGlResources(GL gl, Vector2D<int> framebufferSize)
@@ -407,33 +312,44 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
             RenderingLog.AtlasUploaded(_logger, _stagedAtlas.Width, _stagedAtlas.Height, _stagedAtlas.TileSize);
         }
 
-        if (_stagedMeshes.Count > 0)
+        _stagedEntityAtlas ??= EntityTextureAtlasGenerator.CreateDefault();
+        _program.UploadEntityAtlas(_stagedEntityAtlas);
+
+        if (_stagedColumns.Count > 0)
         {
-            foreach (var mesh in _stagedMeshes.Values)
+            foreach (var colMap in _stagedColumns.Values)
             {
-                UploadMeshToGpu(gl, mesh);
+                foreach (var mesh in colMap.Values)
+                {
+                    UploadMeshToGpu(gl, mesh);
+                }
             }
 
-            _stagedMeshes.Clear();
+            _stagedColumns.Clear();
+            _stagedSectionCount = 0;
         }
     }
 
     private void UploadMeshToGpu(GL gl, SectionMeshData mesh)
     {
-        if (_gpuSections.Remove(mesh.SectionPosition, out var previous))
-        {
-            previous.Dispose();
-        }
-
         var opaquePass = SilkOpenGlProgramResources.CreatePassBuffers(gl, mesh.OpaqueVertices.Span, mesh.OpaqueIndices.Span);
         var transPass = SilkOpenGlProgramResources.CreatePassBuffers(gl, mesh.TranslucentVertices.Span, mesh.TranslucentIndices.Span);
 
-        _gpuSections[mesh.SectionPosition] = new GpuSectionBuffer(
+        var buffer = new GpuSectionBuffer(
             gl,
             mesh.SectionPosition,
             mesh.WorldBounds,
             opaquePass,
             transPass);
+
+        var chunkPos = new ChunkPos(mesh.SectionPosition.X, mesh.SectionPosition.Z);
+        if (!_gpuColumns.TryGetValue(chunkPos, out var col))
+        {
+            col = new GpuChunkColumn(chunkPos);
+            _gpuColumns[chunkPos] = col;
+        }
+
+        _gpuSectionCount += col.UpsertSection(buffer);
     }
 
     private RenderFrameMetrics SimulateCpuVisibilityPass(in Frustum frustum)
@@ -443,25 +359,28 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         var drawCalls = 0;
         var triangles = 0;
 
-        foreach (var mesh in _stagedMeshes.Values)
+        foreach (var colMap in _stagedColumns.Values)
         {
-            if (!frustum.Intersects(mesh.WorldBounds))
+            foreach (var mesh in colMap.Values)
             {
-                culled++;
-                continue;
-            }
+                if (!frustum.Intersects(mesh.WorldBounds))
+                {
+                    culled++;
+                    continue;
+                }
 
-            visible++;
-            if (!mesh.OpaqueIndices.IsEmpty)
-            {
-                drawCalls++;
-                triangles += mesh.OpaqueIndices.Length / 3;
-            }
+                visible++;
+                if (!mesh.OpaqueIndices.IsEmpty)
+                {
+                    drawCalls++;
+                    triangles += mesh.OpaqueIndices.Length / 3;
+                }
 
-            if (!mesh.TranslucentIndices.IsEmpty)
-            {
-                drawCalls++;
-                triangles += mesh.TranslucentIndices.Length / 3;
+                if (!mesh.TranslucentIndices.IsEmpty)
+                {
+                    drawCalls++;
+                    triangles += mesh.TranslucentIndices.Length / 3;
+                }
             }
         }
 
@@ -472,12 +391,13 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
 
     private void ReleaseGpuResources()
     {
-        foreach (var section in _gpuSections.Values)
+        foreach (var col in _gpuColumns.Values)
         {
-            section.Dispose();
+            col.Dispose();
         }
 
-        _gpuSections.Clear();
+        _gpuColumns.Clear();
+        _gpuSectionCount = 0;
         _overlayRenderer?.Dispose();
         _overlayRenderer = null;
         _program?.Dispose();

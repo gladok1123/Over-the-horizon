@@ -3,7 +3,7 @@ using OverHorizon.Core.Registry;
 namespace OverHorizon.Core.Blocks;
 
 /// <summary>
-/// Clean-room built-in block definitions for Over-the-Horizon: C# Edition (52 blocks).
+/// Clean-room built-in block definitions for Over-the-Horizon: C# Edition (67 blocks including Redstone, Pistons, Fire, and Beds).
 /// </summary>
 public static class BuiltInBlocks
 {
@@ -97,7 +97,7 @@ public static class BuiltInBlocks
     /// <summary>Key for <c>overhorizon:blue_wool</c>.</summary>
     public static readonly ResourceKey BlueWool = ResourceKey.OverHorizon("blue_wool");
 
-    /// <summary>Key for <c>overhorizon:torch</c> (emits block light 14).</summary>
+    /// <summary>Key for <c>overhorizon:torch</c> (emits block light 14; supports floor and wall attachment).</summary>
     public static readonly ResourceKey Torch = ResourceKey.OverHorizon("torch");
 
     /// <summary>Key for <c>overhorizon:lantern</c> (emits block light 15).</summary>
@@ -115,7 +115,7 @@ public static class BuiltInBlocks
     /// <summary>Key for <c>overhorizon:barrel</c>.</summary>
     public static readonly ResourceKey Barrel = ResourceKey.OverHorizon("barrel");
 
-    /// <summary>Key for <c>overhorizon:ladder</c> (climbable).</summary>
+    /// <summary>Key for <c>overhorizon:ladder</c> (wall-attached climbable).</summary>
     public static readonly ResourceKey Ladder = ResourceKey.OverHorizon("ladder");
 
     /// <summary>Key for <c>overhorizon:rail</c> (mineshaft track).</summary>
@@ -172,12 +172,70 @@ public static class BuiltInBlocks
     /// <summary>Key for <c>overhorizon:diamond_block</c>.</summary>
     public static readonly ResourceKey DiamondBlock = ResourceKey.OverHorizon("diamond_block");
 
+    /// <summary>Key for <c>overhorizon:redstone_wire</c> (<c>power = 0..15</c>).</summary>
+    public static readonly ResourceKey RedstoneWire = ResourceKey.OverHorizon("redstone_wire");
+
+    /// <summary>Key for <c>overhorizon:redstone_block</c> (constant signal 15).</summary>
+    public static readonly ResourceKey RedstoneBlock = ResourceKey.OverHorizon("redstone_block");
+
+    /// <summary>Key for <c>overhorizon:redstone_torch</c> (lit Redstone Torch, emits light 7 and signal 15).</summary>
+    public static readonly ResourceKey RedstoneTorch = ResourceKey.OverHorizon("redstone_torch");
+
+    /// <summary>Key for <c>overhorizon:redstone_torch_off</c> (inverted/unlit Redstone Torch).</summary>
+    public static readonly ResourceKey RedstoneTorchOff = ResourceKey.OverHorizon("redstone_torch_off");
+
+    /// <summary>Key for <c>overhorizon:lever</c> (toggleable signal 15).</summary>
+    public static readonly ResourceKey Lever = ResourceKey.OverHorizon("lever");
+
+    /// <summary>Key for <c>overhorizon:stone_button</c> (momentary signal 15).</summary>
+    public static readonly ResourceKey StoneButton = ResourceKey.OverHorizon("stone_button");
+
+    /// <summary>Key for <c>overhorizon:stone_pressure_plate</c> (entity-triggered signal 15).</summary>
+    public static readonly ResourceKey StonePressurePlate = ResourceKey.OverHorizon("stone_pressure_plate");
+
+    /// <summary>Key for <c>overhorizon:repeater</c> (directional diode &amp; amplifier).</summary>
+    public static readonly ResourceKey RedstoneRepeater = ResourceKey.OverHorizon("repeater");
+
+    /// <summary>Key for <c>overhorizon:redstone_lamp</c> (unlit Redstone Lamp).</summary>
+    public static readonly ResourceKey RedstoneLamp = ResourceKey.OverHorizon("redstone_lamp");
+
+    /// <summary>Key for <c>overhorizon:lit_redstone_lamp</c> (powered Redstone Lamp emitting light 15).</summary>
+    public static readonly ResourceKey LitRedstoneLamp = ResourceKey.OverHorizon("lit_redstone_lamp");
+
+    /// <summary>Key for <c>overhorizon:piston</c> (pushes up to 12 blocks).</summary>
+    public static readonly ResourceKey Piston = ResourceKey.OverHorizon("piston");
+
+    /// <summary>Key for <c>overhorizon:sticky_piston</c> (pushes up to 12 blocks and pulls 1 block).</summary>
+    public static readonly ResourceKey StickyPiston = ResourceKey.OverHorizon("sticky_piston");
+
+    /// <summary>Key for <c>overhorizon:piston_head</c> (extended Piston head).</summary>
+    public static readonly ResourceKey PistonHead = ResourceKey.OverHorizon("piston_head");
+
+    /// <summary>Key for <c>overhorizon:fire</c> (emits light 15; placed by Flint and Steel).</summary>
+    public static readonly ResourceKey Fire = ResourceKey.OverHorizon("fire");
+
+    /// <summary>Key for <c>overhorizon:red_bed</c> (sets respawn point and sleeps through night).</summary>
+    public static readonly ResourceKey RedBed = ResourceKey.OverHorizon("red_bed");
+
+    /// <summary>Key for <c>overhorizon:emerald_block</c>.</summary>
+    public static readonly ResourceKey EmeraldBlock = ResourceKey.OverHorizon("emerald_block");
+
+    /// <summary>Key for <c>overhorizon:lapis_block</c>.</summary>
+    public static readonly ResourceKey LapisBlock = ResourceKey.OverHorizon("lapis_block");
+
+    /// <summary>Key for <c>overhorizon:copper_block</c>.</summary>
+    public static readonly ResourceKey CopperBlock = ResourceKey.OverHorizon("copper_block");
+
     /// <summary>
     /// Registers all built-in blocks into an unfrozen <see cref="BlockRegistry"/>.
     /// </summary>
     public static void PopulateBuiltIns(BlockRegistry registry)
     {
         ArgumentNullException.ThrowIfNull(registry);
+
+        var attachFacing = new BlockProperty("facing", ["up", "north", "south", "west", "east"]);
+        var horizFacing = new BlockProperty("facing", ["north", "south", "west", "east"]);
+        var sixFacing = new BlockProperty("facing", ["north", "south", "west", "east", "up", "down"]);
 
         _ = registry.Register(new BlockDefinition(Air, isSolid: false, isOpaque: false, hardness: 0.0f));
         _ = registry.Register(new BlockDefinition(Stone, hardness: 1.5f));
@@ -213,18 +271,17 @@ public static class BuiltInBlocks
         _ = registry.Register(new BlockDefinition(CrimsonWool, hardness: 0.8f));
         _ = registry.Register(new BlockDefinition(Gravel, hardness: 0.6f));
         _ = registry.Register(new BlockDefinition(Obsidian, hardness: 12.0f));
-        _ = registry.Register(new BlockDefinition(Tnt, hardness: 0.1f));
+        _ = registry.Register(new BlockDefinition(Tnt, hardness: 0.05f));
         _ = registry.Register(new BlockDefinition(WhiteWool, hardness: 0.8f));
         _ = registry.Register(new BlockDefinition(BlueWool, hardness: 0.8f));
 
-        // v0.5.0-alpha Survival, Mineshaft, Lighting & Ore Expansion
-        _ = registry.Register(new BlockDefinition(Torch, isSolid: false, isOpaque: false, lightEmission: 14, hardness: 0.05f));
+        _ = registry.Register(new BlockDefinition(Torch, isSolid: false, isOpaque: false, lightEmission: 14, hardness: 0.05f, properties: [attachFacing]));
         _ = registry.Register(new BlockDefinition(Lantern, isSolid: true, isOpaque: false, lightEmission: 15, hardness: 0.5f));
         _ = registry.Register(new BlockDefinition(Furnace, hardness: 3.5f));
         _ = registry.Register(new BlockDefinition(LitFurnace, lightEmission: 13, hardness: 3.5f));
         _ = registry.Register(new BlockDefinition(Chest, hardness: 2.5f));
         _ = registry.Register(new BlockDefinition(Barrel, hardness: 2.5f));
-        _ = registry.Register(new BlockDefinition(Ladder, isSolid: false, isOpaque: false, hardness: 0.4f));
+        _ = registry.Register(new BlockDefinition(Ladder, isSolid: false, isOpaque: false, hardness: 0.4f, properties: [horizFacing]));
         _ = registry.Register(new BlockDefinition(Rail, isSolid: false, isOpaque: false, hardness: 0.5f));
         _ = registry.Register(new BlockDefinition(Cobweb, isSolid: false, isOpaque: false, hardness: 2.5f));
         _ = registry.Register(new BlockDefinition(OakFence, isSolid: true, isOpaque: false, hardness: 2.0f));
@@ -244,6 +301,26 @@ public static class BuiltInBlocks
         _ = registry.Register(new BlockDefinition(IronBlock, hardness: 5.0f));
         _ = registry.Register(new BlockDefinition(GoldBlock, hardness: 3.0f));
         _ = registry.Register(new BlockDefinition(DiamondBlock, hardness: 5.0f));
+
+        // v0.6.0-alpha Redstone, Pistons, Fire, Beds & Extra Mineral Blocks
+        _ = registry.Register(new BlockDefinition(RedstoneWire, isSolid: false, isOpaque: false, hardness: 0.05f, properties: [BlockProperty.IntegerRange("power", 0, 15)]));
+        _ = registry.Register(new BlockDefinition(RedstoneBlock, hardness: 5.0f));
+        _ = registry.Register(new BlockDefinition(RedstoneTorch, isSolid: false, isOpaque: false, lightEmission: 7, hardness: 0.05f, properties: [attachFacing]));
+        _ = registry.Register(new BlockDefinition(RedstoneTorchOff, isSolid: false, isOpaque: false, lightEmission: 0, hardness: 0.05f, properties: [attachFacing]));
+        _ = registry.Register(new BlockDefinition(Lever, isSolid: false, isOpaque: false, hardness: 0.5f, properties: [BlockProperty.Boolean("powered"), attachFacing]));
+        _ = registry.Register(new BlockDefinition(StoneButton, isSolid: false, isOpaque: false, hardness: 0.5f, properties: [BlockProperty.Boolean("powered"), attachFacing]));
+        _ = registry.Register(new BlockDefinition(StonePressurePlate, isSolid: false, isOpaque: false, hardness: 0.5f, properties: [BlockProperty.Boolean("powered")]));
+        _ = registry.Register(new BlockDefinition(RedstoneRepeater, isSolid: false, isOpaque: false, hardness: 0.1f, properties: [horizFacing, BlockProperty.IntegerRange("delay", 1, 4), BlockProperty.Boolean("powered")]));
+        _ = registry.Register(new BlockDefinition(RedstoneLamp, hardness: 0.3f));
+        _ = registry.Register(new BlockDefinition(LitRedstoneLamp, lightEmission: 15, hardness: 0.3f));
+        _ = registry.Register(new BlockDefinition(Piston, isSolid: true, isOpaque: false, hardness: 1.5f, properties: [sixFacing, BlockProperty.Boolean("extended")]));
+        _ = registry.Register(new BlockDefinition(StickyPiston, isSolid: true, isOpaque: false, hardness: 1.5f, properties: [sixFacing, BlockProperty.Boolean("extended")]));
+        _ = registry.Register(new BlockDefinition(PistonHead, isSolid: true, isOpaque: false, hardness: 1.5f, properties: [sixFacing, BlockProperty.Boolean("sticky")]));
+        _ = registry.Register(new BlockDefinition(Fire, isSolid: false, isOpaque: false, lightEmission: 15, hardness: 0.02f));
+        _ = registry.Register(new BlockDefinition(RedBed, isSolid: true, isOpaque: false, hardness: 0.2f, properties: [horizFacing, new BlockProperty("part", ["foot", "head"])]));
+        _ = registry.Register(new BlockDefinition(EmeraldBlock, hardness: 5.0f));
+        _ = registry.Register(new BlockDefinition(LapisBlock, hardness: 3.0f));
+        _ = registry.Register(new BlockDefinition(CopperBlock, hardness: 3.0f));
     }
 
     /// <summary>Creates, populates, and freezes the default <see cref="BlockRegistry"/>.</summary>

@@ -10,19 +10,11 @@ using OverHorizon.World;
 namespace OverHorizon.Server;
 
 /// <summary>
-/// Registers standard built-in administrative and diagnostic slash-commands (<c>/seed</c>, <c>/tp</c>, <c>/setblock</c>, <c>/op</c>).
+/// Registers built-in administrative, gameplay, and day/night slash-commands
+/// (<c>/time</c>, <c>/seed</c>, <c>/tp</c>, <c>/setblock</c>, <c>/op</c>, <c>/help</c>).
 /// </summary>
 public static class BuiltInServerCommands
 {
-    /// <summary>
-    /// Registers built-in commands into <paramref name="dispatcher"/>.
-    /// </summary>
-    /// <param name="dispatcher">Target command dispatcher.</param>
-    /// <param name="world">World subsystem.</param>
-    /// <param name="gameplay">Gameplay subsystem.</param>
-    /// <param name="registries">Frozen domain registries.</param>
-    /// <param name="playBridge">Player session bridge.</param>
-    /// <param name="broadcasterResolver">Lazy resolver for <see cref="INetworkBroadcaster"/>.</param>
     public static void RegisterAll(
         ICommandDispatcher dispatcher,
         IWorldSubsystem world,
@@ -37,6 +29,58 @@ public static class BuiltInServerCommands
         ArgumentNullException.ThrowIfNull(registries);
         ArgumentNullException.ThrowIfNull(playBridge);
         ArgumentNullException.ThrowIfNull(broadcasterResolver);
+
+        dispatcher.Register(new CommandRegistration(
+            Name: "help",
+            Description: "Lists available slash-commands.",
+            Usage: "/help",
+            RequiredPermission: PermissionLevel.Everyone,
+            Executor: (ctx, _) =>
+            {
+                ctx.Sender.Reply("Commands: /time set <day|noon|sunset|night|midnight|ticks>, /time add <ticks>, /seed, /tp <x> <y> <z>, /setblock <x> <y> <z> <block>, /op <user>");
+                return ValueTask.FromResult(true);
+            }));
+
+        dispatcher.Register(new CommandRegistration(
+            Name: "time",
+            Description: "Queries or sets the server day/night time.",
+            Usage: "/time <set|add|query> [day|noon|sunset|night|midnight|ticks]",
+            RequiredPermission: PermissionLevel.Everyone,
+            Executor: (ctx, _) =>
+            {
+                if (ctx.Arguments.Count == 0 || string.Equals(ctx.Arguments[0], "query", StringComparison.OrdinalIgnoreCase))
+                {
+                    ctx.Sender.Reply($"The time is {playBridge.WorldTime.TimeOfDay.ToString(CultureInfo.InvariantCulture)} (Day {playBridge.WorldTime.DayNumber.ToString(CultureInfo.InvariantCulture)}).");
+                    return ValueTask.FromResult(true);
+                }
+
+                if (ctx.Arguments.Count >= 2 && string.Equals(ctx.Arguments[0], "set", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!WorldTimeCycle.TryParseTimeSpec(ctx.Arguments[1], out var targetTicks))
+                    {
+                        ctx.Sender.Reply("Usage: /time set <day|noon|sunset|night|midnight|ticks>");
+                        return ValueTask.FromResult(false);
+                    }
+
+                    playBridge.WorldTime.SetTime(targetTicks);
+                    broadcasterResolver().BroadcastToPlaySessions(new WorldTimeUpdatePacket(playBridge.WorldTime.TotalTicks));
+                    ctx.Sender.Reply($"Set the time to {targetTicks.ToString(CultureInfo.InvariantCulture)}.");
+                    return ValueTask.FromResult(true);
+                }
+
+                if (ctx.Arguments.Count >= 2 &&
+                    string.Equals(ctx.Arguments[0], "add", StringComparison.OrdinalIgnoreCase) &&
+                    long.TryParse(ctx.Arguments[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var delta))
+                {
+                    playBridge.WorldTime.AddTime(delta);
+                    broadcasterResolver().BroadcastToPlaySessions(new WorldTimeUpdatePacket(playBridge.WorldTime.TotalTicks));
+                    ctx.Sender.Reply($"Added {delta.ToString(CultureInfo.InvariantCulture)} to the time (now {playBridge.WorldTime.TimeOfDay.ToString(CultureInfo.InvariantCulture)}).");
+                    return ValueTask.FromResult(true);
+                }
+
+                ctx.Sender.Reply("Usage: /time <set|add|query> [value]");
+                return ValueTask.FromResult(false);
+            }));
 
         dispatcher.Register(new CommandRegistration(
             Name: "seed",
@@ -149,36 +193,7 @@ public static class BuiltInServerCommands
                     return ValueTask.FromResult(false);
                 }
 
-                ctx.Sender.Reply($"Made {targetName} a server operator.");
-                return ValueTask.FromResult(true);
-            }));
-
-        dispatcher.Register(new CommandRegistration(
-            Name: "pvp",
-            Description: "Enables or disables multiplayer PvP combat.",
-            Usage: "/pvp <on|off>",
-            RequiredPermission: PermissionLevel.Everyone,
-            Executor: (ctx, _) =>
-            {
-                if (ctx.Arguments.Count == 1)
-                {
-                    var arg = ctx.Arguments[0].ToUpperInvariant();
-                    if (arg is "ON" or "TRUE" or "1")
-                    {
-                        playBridge.IsPvpEnabled = true;
-                    }
-                    else if (arg is "OFF" or "FALSE" or "0")
-                    {
-                        playBridge.IsPvpEnabled = false;
-                    }
-                }
-                else
-                {
-                    playBridge.IsPvpEnabled = !playBridge.IsPvpEnabled;
-                }
-
-                var stateLabel = playBridge.IsPvpEnabled ? "ENABLED" : "DISABLED";
-                broadcasterResolver().BroadcastToPlaySessions(new SystemChatPacket($"[Server] PvP combat is now {stateLabel}."));
+                ctx.Sender.Reply($"Opped {targetName}.");
                 return ValueTask.FromResult(true);
             }));
     }

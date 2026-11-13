@@ -44,7 +44,7 @@ jobs:
         run: |
           set -o pipefail
           dotnet build OverHorizon.sln --configuration Release --no-restore -warnaserror 2>&1 | tee build.log || {
-            grep -E "error [A-Z0-9]+:" build.log | sed -E 's#^.*/src/#src/#; s#^.*/tests/#tests/#' | awk '!seen[$0]++' | head -n 10 | while IFS= read -r line; do
+            grep -E "error [A-Z0-9]+:" build.log | sed -E 's#^.*/src/#src/#; s#^.*/tests/#tests/#' | awk '!seen[$0]++' | head -n 15 | while IFS= read -r line; do
               echo "::notice::BUILD_ERR: ${line}"
             done
             echo "### Build Errors (${{ matrix.os }})" >> "$GITHUB_STEP_SUMMARY"
@@ -59,7 +59,7 @@ jobs:
         run: |
           set -o pipefail
           dotnet test tests/OverHorizon.Tests/OverHorizon.Tests.csproj --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" 2>&1 | tee test.log || {
-            grep -E "Failed |Error Message:|Expected |Stack Trace:|at OverHorizon" test.log | head -n 20 | while IFS= read -r line; do
+            grep -E "Failed |Error Message:|Expected |Stack Trace:|at OverHorizon" test.log | head -n 25 | while IFS= read -r line; do
               echo "::error::${line}"
             done
             echo "### Test Failures (${{ matrix.os }})" >> "$GITHUB_STEP_SUMMARY"
@@ -105,35 +105,48 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Package self-contained builds (Windows, Linux, macOS)
+      - name: Package clean single-file builds (Windows, Linux, macOS)
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p release-zips
           for rid in win-x64 linux-x64 osx-arm64 osx-x64; do
-            pkg_name="OverHorizon-v0.5.0-alpha-${rid}"
+            pkg_name="OverHorizon-v0.6.0-alpha-${rid}"
             stage_dir="stage/${pkg_name}"
-            mkdir -p "${stage_dir}"
-
-            dotnet publish src/OverHorizon.Server/OverHorizon.Server.csproj \
-              -c Release -r "${rid}" --self-contained true \
-              -p:DebugType=None -p:DebugSymbols=false \
-              -o "${stage_dir}"
+            mkdir -p "${stage_dir}/server" "${stage_dir}/tools" "${stage_dir}/saves" "${stage_dir}/resourcepacks"
 
             dotnet publish src/OverHorizon.Client/OverHorizon.Client.csproj \
               -c Release -r "${rid}" --self-contained true \
+              -p:PublishSingleFile=true \
+              -p:IncludeNativeLibrariesForSelfExtract=true \
+              -p:EnableCompressionInSingleFile=true \
               -p:DebugType=None -p:DebugSymbols=false \
               -o "${stage_dir}"
 
-            cp scripts/HOW-TO-PLAY-RU.txt "${stage_dir}/"
+            dotnet publish src/OverHorizon.Server/OverHorizon.Server.csproj \
+              -c Release -r "${rid}" --self-contained true \
+              -p:PublishSingleFile=true \
+              -p:IncludeNativeLibrariesForSelfExtract=true \
+              -p:EnableCompressionInSingleFile=true \
+              -p:DebugType=None -p:DebugSymbols=false \
+              -o "${stage_dir}/server"
+
+            cp scripts/HOW-TO-PLAY-RU.txt "${stage_dir}/HOW-TO-PLAY-RU.txt"
             if [[ "${rid}" == "win-x64" ]]; then
-              cp scripts/*.bat scripts/*.ps1 "${stage_dir}/"
+              cp scripts/Play-OverHorizon.bat "${stage_dir}/PLAY-GAME.bat"
+              cp scripts/Start-Server.bat "${stage_dir}/server/Start-Server.bat"
+              cp scripts/Join-Friend-Server.bat scripts/Download-Real-Assets.bat scripts/Download-Real-Assets.ps1 "${stage_dir}/tools/"
             else
-              cp scripts/*.sh "${stage_dir}/"
-              chmod +x "${stage_dir}"/*.sh "${stage_dir}"/*.bat 2>/dev/null || true
-              chmod +x "${stage_dir}/OverHorizon.Server" "${stage_dir}/OverHorizon.Client"
+              cp scripts/play-overhorizon.sh "${stage_dir}/PLAY-GAME.sh"
+              cp scripts/start-server.sh "${stage_dir}/server/start-server.sh"
+              cp scripts/join-friend-server.sh scripts/Download-Real-Assets.sh "${stage_dir}/tools/"
+              chmod +x "${stage_dir}/PLAY-GAME.sh" "${stage_dir}/OverHorizon.Client" \
+                       "${stage_dir}/server/start-server.sh" "${stage_dir}/server/OverHorizon.Server" \
+                       "${stage_dir}/tools/"*.sh
             fi
 
+            echo "=== Root layout for ${pkg_name} ==="
+            ls -la "${stage_dir}"
             (cd stage && zip -r -q "../release-zips/${pkg_name}.zip" "${pkg_name}")
           done
           ls -lh release-zips/
@@ -141,18 +154,18 @@ jobs:
       - name: Upload Playable Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: OverHorizon-v0.5.0-alpha-playable-builds
+          name: OverHorizon-v0.6.0-alpha-playable-builds
           path: release-zips/*.zip
           retention-days: 30
 
-      - name: Publish or Update GitHub Pre-Release v0.5.0-alpha
+      - name: Publish or Update GitHub Pre-Release v0.6.0-alpha
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="v0.5.0-alpha"
-          NOTES=$'### Over-the-Horizon: C# EDITION (`v0.5.0-alpha`) — 64 чанка без лагов, оригинальный GUI `23w13a__or__b`, полёт в Креативе, 3D-предметы, Верстак 3x3 + Печь, Пещеры + Шахты, Освещение `0..15` и 8 видов 3D-мобов!\n\nГотовые самодостаточные сборки (**установка .NET не требуется!**):\n- **Windows 10/11 (x64)**: `OverHorizon-v0.5.0-alpha-win-x64.zip`\n- **Linux (x86_64)**: `OverHorizon-v0.5.0-alpha-linux-x64.zip`\n- **macOS Apple Silicon (M1–M4)**: `OverHorizon-v0.5.0-alpha-osx-arm64.zip`\n- **macOS Intel (x64)**: `OverHorizon-v0.5.0-alpha-osx-x64.zip`\n\n#### Что нового в `v0.5.0-alpha`:\n1. **Оригинальные GUI-текстуры и виджеты `23w13a__or__b`**: автоматическое скачивание и компоновка `icons.png`, `widgets.png`, `slider.png`, `inventory.png`, `crafting_table.png`, `furnace.png` и `container_27.png` в текстурный атлас `512x768`, плюс настоящие перетягиваемые ползунки (`FOV`, `Render Distance 2..64`, `Volume`, `Sensitivity`).\n2. **Дальность прорисовки до 64 чанков без фризов**: приоритетная концентрическая подгрузка от ближайших к игроку чанков + неблокирующая фоновая очередь мешинга с лимитом загрузки в GPU за кадр.\n3. **Чёткая физика без «льда» и полёт в Креативе**: убрано скольжение после отпускания `WASD`, добавлен свободный полёт в Креативе (двойной `Пробел` или клавиша `F`, взлёт на `Пробел`, снижение на `C`/`Ctrl`).\n4. **Настоящая 3D-модель блоков и предметов в руке**: текстурированные 3D-блоки, факелы и объёмные пиксель-арт инструменты/мечи в правой руке с живым освещением мира.\n5. **Оригинальный инвентарь Выживания (`2x2`), Верстак (`3x3`), Печь, 52 блока и 102 предмета**: курсорное перетаскивание стаков (ЛКМ/ПКМ/`Shift`+клик), 4 слота брони с защитой на HUD, 60+ рецептов крафта (`2x2` и `3x3`), плавка руд и еды в Печи (`Furnace` -> `LitFurnace`).\n6. **Богатая генерация мира**: 3D-пещеры (сырные гроты и спагетти-туннели), глубинный сланец (`Deepslate` ниже `Y=8`), жилы 7 руд по высотам, заброшенные шахты (`Mineshafts` с дубовыми подпорками, рельсами, паутиной и факелами) и дубово-берёзовые леса.\n7. **Настоящее освещение `0..15` и динамический факел в руке**: раздельные каналы `SkyLight` и `BlockLight` (в пещерах темно без факелов!), тёплый оранжевый свет факелов/фонарей/печей + динамическая подсветка стен вокруг игрока с факелом/фонарём в руке.\n8. **8 видов 3D-мобов (мирные и враждебные)**: Свинья, Корова, Овца (стрижётся ножницами!), Курица, Зомби, Скелет, Паук и Крипер (шипит, мигает и взрывается!) с анимацией лап, ИИ и дропом.'
+          TAG="v0.6.0-alpha"
+          NOTES=$'### Over-the-Horizon: C# EDITION (`v0.6.0-alpha`) — Чистая структура релиза в 1 файл, Выбор и создание миров, Редстоун и Поршни, Вторая рука (Offhand), Трещины на блоках, Физика TNT/Песка/Воды, Смена дня и ночи, Консоль команд, Кровати и Оригинальные модели `23w13a__or__b`!\n\nГотовые самодостаточные сборки (**установка .NET не требуется, без сотен лишних `.dll` — один чистый исполняемый файл в корне!**):\n- **Windows 10/11 (x64)**: `OverHorizon-v0.6.0-alpha-win-x64.zip` -> запускайте сразу `OverHorizon.Client.exe` или `PLAY-GAME.bat`\n- **Linux (x86_64)**: `OverHorizon-v0.6.0-alpha-linux-x64.zip` -> `./OverHorizon.Client` или `./PLAY-GAME.sh`\n- **macOS Apple Silicon (M1–M4)**: `OverHorizon-v0.6.0-alpha-osx-arm64.zip` -> `./OverHorizon.Client` или `./PLAY-GAME.sh`\n- **macOS Intel (x64)**: `OverHorizon-v0.6.0-alpha-osx-x64.zip` -> `./OverHorizon.Client` или `./PLAY-GAME.sh`\n\n#### Все 22 улучшения и исправления в `v0.6.0-alpha`:\n1. **Чистая структура релиза**: в корне архива только `OverHorizon.Client(.exe)` и `PLAY-GAME`, а сервер, сохранения и утилиты аккуратно разложены по папкам `server/`, `saves/`, `resourcepacks/`, `tools/`.\n2. **Оптимизация рендера и 0 микрофризов при ломании блоков**: генерация и освещение чанков вынесены в фоновый пул потоков, добавлено Copy-on-Write кэширование секций, локальный пересчёт света `±15` и мгновенный ремеш одной секции.\n3. **Правильный хват инструментов и Вторая рука (Offhand на `F`)**: исправлена ориентация мечей/кирок/топоров от 1-го лица (рукоять в ладони, лезвие вперёд-вверх), добавлен слот второй руки (`F`) на HUD и в левой части экрана (факелы, щит, еда, блоки).\n4. **Рабочий Редстоун и Поршни**: редстоун-пыль (`0..15`), блок редстоуна, факел-инвертор, рычаг, каменная кнопка, нажимная плита, повторитель, лампа, обычный и липкий поршни (толкают до 12 блоков и тянут назад!).\n5. **Выбор и создание миров (`Singleplayer`)**: список миров из `./saves/` и экран создания нового мира (имя, `Survival`/`Creative`, кастомный или случайный `Seed`).\n6. **Настоящие звуки `23w13a__or__b` + новая озвучка воды и мобов**: оригинальные `.ogg` звуки шагов, копания, еды, поршней, огнива, шипения и взрыва TNT, всех 8 мобов и воды (`enter`, `exit`, `splash`, `swim`, подводный эмбиент).\n7. **Все базовые рецепты крафта**: редстоун-механизмы, поршни, кровать, TNT, огниво, щит, ножницы, ведро, книги, книжные полки, бумага, хлеб, золотое яблоко, песчаник, каменные кирпичи, шерсть и полный набор брони/инструментов.\n8. **Оригинальный Креативный инвентарь**: вкладки категорий (`tab_items.png`, `tabs.png`), живой поиск предметов (`tab_item_search.png`), вкладка выживания с 3D-моделью игрока и слот удаления предметов (`Delete Item`).\n9. **Тёплый динамический свет от факела в любой руке**: плавное освещение стен и пещер от факела, фонаря или светокамня в основной или левой руке.\n10. **Взмах рукой в воздухе**: клик ЛКМ по воздуху проигрывает полноценную анимацию удара рукой/оружием.\n11. **Трещины разрушения прямо на блоках (`destroy_stage_0..9`)**: 2D-полоска ломания удалена с экрана — трещины рисуются прямо на гранях ломаемого 3D-блока.\n12. **Оригинальный логотип, подзаголовок и панорама в главном меню**: баннер `title/minecraft.png` + `edition.png` над живым воксельным ландшафтом.\n13. **Исправлены факелы и лестницы**: точный sub-voxel рейкаст (факелы и лестницы легко выделяются и ломаются), лестницы ставятся строго на вертикальные стены вплотную, факелы ставятся на пол или под наклоном на стену и выпадают при разрушении опоры.\n14. **Физика песка/гравия и растекание воды**: песок и гравий падают вниз без опоры, вода растекается по уровням `0..7` и убывает при удалении источника.\n15. **Зомби и Скелеты горят на солнце**: нежить загорается с пламенем под открытым дневным небом и тушится в воде или в тени.\n16. **Консоль команд (`/` или `T`) и цикл дня/заката/ночи**: `/time set day|noon|sunset|night|midnight`, `/time add`, `/gamemode`, `/tp`, `/give`, `/clear`, `/kill`, `/summon`, `/seed`, `/help`.\n17. **Оригинальные UV-модели мобов и видимый 3D-Стив в инвентаре**: текстуры `steve.png`, `pig`, `cow`, `sheep`, `chicken`, `zombie`, `skeleton`, `spider`, `creeper` и `bed/red.png` из `23w13a__or__b`, а 3D-модель Стива в окне инвентаря следит головой за курсором.\n18. **Доработанный голод (`Hunger + Saturation + Exhaustion`)**: истощение от бега/прыжков/боя/копания, регенерация от насыщения, запрет спринта при `<= 6` и урон от голода на `0`.\n19. **Сон и Кровати (`Red Bed`)**: крафт и установка 3D-кровати, точка возрождения, проверка ночи и монстров рядом, пропуск ночи до утра.\n20. **Рост травы на земле**: дёрн постепенно разрастается на освещённые блоки земли и отмирает под непрозрачными блоками.\n21. **Огниво (`Flint & Steel`) и физический взрыв `TNT`**: поджиг огня и динамита с прыгающей мигающей 3D-сущностью `PrimedTnt`, шипением фитиля, цепной детонацией, кратером по взрывоустойчивости и взрывной волной.\n22. **Оптимизация мультиплеера**: дельта-фильтрация пакетов движения, пакетная рассылка взрывов/редстоуна (`MultiBlockUpdatePacket`) и синхронизация мирового времени (`WorldTimeUpdatePacket`).'
           if gh release view "${TAG}" >/dev/null 2>&1; then
             gh release upload "${TAG}" release-zips/*.zip --clobber
             gh release edit "${TAG}" --notes "${NOTES}"
@@ -160,6 +173,6 @@ jobs:
             gh release create "${TAG}" release-zips/*.zip \
               --target "${GITHUB_SHA}" \
               --prerelease \
-              --title "Over-the-Horizon: C# EDITION — v0.5.0-alpha" \
+              --title "Over-the-Horizon: C# EDITION — v0.6.0-alpha" \
               --notes "${NOTES}"
           fi

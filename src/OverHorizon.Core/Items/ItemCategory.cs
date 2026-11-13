@@ -11,12 +11,15 @@ public enum ItemCategory : byte
     /// <summary>Natural terrain, flora, logs, leaves, and mineral ores.</summary>
     NaturalBlocks = 1,
 
-    /// <summary>Utility, light-emitting, crafting, and explosive blocks.</summary>
+    /// <summary>Utility, light-emitting, crafting, beds, and explosive blocks.</summary>
     FunctionalBlocks = 2,
 
-    /// <summary>PvP melee weapons, harvesting tools, shears, and igniters.</summary>
+    /// <summary>PvP melee weapons, harvesting tools, armor, shields, shears, and igniters.</summary>
     CombatAndTools = 3,
 
     /// <summary>Edible food items, fluid buckets, and crafting materials/ingots.</summary>
     FoodAndMaterials = 4,
+
+    /// <summary>Redstone dust, torches, repeaters, levers, buttons, pressure plates, lamps, and pistons.</summary>
+    Redstone = 5,
 }

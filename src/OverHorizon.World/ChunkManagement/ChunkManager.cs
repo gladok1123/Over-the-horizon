@@ -105,11 +105,15 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
 
         var lx = worldPos.SectionLocalX;
         var lz = worldPos.SectionLocalZ;
+        var oldStopY = column.GetHeight(HeightmapType.LightBlocking, lx, lz);
         var previous = column.SetBlockState(lx, worldPos.Y, lz, newState, _registries.Blocks);
         if (previous != newState)
         {
+            var newStopY = column.GetHeight(HeightmapType.LightBlocking, lx, lz);
+            var minBandY = Math.Max(EngineConstants.WorldMinY, Math.Min(worldPos.Y, Math.Min(oldStopY, newStopY)) - 16);
+            var maxBandY = Math.Min(EngineConstants.WorldMaxY - 1, Math.Max(worldPos.Y, Math.Max(oldStopY, newStopY)) + 16);
             column.LastModifiedTick = tickNumber;
-            RefreshColumnAndBorderNeighbors(chunkPos, column);
+            RefreshColumnAndBorderNeighbors(chunkPos, column, minBandY, maxBandY);
         }
 
         return true;
@@ -362,24 +366,24 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
         ringScratch.Add(pos);
     }
 
-    private void RefreshColumnAndBorderNeighbors(ChunkPos centerPos, ChunkColumn center)
+    private void RefreshColumnAndBorderNeighbors(ChunkPos centerPos, ChunkColumn center, int minBandY, int maxBandY)
     {
         _ = _loadedChunks.TryGetValue(new ChunkPos(centerPos.X, centerPos.Z - 1).PackInt64(), out var north);
         _ = _loadedChunks.TryGetValue(new ChunkPos(centerPos.X, centerPos.Z + 1).PackInt64(), out var south);
         _ = _loadedChunks.TryGetValue(new ChunkPos(centerPos.X - 1, centerPos.Z).PackInt64(), out var west);
         _ = _loadedChunks.TryGetValue(new ChunkPos(centerPos.X + 1, centerPos.Z).PackInt64(), out var east);
 
-        LightingEngine.RefreshChunkLight(center, _registries.Blocks);
-        _ = LightingEngine.PropagateCrossChunkLight(center, north, south, west, east, _registries.Blocks);
+        LightingEngine.RefreshChunkLightBand(center, minBandY, maxBandY, _registries.Blocks);
+        _ = LightingEngine.PropagateCrossChunkLightBand(center, north, south, west, east, minBandY, maxBandY, _registries.Blocks);
         _publishedSnapshots[centerPos.PackInt64()] = center.CreateSnapshot();
 
-        PropagateIntoNeighbor(north, centerPos.X, centerPos.Z - 1);
-        PropagateIntoNeighbor(south, centerPos.X, centerPos.Z + 1);
-        PropagateIntoNeighbor(west, centerPos.X - 1, centerPos.Z);
-        PropagateIntoNeighbor(east, centerPos.X + 1, centerPos.Z);
+        PropagateIntoNeighbor(north, centerPos.X, centerPos.Z - 1, minBandY, maxBandY);
+        PropagateIntoNeighbor(south, centerPos.X, centerPos.Z + 1, minBandY, maxBandY);
+        PropagateIntoNeighbor(west, centerPos.X - 1, centerPos.Z, minBandY, maxBandY);
+        PropagateIntoNeighbor(east, centerPos.X + 1, centerPos.Z, minBandY, maxBandY);
     }
 
-    private void PropagateIntoNeighbor(ChunkColumn? neighbor, int nx, int nz)
+    private void PropagateIntoNeighbor(ChunkColumn? neighbor, int nx, int nz, int minBandY, int maxBandY)
     {
         if (neighbor is null)
         {
@@ -391,8 +395,8 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
         _ = _loadedChunks.TryGetValue(new ChunkPos(nx - 1, nz).PackInt64(), out var nw);
         _ = _loadedChunks.TryGetValue(new ChunkPos(nx + 1, nz).PackInt64(), out var ne);
 
-        LightingEngine.RefreshChunkLight(neighbor, _registries.Blocks);
-        _ = LightingEngine.PropagateCrossChunkLight(neighbor, nn, ns, nw, ne, _registries.Blocks);
+        LightingEngine.RefreshChunkLightBand(neighbor, minBandY, maxBandY, _registries.Blocks);
+        _ = LightingEngine.PropagateCrossChunkLightBand(neighbor, nn, ns, nw, ne, minBandY, maxBandY, _registries.Blocks);
         _publishedSnapshots[new ChunkPos(nx, nz).PackInt64()] = neighbor.CreateSnapshot();
     }
 

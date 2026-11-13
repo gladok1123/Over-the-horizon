@@ -13,4 +13,5 @@ public readonly record struct WorldMobVisual(
     float HurtFlash = 0.0f,
     float CreeperFuse = 0.0f,
     bool IsSheared = false,
-    float LightBrightness = 1.0f);
+    float LightBrightness = 1.0f,
+    bool IsOnFire = false);

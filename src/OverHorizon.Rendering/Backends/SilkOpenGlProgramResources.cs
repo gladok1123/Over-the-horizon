@@ -6,13 +6,14 @@ using Silk.NET.OpenGL;
 namespace OverHorizon.Rendering.Backends;
 
 /// <summary>
-/// Manages OpenGL 3.3 shader compilation, uniform locations, texture atlas upload,
+/// Manages OpenGL 3.3 shader compilation, uniform locations, block &amp; entity texture atlas uploads,
 /// and per-pass VAO/VBO/EBO creation for <see cref="SilkOpenGlRenderSubsystem"/>.
 /// </summary>
 internal sealed class SilkOpenGlProgramResources : IDisposable
 {
     private readonly GL _gl;
     private uint _atlasTexture;
+    private uint _entityAtlasTexture;
     private bool _disposed;
 
     public SilkOpenGlProgramResources(GL gl)
@@ -23,6 +24,7 @@ internal sealed class SilkOpenGlProgramResources : IDisposable
         LocSectionOffset = gl.GetUniformLocation(ProgramHandle, "uSectionOffset");
         LocAtlas = gl.GetUniformLocation(ProgramHandle, "uAtlas");
         LocSkyBrightness = gl.GetUniformLocation(ProgramHandle, "uSkyBrightness");
+        LocHeldTorchLight = gl.GetUniformLocation(ProgramHandle, "uHeldTorchLight");
         LocFogStart = gl.GetUniformLocation(ProgramHandle, "uFogStart");
         LocFogEnd = gl.GetUniformLocation(ProgramHandle, "uFogEnd");
         LocSkyColor = gl.GetUniformLocation(ProgramHandle, "uSkyColor");
@@ -32,6 +34,8 @@ internal sealed class SilkOpenGlProgramResources : IDisposable
     public uint ProgramHandle { get; }
 
     public uint AtlasTexture => _atlasTexture;
+
+    public uint EntityAtlasTexture => _entityAtlasTexture;
 
     public int LocViewProjection { get; }
 
@@ -82,16 +86,12 @@ internal sealed class SilkOpenGlProgramResources : IDisposable
 
         gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, stride, (void*)0);
         gl.EnableVertexAttribArray(0);
-
         gl.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false, stride, (void*)(3 * sizeof(float)));
         gl.EnableVertexAttribArray(1);
-
         gl.VertexAttribPointer(2, 1, VertexAttribPointerType.Float, false, stride, (void*)(5 * sizeof(float)));
         gl.EnableVertexAttribArray(2);
-
         gl.VertexAttribPointer(3, 1, VertexAttribPointerType.Float, false, stride, (void*)(6 * sizeof(float)));
         gl.EnableVertexAttribArray(3);
-
         gl.VertexAttribPointer(4, 1, VertexAttribPointerType.Float, false, stride, (void*)(7 * sizeof(float)));
         gl.EnableVertexAttribArray(4);
 
@@ -99,15 +99,46 @@ internal sealed class SilkOpenGlProgramResources : IDisposable
         return (vao, vbo, ebo, indices.Length);
     }
 
-    public unsafe void UploadAtlas(TextureAtlasData atlas)
+    public void UploadAtlas(TextureAtlasData atlas) => UploadNearestRgbaTexture(ref _atlasTexture, TextureUnit.Texture0, atlas);
+
+    public void UploadEntityAtlas(TextureAtlasData entityAtlas) => UploadNearestRgbaTexture(ref _entityAtlasTexture, TextureUnit.Texture2, entityAtlas);
+
+    public void Dispose()
     {
-        if (_atlasTexture == 0)
+        if (_disposed)
         {
-            _atlasTexture = _gl.GenTexture();
+            return;
         }
 
-        _gl.ActiveTexture(TextureUnit.Texture0);
-        _gl.BindTexture(TextureTarget.Texture2D, _atlasTexture);
+        if (_atlasTexture != 0)
+        {
+            _gl.DeleteTexture(_atlasTexture);
+            _atlasTexture = 0;
+        }
+
+        if (_entityAtlasTexture != 0)
+        {
+            _gl.DeleteTexture(_entityAtlasTexture);
+            _entityAtlasTexture = 0;
+        }
+
+        if (ProgramHandle != 0)
+        {
+            _gl.DeleteProgram(ProgramHandle);
+        }
+
+        _disposed = true;
+    }
+
+    private unsafe void UploadNearestRgbaTexture(ref uint handle, TextureUnit unit, TextureAtlasData atlas)
+    {
+        if (handle == 0)
+        {
+            handle = _gl.GenTexture();
+        }
+
+        _gl.ActiveTexture(unit);
+        _gl.BindTexture(TextureTarget.Texture2D, handle);
 
         var pixels = atlas.RgbaPixels.Span;
         fixed (byte* ptr = pixels)
@@ -128,27 +159,6 @@ internal sealed class SilkOpenGlProgramResources : IDisposable
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.ClampToEdge);
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Nearest);
         _gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Nearest);
-    }
-
-    public void Dispose()
-    {
-        if (_disposed)
-        {
-            return;
-        }
-
-        if (_atlasTexture != 0)
-        {
-            _gl.DeleteTexture(_atlasTexture);
-            _atlasTexture = 0;
-        }
-
-        if (ProgramHandle != 0)
-        {
-            _gl.DeleteProgram(ProgramHandle);
-        }
-
-        _disposed = true;
     }
 
     private static uint CreateChunkShaderProgram(GL gl)

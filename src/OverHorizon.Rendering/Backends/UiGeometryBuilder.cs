@@ -8,8 +8,8 @@ namespace OverHorizon.Rendering.Backends;
 
 /// <summary>
 /// Pure CPU screen-space UI batch builder rendering real <c>23w13a__or__b</c> GUI elements
-/// (<c>widgets.png</c> hotbar/buttons/sliders, <c>icons.png</c> HUD, <c>container/inventory.png</c> <c>2x2</c> crafting,
-/// <c>container/crafting_table.png</c> <c>3x3</c> crafting, <c>container/furnace.png</c> smelting, and floating cursor stacks).
+/// (<c>widgets.png</c> hotbar/offhand/buttons/sliders, <c>icons.png</c> HUD, <c>container/*.png</c>,
+/// <c>creative_inventory/*.png</c>, Title emblem, World Selection/Creation, and floating cursor stacks).
 /// </summary>
 public static class UiGeometryBuilder
 {
@@ -31,40 +31,27 @@ public static class UiGeometryBuilder
 
         if (state.Mode == UiOverlayMode.TitleMenu)
         {
-            BuildTitleScreen(vertices, width, height, state);
+            UiTitleAndCreativeScreenBuilder.BuildTitleScreen(vertices, width, height, state);
+            return;
+        }
+
+        if (state.Mode is UiOverlayMode.WorldSelectMenu or UiOverlayMode.CreateWorldMenu)
+        {
+            UiTitleAndCreativeScreenBuilder.BuildDirtMenuBackdrop(vertices, width, height);
+            BuildModalMenuLabelsAndButtons(vertices, width, height, state);
             return;
         }
 
         UiSurvivalHudBuilder.BuildUnderwaterAndHurtScreenTint(vertices, width, height, state);
         BuildProjectedNametags(vertices, camera, width, height, state.RemotePlayers);
         BuildInGameHud(vertices, width, height, state);
-        if (state.Mode != UiOverlayMode.InGame) BuildModalOverlay(vertices, width, height, state);
+        if (state.Mode != UiOverlayMode.InGame)
+        {
+            BuildModalOverlay(vertices, width, height, state);
+        }
     }
 
-    private static float MeasureText(ReadOnlySpan<char> text, float scale) => text.Length * 8.0f * scale;
-
-    private static void BuildTitleScreen(List<TexturedUiVertex> v, float width, float height, FrameOverlayState state)
-    {
-        DrawRect(v, 0, 0, width, height, new Vector4(0.05f, 0.07f, 0.12f, 0.34f));
-        var cx = width * 0.5f;
-        var bannerY = MathF.Max(46.0f, height * 0.11f);
-        var title = string.IsNullOrEmpty(state.MenuTitle) ? "OVER THE HORIZON" : state.MenuTitle;
-        DrawCenteredText(v, title, cx + 4.0f, bannerY + 4.0f, 5.0f, new Vector4(0.14f, 0.14f, 0.16f, 0.95f), shadow: false);
-        DrawCenteredText(v, title, cx, bannerY, 5.0f, new Vector4(0.92f, 0.93f, 0.96f, 1.0f), shadow: true);
-        var sub = string.IsNullOrEmpty(state.MenuSubtitle) ? "C# EDITION" : state.MenuSubtitle;
-        DrawCenteredText(v, sub, cx, bannerY + 48.0f, 2.75f, new Vector4(0.45f, 0.88f, 1.0f, 1.0f), shadow: true);
-
-        if (!string.IsNullOrEmpty(state.SplashText))
-            DrawCenteredText(v, state.SplashText, cx + 150.0f, bannerY + 76.0f, 1.6f, new Vector4(1.0f, 0.92f, 0.20f, 1.0f), shadow: true);
-
-        DrawButtons(v, state.Buttons);
-        if (!string.IsNullOrEmpty(state.StatusMessage))
-            DrawCenteredText(v, state.StatusMessage, cx, height - 64.0f, 1.6f, new Vector4(1.0f, 0.72f, 0.42f, 1.0f), shadow: true);
-
-        DrawText(v, "Over-the-Horizon v0.5.0-alpha (C# / .NET 9)", 14.0f, height - 24.0f, 1.5f, new Vector4(0.88f, 0.90f, 0.94f, 0.90f), shadow: true);
-        const string rightNote = "Clean-Room Engine - Not affiliated with Mojang";
-        DrawText(v, rightNote, width - MeasureText(rightNote, 1.5f) - 14.0f, height - 24.0f, 1.5f, new Vector4(0.82f, 0.84f, 0.88f, 0.85f), shadow: true);
-    }
+    internal static float MeasureText(ReadOnlySpan<char> text, float scale) => text.Length * 8.0f * scale;
 
     private static void BuildModalOverlay(List<TexturedUiVertex> v, float width, float height, FrameOverlayState state)
     {
@@ -87,7 +74,6 @@ public static class UiGeometryBuilder
         }
 
         DrawRect(v, 0, 0, width, height, new Vector4(0.03f, 0.04f, 0.07f, 0.72f));
-        var cx = width * 0.5f;
 
         if (state.Mode is UiOverlayMode.SurvivalInventory or UiOverlayMode.CraftingTableScreen or UiOverlayMode.FurnaceScreen)
         {
@@ -97,26 +83,31 @@ public static class UiGeometryBuilder
 
         if (state.Mode == UiOverlayMode.BlockInventory)
         {
-            BuildCreativeCatalogScreen(v, cx, height, state);
-            DrawButtons(v, state.Buttons);
+            UiTitleAndCreativeScreenBuilder.BuildCreativeInventoryScreen(v, width, height, state);
             return;
         }
 
+        BuildModalMenuLabelsAndButtons(v, width, height, state);
+    }
+
+    private static void BuildModalMenuLabelsAndButtons(List<TexturedUiVertex> v, float width, float height, FrameOverlayState state)
+    {
+        var cx = width * 0.5f;
         if (!string.IsNullOrEmpty(state.MenuTitle))
         {
-            DrawCenteredText(v, state.MenuTitle, cx, MathF.Max(42.0f, height * 0.11f), 3.0f, Vector4.One, shadow: true);
+            DrawCenteredText(v, state.MenuTitle, cx, 24.0f, 2.7f, Vector4.One, shadow: true);
         }
 
         if (!string.IsNullOrEmpty(state.MenuSubtitle))
         {
-            DrawCenteredText(v, state.MenuSubtitle, cx, MathF.Max(78.0f, height * 0.17f), 1.7f, new Vector4(0.75f, 0.84f, 0.95f, 0.95f), shadow: true);
+            DrawCenteredText(v, state.MenuSubtitle, cx, 56.0f, 1.55f, new Vector4(0.80f, 0.88f, 0.96f, 0.95f), shadow: true);
         }
 
         DrawButtons(v, state.Buttons);
 
         if (!string.IsNullOrEmpty(state.StatusMessage))
         {
-            DrawCenteredText(v, state.StatusMessage, cx, height - 56.0f, 1.7f, new Vector4(1.0f, 0.82f, 0.36f, 1.0f), shadow: true);
+            DrawCenteredText(v, state.StatusMessage, cx, height - 30.0f, 1.55f, new Vector4(1.0f, 0.84f, 0.42f, 1.0f), shadow: true);
         }
     }
 
@@ -125,11 +116,20 @@ public static class UiGeometryBuilder
         var (winX, winY, winW, winH) = UiGuiSpriteHelper.DrawContainerWindow(v, width, height, state);
         const float s = UiGuiSpriteHelper.ContainerGuiScale;
 
-        // Authentic Minecraft dark-gray container section labels directly on the stone-gray window
         var labelCol = new Vector4(0.25f, 0.25f, 0.25f, 1.0f);
-        if (state.Mode == UiOverlayMode.SurvivalInventory) DrawText(v, "Crafting", winX + (97.0f * s), winY + (6.0f * s), 1.55f, labelCol, shadow: false);
-        else if (state.Mode == UiOverlayMode.CraftingTableScreen) DrawText(v, "Crafting", winX + (29.0f * s), winY + (6.0f * s), 1.55f, labelCol, shadow: false);
-        else if (state.Mode == UiOverlayMode.FurnaceScreen) DrawText(v, "Furnace", winX + (62.0f * s), winY + (6.0f * s), 1.55f, labelCol, shadow: false);
+        if (state.Mode == UiOverlayMode.SurvivalInventory)
+        {
+            DrawText(v, "Crafting", winX + (97.0f * s), winY + (6.0f * s), 1.55f, labelCol, shadow: false);
+        }
+        else if (state.Mode == UiOverlayMode.CraftingTableScreen)
+        {
+            DrawText(v, "Crafting", winX + (29.0f * s), winY + (6.0f * s), 1.55f, labelCol, shadow: false);
+        }
+        else if (state.Mode == UiOverlayMode.FurnaceScreen)
+        {
+            DrawText(v, "Furnace", winX + (62.0f * s), winY + (6.0f * s), 1.55f, labelCol, shadow: false);
+        }
+
         DrawText(v, "Inventory", winX + (8.0f * s), winY + (73.0f * s), 1.55f, labelCol, shadow: false);
 
         string? hoveredTitle = null;
@@ -164,7 +164,6 @@ public static class UiGeometryBuilder
 
         DrawButtons(v, state.Buttons);
 
-        // Floating item stack held on the mouse cursor (authentic Minecraft drag-and-place!)
         if (state.CursorItemTile >= 0 && state.CursorItemCount > 0)
         {
             const float curSize = 44.0f;
@@ -188,7 +187,7 @@ public static class UiGeometryBuilder
         }
     }
 
-    private static void DrawMinecraftTooltipBox(List<TexturedUiVertex> v, float x, float y, float maxScreenW, string title, string? detail)
+    internal static void DrawMinecraftTooltipBox(List<TexturedUiVertex> v, float x, float y, float maxScreenW, string title, string? detail)
     {
         var w1 = MeasureText(title, 1.55f);
         var w2 = string.IsNullOrEmpty(detail) ? 0.0f : MeasureText(detail, 1.3f);
@@ -203,55 +202,6 @@ public static class UiGeometryBuilder
         if (!string.IsNullOrEmpty(detail))
         {
             DrawText(v, detail, clampedX + 8.0f, clampedY + 23.0f, 1.3f, new Vector4(0.68f, 0.68f, 0.96f, 0.98f), shadow: true);
-        }
-    }
-
-    private static void BuildCreativeCatalogScreen(List<TexturedUiVertex> v, float cx, float height, FrameOverlayState state)
-    {
-        const float panelW = 760.0f;
-        var panelH = MathF.Min(540.0f, height - 90.0f);
-        var panelX = cx - (panelW * 0.5f);
-        var panelY = MathF.Max(34.0f, (height - panelH) * 0.44f);
-
-        DrawRect(v, panelX - 2.0f, panelY - 2.0f, panelW + 4.0f, panelH + 4.0f, new Vector4(0.16f, 0.16f, 0.18f, 0.98f));
-        DrawRect(v, panelX, panelY, panelW, panelH, new Vector4(0.76f, 0.76f, 0.78f, 0.98f));
-        DrawText(v, state.MenuTitle, panelX + 18.0f, panelY + 14.0f, 2.0f, new Vector4(0.22f, 0.22f, 0.24f, 1.0f), shadow: false);
-
-        var searchBoxX = panelX + panelW - 270.0f;
-        var searchBoxY = panelY + 10.0f;
-        DrawRect(v, searchBoxX - 2.0f, searchBoxY - 2.0f, 254.0f, 30.0f, new Vector4(0.32f, 0.32f, 0.36f, 0.98f));
-        DrawRect(v, searchBoxX, searchBoxY, 250.0f, 26.0f, new Vector4(0.06f, 0.06f, 0.08f, 0.98f));
-        var queryText = string.IsNullOrEmpty(state.CreativeSearchQuery) ? "Search items..." : state.CreativeSearchQuery + "_";
-        var queryCol = string.IsNullOrEmpty(state.CreativeSearchQuery) ? new Vector4(0.60f, 0.62f, 0.66f, 0.95f) : new Vector4(1.0f, 0.96f, 0.58f, 1.0f);
-        DrawText(v, queryText, searchBoxX + 8.0f, searchBoxY + 6.0f, 1.6f, queryCol, shadow: true);
-
-        string? hoveredTitle = null;
-        string? hoveredDetail = null;
-        if (state.InventoryCells is { Count: > 0 } cells)
-        {
-            for (var i = 0; i < cells.Count; i++)
-            {
-                var cell = cells[i];
-                var slotFrame = cell.IsSelected ? new Vector4(0.18f, 0.68f, 0.28f, 1.0f) : new Vector4(0.34f, 0.34f, 0.36f, 1.0f);
-                DrawRect(v, cell.X - 2.0f, cell.Y - 2.0f, cell.Size + 4.0f, cell.Size + 4.0f, slotFrame);
-                DrawRect(v, cell.X, cell.Y, cell.Size, cell.Size, new Vector4(0.54f, 0.54f, 0.56f, 1.0f));
-                if (cell.AtlasTileIndex >= 0)
-                {
-                    UiSurvivalHudBuilder.DrawAtlasSprite(v, cell.AtlasTileIndex, cell.X + 4.0f, cell.Y + 4.0f, cell.Size - 8.0f, Vector4.One);
-                }
-
-                if (cell.IsHovered)
-                {
-                    DrawRect(v, cell.X, cell.Y, cell.Size, cell.Size, new Vector4(1.0f, 1.0f, 1.0f, 0.35f));
-                    hoveredTitle = cell.DisplayName;
-                    hoveredDetail = cell.TooltipDetail;
-                }
-            }
-        }
-
-        if (hoveredTitle is not null)
-        {
-            DrawMinecraftTooltipBox(v, state.CursorScreenPos.X + 14.0f, state.CursorScreenPos.Y - 12.0f, cx * 2.0f, hoveredTitle, hoveredDetail);
         }
     }
 
@@ -270,7 +220,6 @@ public static class UiGeometryBuilder
         var counts = state.HotbarSlotCounts.Span;
         if (!colors.IsEmpty)
         {
-            // Authentic 182x22 hotbar from widgets.png scaled 3.0x = 546x66!
             const float hbScale = 2.8f;
             const float barW = 182.0f * hbScale;
             const float barH = 22.0f * hbScale;
@@ -279,13 +228,7 @@ public static class UiGeometryBuilder
 
             UiSurvivalHudBuilder.BuildSurvivalBarsAndMiningProgress(v, width, height, barX, barW, barY, state);
 
-            UiGuiSpriteHelper.DrawGuiSubRect(
-                v,
-                GuiTextureAtlasGenerator.WidgetsOriginX,
-                GuiTextureAtlasGenerator.WidgetsOriginY,
-                0, 0, 182, 22,
-                barX, barY, barW, barH,
-                Vector4.One);
+            UiGuiSpriteHelper.DrawGuiSubRect(v, GuiTextureAtlasGenerator.WidgetsOriginX, GuiTextureAtlasGenerator.WidgetsOriginY, 0, 0, 182, 22, barX, barY, barW, barH, Vector4.One);
 
             var sel = Math.Clamp(state.SelectedHotbarSlot, 0, 8);
             UiGuiSpriteHelper.DrawGuiSubRect(
@@ -346,11 +289,7 @@ public static class UiGeometryBuilder
             for (var i = 0; i < lines.Length; i++)
             {
                 var line = lines[i].TrimEnd('\r');
-                if (line.Length == 0)
-                {
-                    continue;
-                }
-
+                if (line.Length == 0) continue;
                 var w = MeasureText(line, 1.5f);
                 DrawRect(v, 10.0f, y - 2.0f, w + 10.0f, 16.0f, new Vector4(0.06f, 0.07f, 0.09f, 0.62f));
                 DrawText(v, line, 15.0f, y, 1.5f, new Vector4(0.92f, 0.96f, 1.0f, 0.98f), shadow: true);
@@ -361,16 +300,13 @@ public static class UiGeometryBuilder
         {
             var creativeBadge = state.IsCreativeFlying ? "[CREATIVE - FLYING]" : "[CREATIVE]";
             var modeBadge = state.IsSurvivalMode ? "[SURVIVAL]" : creativeBadge;
-            DrawText(v, $"{modeBadge} E: Inv | F: Fly (Creative) | F4: Mode | Shift: Sprint | Esc: Settings", 12.0f, 12.0f, 1.35f, new Vector4(0.92f, 0.95f, 1.0f, 0.80f), shadow: true);
+            DrawText(v, $"{modeBadge} E: Inv | F: Offhand | G/2xSpace: Fly | /: Cmds | Esc: Menu", 12.0f, 12.0f, 1.35f, new Vector4(0.92f, 0.95f, 1.0f, 0.80f), shadow: true);
         }
     }
 
     private static void BuildProjectedNametags(List<TexturedUiVertex> v, FirstPersonCamera camera, float width, float height, IReadOnlyList<RemotePlayerAvatar> players)
     {
-        if (players.Count == 0)
-        {
-            return;
-        }
+        if (players.Count == 0) return;
 
         var vp = camera.BuildCameraRelativeViewProjectionMatrix();
         for (var i = 0; i < players.Count; i++)
@@ -378,17 +314,11 @@ public static class UiGeometryBuilder
             var p = players[i];
             var relHead = new Vector3((float)(p.FeetPosition.X - camera.Position.X), (float)(p.FeetPosition.Y + 2.12 - camera.Position.Y), (float)(p.FeetPosition.Z - camera.Position.Z));
             var clip = Vector4.Transform(new Vector4(relHead, 1.0f), vp);
-            if (clip.W <= 0.1f)
-            {
-                continue;
-            }
+            if (clip.W <= 0.1f) continue;
 
             var ndcX = clip.X / clip.W;
             var ndcY = clip.Y / clip.W;
-            if (MathF.Abs(ndcX) > 1.05f || MathF.Abs(ndcY) > 1.05f)
-            {
-                continue;
-            }
+            if (MathF.Abs(ndcX) > 1.05f || MathF.Abs(ndcY) > 1.05f) continue;
 
             var sx = (ndcX + 1.0f) * 0.5f * width;
             var sy = (1.0f - ndcY) * 0.5f * height;
@@ -405,12 +335,9 @@ public static class UiGeometryBuilder
         }
     }
 
-    private static void DrawButtons(List<TexturedUiVertex> v, IReadOnlyList<UiButtonItem>? buttons)
+    internal static void DrawButtons(List<TexturedUiVertex> v, IReadOnlyList<UiButtonItem>? buttons)
     {
-        if (buttons is null)
-        {
-            return;
-        }
+        if (buttons is null) return;
 
         for (var i = 0; i < buttons.Count; i++)
         {
@@ -421,7 +348,7 @@ public static class UiGeometryBuilder
                 DrawRect(v, b.X - 2.0f, b.Y - 2.0f, b.Width + 4.0f, b.Height + 4.0f, border);
                 DrawRect(v, b.X, b.Y, b.Width, b.Height, new Vector4(0.0f, 0.0f, 0.0f, 0.96f));
                 var display = b.IsFocused ? b.Label + "_" : b.Label;
-                DrawText(v, display, b.X + 10.0f, b.Y + ((b.Height - 16.0f) * 0.5f), 2.0f, Vector4.One, shadow: true);
+                DrawText(v, display, b.X + 10.0f, b.Y + ((b.Height - 16.0f) * 0.5f), 1.85f, Vector4.One, shadow: true);
                 continue;
             }
 
@@ -434,16 +361,16 @@ public static class UiGeometryBuilder
                 UiGuiSpriteHelper.DrawStoneButton(v, in b);
             }
 
-            var scale = b.Height <= 32.0f ? 1.45f : 1.9f;
-            var textCol = b.IsHovered ? new Vector4(1.0f, 1.0f, 0.62f, 1.0f) : new Vector4(0.95f, 0.96f, 0.98f, 1.0f);
+            var scale = b.Height <= 34.0f ? 1.45f : 1.80f;
+            var textCol = (b.IsHovered || b.IsFocused) ? new Vector4(1.0f, 1.0f, 0.62f, 1.0f) : new Vector4(0.95f, 0.96f, 0.98f, 1.0f);
             DrawCenteredText(v, b.Label, b.X + (b.Width * 0.5f), b.Y + ((b.Height - (8.0f * scale)) * 0.5f), scale, textCol, shadow: true);
         }
     }
 
-    private static void DrawCenteredText(List<TexturedUiVertex> v, ReadOnlySpan<char> text, float centerX, float y, float scale, Vector4 color, bool shadow) =>
+    internal static void DrawCenteredText(List<TexturedUiVertex> v, ReadOnlySpan<char> text, float centerX, float y, float scale, Vector4 color, bool shadow) =>
         DrawText(v, text, MathF.Round(centerX - (MeasureText(text, scale) * 0.5f)), MathF.Round(y), scale, color, shadow);
 
-    private static void DrawText(List<TexturedUiVertex> v, ReadOnlySpan<char> text, float x, float y, float scale, Vector4 color, bool shadow)
+    internal static void DrawText(List<TexturedUiVertex> v, ReadOnlySpan<char> text, float x, float y, float scale, Vector4 color, bool shadow)
     {
         var step = 8.0f * scale;
         if (shadow)
@@ -464,11 +391,7 @@ public static class UiGeometryBuilder
 
     private static void EmitGlyphQuad(List<TexturedUiVertex> v, int cellIndex, float x, float y, float size, Vector4 color)
     {
-        if (cellIndex == ' ')
-        {
-            return;
-        }
-
+        if (cellIndex == ' ') return;
         var col = cellIndex & 15;
         var row = cellIndex >> 4;
         var u0 = (col * 8.0f) / PixelFontGlyphs.AtlasWidth;
@@ -478,7 +401,7 @@ public static class UiGeometryBuilder
         EmitQuad(v, x, y, size, size, new Vector2(u0, v0), new Vector2(u1, v0), new Vector2(u1, v1), new Vector2(u0, v1), color);
     }
 
-    private static void DrawRect(List<TexturedUiVertex> v, float x, float y, float w, float h, Vector4 color) =>
+    internal static void DrawRect(List<TexturedUiVertex> v, float x, float y, float w, float h, Vector4 color) =>
         EmitQuad(v, x, y, w, h, WhiteUv, WhiteUv, WhiteUv, WhiteUv, color);
 
     private static void EmitQuad(List<TexturedUiVertex> v, float x, float y, float w, float h, Vector2 uv0, Vector2 uv1, Vector2 uv2, Vector2 uv3, Vector4 color)

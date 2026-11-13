@@ -230,6 +230,23 @@ public sealed class JavaProtocolCodec : IProtocolCodec
                 PacketBufferWriter.WriteBool(destination, combat.TargetDied);
                 break;
 
+            case MultiBlockUpdatePacket multiBlock:
+                PacketBufferWriter.WriteVarInt(destination, 0x0A);
+                PacketBufferWriter.WriteVarInt(destination, multiBlock.Updates.Count);
+                for (var i = 0; i < multiBlock.Updates.Count; i++)
+                {
+                    var (pos, stateId) = multiBlock.Updates[i];
+                    PacketBufferWriter.WriteBlockPos(destination, pos);
+                    PacketBufferWriter.WriteVarInt(destination, stateId);
+                }
+
+                break;
+
+            case WorldTimeUpdatePacket worldTime:
+                PacketBufferWriter.WriteVarInt(destination, 0x0B);
+                PacketBufferWriter.WriteInt64(destination, worldTime.WorldTimeTicks);
+                break;
+
             default:
                 throw new ProtocolException($"Unsupported clientbound packet type '{packet.GetType().Name}'.");
         }
@@ -278,6 +295,8 @@ public sealed class JavaProtocolCodec : IProtocolCodec
                 reader.ReadFloat32()),
             (ConnectionState.Play, 0x08) => new RemotePlayerDespawnPacket(reader.ReadVarLong()),
             (ConnectionState.Play, 0x09) => DecodeCombatEvent(ref reader),
+            (ConnectionState.Play, 0x0A) => DecodeMultiBlockUpdate(ref reader),
+            (ConnectionState.Play, 0x0B) => new WorldTimeUpdatePacket(reader.ReadInt64()),
             _ => throw new ProtocolException($"Unknown clientbound packet ID 0x{packetId:X2} in state {state}."),
         };
 
@@ -410,5 +429,29 @@ public sealed class JavaProtocolCodec : IProtocolCodec
         }
 
         return new EntityCombatEventPacket(targetId, attackerId, health, new Vec3d(kx, ky, kz), died);
+    }
+
+    private static MultiBlockUpdatePacket DecodeMultiBlockUpdate(ref PacketSpanReader reader)
+    {
+        var count = reader.ReadVarInt();
+        if ((uint)count > 8192U)
+        {
+            throw new ProtocolException($"MultiBlockUpdatePacket count {count} exceeds maximum.");
+        }
+
+        var list = new (BlockPos Position, ushort BlockStateId)[count];
+        for (var i = 0; i < count; i++)
+        {
+            var pos = reader.ReadBlockPos();
+            var stateId = reader.ReadVarInt();
+            if ((uint)stateId > ushort.MaxValue)
+            {
+                throw new ProtocolException($"Invalid BlockStateId {stateId} in MultiBlockUpdatePacket.");
+            }
+
+            list[i] = (pos, (ushort)stateId);
+        }
+
+        return new MultiBlockUpdatePacket(list);
     }
 }

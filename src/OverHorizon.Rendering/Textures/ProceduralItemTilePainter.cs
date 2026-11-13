@@ -308,6 +308,82 @@ internal static class ProceduralItemTilePainter
         }
     }
 
+    public static void PaintShield(byte[] atlas, ushort tile)
+    {
+        ClearTile(atlas, tile);
+        for (var y = 2; y <= 13; y++)
+        {
+            for (var x = 4; x <= 11; x++)
+            {
+                var border = x == 4 || x == 11 || y == 2 || y == 13 || (x is 7 or 8 && y is 7 or 8);
+                if (border) SetPx(atlas, tile, x, y, 168, 174, 184);
+                else SetPx(atlas, tile, x, y, 164, 122, 72);
+            }
+        }
+    }
+
+    public static void PaintBedItem(byte[] atlas, ushort tile)
+    {
+        ClearTile(atlas, tile);
+        for (var y = 6; y <= 10; y++)
+        {
+            for (var x = 2; x <= 13; x++)
+            {
+                if (x <= 5) SetPx(atlas, tile, x, y, 240, 242, 246);
+                else SetPx(atlas, tile, x, y, 198, 38, 42);
+            }
+        }
+
+        for (var x = 2; x <= 13; x++) SetPx(atlas, tile, x, 11, 152, 112, 66);
+        SetPx(atlas, tile, 2, 12, 132, 96, 54);
+        SetPx(atlas, tile, 13, 12, 132, 96, 54);
+    }
+
+    public static void PaintRedstoneDustCross(byte[] atlas, ushort tile, bool lineOnly)
+    {
+        ClearTile(atlas, tile);
+        for (var i = 0; i < 16; i++)
+        {
+            SetPx(atlas, tile, i, 7, 212, 24, 24);
+            SetPx(atlas, tile, i, 8, 228, 36, 36);
+            if (!lineOnly)
+            {
+                SetPx(atlas, tile, 7, i, 212, 24, 24);
+                SetPx(atlas, tile, 8, i, 228, 36, 36);
+            }
+        }
+    }
+
+    public static void PaintDestroyCrackStage(byte[] atlas, ushort tile, int stage0To9)
+    {
+        ClearTile(atlas, tile);
+        var branches = 2 + stage0To9;
+        var maxLen = 3 + stage0To9;
+        var baseX = (tile % 16) * 16;
+        var baseY = (tile / 16) * 16;
+
+        for (var b = 0; b < branches; b++)
+        {
+            var angle = b * 2.3999632f;
+            var dx = MathF.Cos(angle);
+            var dy = MathF.Sin(angle);
+            for (var step = 0; step <= maxLen; step++)
+            {
+                var jitter = (((b * 7) + step) % 3) - 1;
+                var px = (int)MathF.Round(7.5f + (dx * step) + (dy * jitter * 0.35f));
+                var py = (int)MathF.Round(7.5f + (dy * step) - (dx * jitter * 0.35f));
+                if ((uint)px < 16U && (uint)py < 16U)
+                {
+                    var idx = (((baseY + py) * 256) + baseX + px) * 4;
+                    atlas[idx + 0] = 18;
+                    atlas[idx + 1] = 18;
+                    atlas[idx + 2] = 20;
+                    atlas[idx + 3] = (byte)Math.Clamp(140 + (stage0To9 * 10), 140, 235);
+                }
+            }
+        }
+    }
+
     private static void ClearTile(byte[] atlas, ushort tile)
     {
         var baseX = (tile % 16) * 16;

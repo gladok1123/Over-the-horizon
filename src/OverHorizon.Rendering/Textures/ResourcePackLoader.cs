@@ -12,6 +12,7 @@ public sealed class ResourcePackLoader : IDisposable
     private readonly Dictionary<string, byte[]> _blockTextures = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, byte[]> _itemTextures = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, byte[]> _guiTextures = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, byte[]> _entityTextures = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _translations = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Gets the number of block PNG textures discovered in external asset sources.</summary>
@@ -69,6 +70,10 @@ public sealed class ResourcePackLoader : IDisposable
     public bool TryGetGuiPng(string guiKey, out byte[] pngBytes) =>
         _guiTextures.TryGetValue(guiKey, out pngBytes!);
 
+    /// <summary>Looks up a loaded entity/mob/player skin PNG (e.g. <c>"player/wide/steve"</c>, <c>"pig/pig"</c>).</summary>
+    public bool TryGetEntityPng(string entityKey, out byte[] pngBytes) =>
+        _entityTextures.TryGetValue(entityKey, out pngBytes!);
+
     /// <summary>Attempts to overwrite a <c>16x16</c> block tile in <paramref name="atlas"/> using an external block PNG texture.</summary>
     public bool TryBlitTile(
         byte[] atlas,
@@ -99,7 +104,7 @@ public sealed class ResourcePackLoader : IDisposable
     }
 
     /// <summary>Attempts to overwrite a <c>16x16</c> item sprite tile in <paramref name="atlas"/> using an external item or block PNG texture.</summary>
-    public bool TryBlitItemTile(byte[] atlas, ushort tileIndex, string itemStem)
+    public bool TryBlitItemTile(byte[] atlas, ushort tileIndex, string itemStem, byte tintR = 255, byte tintG = 255, byte tintB = 255)
     {
         ArgumentNullException.ThrowIfNull(atlas);
 
@@ -110,7 +115,7 @@ public sealed class ResourcePackLoader : IDisposable
             return false;
         }
 
-        WriteTileToAtlas(atlas, tileIndex, rgba, 255, 255, 255, 255);
+        WriteTileToAtlas(atlas, tileIndex, rgba, tintR, tintG, tintB, 255);
         return true;
     }
 
@@ -120,6 +125,7 @@ public sealed class ResourcePackLoader : IDisposable
         _blockTextures.Clear();
         _itemTextures.Clear();
         _guiTextures.Clear();
+        _entityTextures.Clear();
         _translations.Clear();
     }
 
@@ -231,7 +237,8 @@ public sealed class ResourcePackLoader : IDisposable
                 LoadPngFolder(Path.Combine(relPrefix, "textures", "blocks"), _blockTextures);
                 LoadPngFolder(Path.Combine(relPrefix, "textures", "item"), _itemTextures);
                 LoadPngFolder(Path.Combine(relPrefix, "textures", "items"), _itemTextures);
-                LoadGuiPngTree(Path.Combine(relPrefix, "textures", "gui"), string.Empty);
+                LoadSubPngTree(Path.Combine(relPrefix, "textures", "gui"), string.Empty, _guiTextures);
+                LoadSubPngTree(Path.Combine(relPrefix, "textures", "entity"), string.Empty, _entityTextures);
 
                 var langDir = Path.Combine(relPrefix, "lang");
                 if (Directory.Exists(langDir))
@@ -255,25 +262,25 @@ public sealed class ResourcePackLoader : IDisposable
         }
     }
 
-    private void LoadGuiPngTree(string guiDir, string prefix)
+    private static void LoadSubPngTree(string rootDir, string prefix, Dictionary<string, byte[]> sink)
     {
-        if (!Directory.Exists(guiDir))
+        if (!Directory.Exists(rootDir))
         {
             return;
         }
 
-        foreach (var pngFile in Directory.EnumerateFiles(guiDir, "*.png"))
+        foreach (var pngFile in Directory.EnumerateFiles(rootDir, "*.png"))
         {
             var stem = Path.GetFileNameWithoutExtension(pngFile);
             var key = string.IsNullOrEmpty(prefix) ? stem : $"{prefix}/{stem}";
-            _guiTextures[key] = File.ReadAllBytes(pngFile);
+            sink[key] = File.ReadAllBytes(pngFile);
         }
 
-        foreach (var sub in Directory.EnumerateDirectories(guiDir))
+        foreach (var sub in Directory.EnumerateDirectories(rootDir))
         {
             var subName = Path.GetFileName(sub);
             var nextPrefix = string.IsNullOrEmpty(prefix) ? subName : $"{prefix}/{subName}";
-            LoadGuiPngTree(sub, nextPrefix);
+            LoadSubPngTree(sub, nextPrefix, sink);
         }
     }
 
@@ -306,12 +313,18 @@ public sealed class ResourcePackLoader : IDisposable
                 if (norm.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
                 {
                     var guiMarker = "/textures/gui/";
+                    var entityMarker = "/textures/entity/";
                     var guiIdx = norm.IndexOf(guiMarker, StringComparison.OrdinalIgnoreCase);
+                    var entIdx = norm.IndexOf(entityMarker, StringComparison.OrdinalIgnoreCase);
                     if (guiIdx >= 0)
                     {
                         var relGui = norm[(guiIdx + guiMarker.Length)..];
-                        var key = relGui[..^4];
-                        _guiTextures[key] = ReadEntryBytes(entry);
+                        _guiTextures[relGui[..^4]] = ReadEntryBytes(entry);
+                    }
+                    else if (entIdx >= 0)
+                    {
+                        var relEnt = norm[(entIdx + entityMarker.Length)..];
+                        _entityTextures[relEnt[..^4]] = ReadEntryBytes(entry);
                     }
                     else if (norm.Contains("/textures/block/", StringComparison.OrdinalIgnoreCase) ||
                              norm.Contains("/textures/blocks/", StringComparison.OrdinalIgnoreCase) ||

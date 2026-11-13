@@ -5,7 +5,7 @@ namespace OverHorizon.Client;
 
 /// <summary>
 /// Launches and manages an optional local <c>OverHorizon.Server</c> child process when a player clicks
-/// "Host Local Server (25565) &amp; Play" inside the Multiplayer screen.
+/// "Host Local Server (25565) &amp; Play" inside the Multiplayer screen (searching root, <c>server/</c>, and <c>engine/</c>).
 /// </summary>
 internal sealed class LocalServerLauncher : IDisposable
 {
@@ -19,17 +19,34 @@ internal sealed class LocalServerLauncher : IDisposable
         }
 
         var serverExeName = OperatingSystem.IsWindows() ? "OverHorizon.Server.exe" : "OverHorizon.Server";
-        var siblingPath = Path.Combine(AppContext.BaseDirectory, serverExeName);
-        var serverArgs = $"--port {port} --view-distance 4 --world-dir ./world --op-all";
+        var serverArgs = $"--port {port} --view-distance 4 --world-dir ./saves/multiplayer_host --op-all";
+
+        string[] candidatePaths =
+        [
+            Path.Combine(AppContext.BaseDirectory, "server", serverExeName),
+            Path.Combine(AppContext.BaseDirectory, serverExeName),
+            Path.Combine(Directory.GetCurrentDirectory(), "server", serverExeName),
+            Path.Combine(Directory.GetCurrentDirectory(), serverExeName),
+        ];
+
+        string? foundServerExe = null;
+        for (var i = 0; i < candidatePaths.Length; i++)
+        {
+            if (File.Exists(candidatePaths[i]))
+            {
+                foundServerExe = candidatePaths[i];
+                break;
+            }
+        }
 
         ProcessStartInfo psi;
-        if (File.Exists(siblingPath))
+        if (foundServerExe is not null)
         {
-            psi = new ProcessStartInfo(siblingPath, serverArgs)
+            psi = new ProcessStartInfo(foundServerExe, serverArgs)
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                WorkingDirectory = AppContext.BaseDirectory,
+                WorkingDirectory = Directory.GetCurrentDirectory(),
             };
         }
         else if (File.Exists("src/OverHorizon.Server/OverHorizon.Server.csproj"))
@@ -61,11 +78,7 @@ internal sealed class LocalServerLauncher : IDisposable
 
     public void Dispose()
     {
-        if (_serverProcess is null)
-        {
-            return;
-        }
-
+        if (_serverProcess is null) return;
         try
         {
             if (!_serverProcess.HasExited)
@@ -88,8 +101,8 @@ internal sealed class LocalServerLauncher : IDisposable
     {
         try
         {
-            using var probe = new TcpClient();
-            await probe.ConnectAsync("127.0.0.1", port, ct).ConfigureAwait(false);
+            using var tcp = new TcpClient();
+            await tcp.ConnectAsync("127.0.0.1", port, ct).ConfigureAwait(false);
             return true;
         }
         catch (SocketException)

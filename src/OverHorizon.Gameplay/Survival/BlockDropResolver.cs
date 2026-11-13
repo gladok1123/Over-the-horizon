@@ -75,9 +75,25 @@ public static class BlockDropResolver
     {
         ArgumentNullException.ThrowIfNull(items);
 
-        if (blockKey == BuiltInBlocks.Air || blockKey == BuiltInBlocks.Bedrock || blockKey == BuiltInBlocks.Water)
+        if (blockKey == BuiltInBlocks.Air || blockKey == BuiltInBlocks.Bedrock || blockKey == BuiltInBlocks.Water ||
+            blockKey == BuiltInBlocks.Fire || blockKey == BuiltInBlocks.PistonHead)
         {
             return ItemStack.Empty;
+        }
+
+        if (blockKey == BuiltInBlocks.RedstoneWire)
+        {
+            return MakeStack(items, BuiltInItems.Redstone, 1);
+        }
+
+        if (blockKey == BuiltInBlocks.RedstoneTorchOff)
+        {
+            return MakeStack(items, BuiltInBlocks.RedstoneTorch, 1);
+        }
+
+        if (blockKey == BuiltInBlocks.LitRedstoneLamp)
+        {
+            return MakeStack(items, BuiltInBlocks.RedstoneLamp, 1);
         }
 
         if (blockKey == BuiltInBlocks.Glass)
@@ -211,7 +227,8 @@ public static class BlockDropResolver
         key == BuiltInBlocks.CopperOre || key == BuiltInBlocks.RedstoneOre || key == BuiltInBlocks.LapisOre ||
         key == BuiltInBlocks.DiamondOre || key == BuiltInBlocks.EmeraldOre || key == BuiltInBlocks.Obsidian ||
         key == BuiltInBlocks.CoalBlock || key == BuiltInBlocks.IronBlock || key == BuiltInBlocks.GoldBlock ||
-        key == BuiltInBlocks.DiamondBlock;
+        key == BuiltInBlocks.DiamondBlock || key == BuiltInBlocks.EmeraldBlock || key == BuiltInBlocks.LapisBlock ||
+        key == BuiltInBlocks.CopperBlock || key == BuiltInBlocks.RedstoneBlock;
 
     private static ToolKind GetPreferredTool(ResourceKey key)
     {
