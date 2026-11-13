@@ -13,6 +13,7 @@ namespace OverHorizon.Rendering.Hud;
 /// <param name="WalkPhase">Accumulated limb swing phase in radians.</param>
 /// <param name="HurtFlash">PvP hit red-flash intensity in <c>[0, 1]</c>.</param>
 /// <param name="Health">Latest known health points in <c>[0, 20]</c>.</param>
+/// <param name="Armor">Equipped 3D armor tier snapshot.</param>
 public readonly record struct RemotePlayerAvatar(
     long EntityId,
     string Username,

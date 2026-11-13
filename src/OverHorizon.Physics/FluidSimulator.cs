@@ -50,7 +50,7 @@ public static class FluidSimulator
                 continue;
             }
 
-            if (world.IsBlockSolid(pos))
+            if (world.IsSolidBlock(pos))
             {
                 continue;
             }
@@ -83,7 +83,7 @@ public static class FluidSimulator
             }
             else if (existing != nextLevel)
             {
-                output.Add(new FluidChange(pos, nextLevel));
+                output.Add(new FluidChange(pos, (byte)nextLevel));
             }
         }
 
@@ -146,7 +146,7 @@ public static class FluidSimulator
         }
 
         var belowPos = pos.Offset(Direction.Down);
-        var canFlowDown = belowPos.Y >= EngineConstants.WorldMinY && !world.IsBlockSolid(belowPos);
+        var canFlowDown = belowPos.Y >= EngineConstants.WorldMinY && !world.IsSolidBlock(belowPos);
         if (canFlowDown)
         {
             var belowLevel = world.GetFluidLevelOrNegative(belowPos);
@@ -180,7 +180,7 @@ public static class FluidSimulator
 
             var dir = cardinals[d];
             var sidePos = pos.Offset(dir);
-            if (!world.IsColumnLoaded(sidePos) || world.IsBlockSolid(sidePos))
+            if (!world.IsColumnLoaded(sidePos) || world.IsSolidBlock(sidePos))
             {
                 continue;
             }
@@ -273,13 +273,13 @@ public static class FluidSimulator
 
     private static bool CanWaterEnter(IVoxelCollisionReader world, BlockPos pos) =>
         world.IsColumnLoaded(pos) &&
-        !world.IsBlockSolid(pos) &&
+        !world.IsSolidBlock(pos) &&
         world.GetFluidLevelOrNegative(pos) != SourceLevel;
 
     private static bool IsDropOff(IVoxelCollisionReader world, BlockPos pos)
     {
         var below = pos.Offset(Direction.Down);
-        return below.Y >= EngineConstants.WorldMinY && !world.IsBlockSolid(below);
+        return below.Y >= EngineConstants.WorldMinY && !world.IsSolidBlock(below);
     }
 
     private static int ComputeTargetLevel(IVoxelCollisionReader world, BlockPos pos)
@@ -310,7 +310,7 @@ public static class FluidSimulator
             {
                 var nBelow = nPos.Offset(Direction.Down);
                 if (nBelow.Y >= EngineConstants.WorldMinY &&
-                    (world.IsBlockSolid(nBelow) || world.GetFluidLevelOrNegative(nBelow) == SourceLevel))
+                    (world.IsSolidBlock(nBelow) || world.GetFluidLevelOrNegative(nBelow) == SourceLevel))
                 {
                     minNeighborLevel = 0;
                 }
@@ -337,7 +337,7 @@ public static class FluidSimulator
     {
         var belowPos = pos.Offset(Direction.Down);
         return belowPos.Y >= EngineConstants.WorldMinY &&
-            (world.IsBlockSolid(belowPos) || world.GetFluidLevelOrNegative(belowPos) == SourceLevel);
+            (world.IsSolidBlock(belowPos) || world.GetFluidLevelOrNegative(belowPos) == SourceLevel);
     }
 
     private static int CountAdjacentSources(IVoxelCollisionReader world, BlockPos pos)

@@ -174,9 +174,11 @@ internal static partial class ShapedBlockMesher
         }
 
         float packedLight = (byte)(((skyLight & 0x0F) << 4) | (effBlk & 0x0F));
-        ushort tile = isPoweredRail
-            ? (energized ? ProceduralAtlasGenerator.TilePoweredRailOn : ProceduralAtlasGenerator.TilePoweredRailOff)
-            : ProceduralAtlasGenerator.TileRail;
+        ushort tile = ProceduralAtlasGenerator.TileRail;
+        if (isPoweredRail)
+        {
+            tile = energized ? ProceduralAtlasGenerator.TilePoweredRailOn : ProceduralAtlasGenerator.TilePoweredRailOff;
+        }
 
         var yLow = o.Y + 0.0625f;
         var yHigh = o.Y + 1.0625f;

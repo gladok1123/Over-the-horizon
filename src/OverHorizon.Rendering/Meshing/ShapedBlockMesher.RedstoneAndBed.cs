@@ -250,7 +250,11 @@ internal static partial class ShapedBlockMesher
         var uvTR = new Vector2(1.0f, 0.0f);
         var uvTL = new Vector2(0.0f, 0.0f);
 
-        ushort Pick(string dir) => dir == facing ? frontTile : (IsOpposite(dir, facing) ? backTile : sideTile);
+        ushort Pick(string dir)
+        {
+            if (dir == facing) return frontTile;
+            return IsOpposite(dir, facing) ? backTile : sideTile;
+        }
 
         EmitQuad(verts, indices, new Vector3(a.X, a.Y, b.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(a.X, b.Y, b.Z), uvBL, uvBR, uvTR, uvTL, Pick("south"), 0.84f, packedLight);
         EmitQuad(verts, indices, new Vector3(b.X, a.Y, a.Z), new Vector3(a.X, a.Y, a.Z), new Vector3(a.X, b.Y, a.Z), new Vector3(b.X, b.Y, a.Z), uvBL, uvBR, uvTR, uvTL, Pick("north"), 0.84f, packedLight);

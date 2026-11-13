@@ -30,9 +30,18 @@ public static class HeldItem3DMesher
         var bowCharge = state.HeldIsBow ? Math.Clamp(state.BowChargeNormalized, 0.0f, 1.0f) : 0.0f;
         if (state.HeldIsBow && bowCharge > 0.01f)
         {
-            activeSpriteTile = bowCharge >= 0.90f
-                ? ProceduralItemTileManifest.TileBowPulling2
-                : (bowCharge >= 0.55f ? ProceduralItemTileManifest.TileBowPulling1 : ProceduralItemTileManifest.TileBowPulling0);
+            if (bowCharge >= 0.90f)
+            {
+                activeSpriteTile = ProceduralItemTileManifest.TileBowPulling2;
+            }
+            else if (bowCharge >= 0.55f)
+            {
+                activeSpriteTile = ProceduralItemTileManifest.TileBowPulling1;
+            }
+            else
+            {
+                activeSpriteTile = ProceduralItemTileManifest.TileBowPulling0;
+            }
         }
 
         AppendSingleHand(
