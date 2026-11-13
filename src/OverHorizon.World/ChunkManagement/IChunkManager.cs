@@ -44,6 +44,15 @@ public interface IChunkManager
     bool SetBlockState(BlockPos worldPos, BlockState newState, long tickNumber = 0);
 
     /// <summary>
+    /// Applies a batch of block modifications across loaded chunks and refreshes heightmaps, lighting, and snapshots
+    /// once per affected chunk column (used by explosions, multi-block breaks, and fluid updates).
+    /// </summary>
+    /// <param name="changes">Span of world block coordinate and target state pairs.</param>
+    /// <param name="tickNumber">Current simulation tick.</param>
+    /// <returns>Number of blocks whose state actually changed.</returns>
+    int SetBlockStatesBatch(ReadOnlySpan<(BlockPos Position, BlockState State)> changes, long tickNumber = 0);
+
+    /// <summary>
     /// Evaluates active tickets, loads or generates up to <paramref name="maxChunksToLoad"/> highest-priority chunks in parallel,
     /// and unloads unticketed chunks (saving dirty ones).
     /// </summary>

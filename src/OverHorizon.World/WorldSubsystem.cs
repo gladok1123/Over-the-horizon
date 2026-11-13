@@ -63,6 +63,10 @@ public sealed class WorldSubsystem : IWorldSubsystem
         _chunkManager.SetBlockState(worldPos, newState, tickNumber);
 
     /// <inheritdoc />
+    public int SetBlockStatesBatch(ReadOnlySpan<(BlockPos Position, BlockState State)> changes, long tickNumber = 0) =>
+        _chunkManager.SetBlockStatesBatch(changes, tickNumber);
+
+    /// <inheritdoc />
     public async ValueTask TickAsync(long tickNumber, CancellationToken cancellationToken)
     {
         _ = await _chunkManager.ProcessTicketsAsync(_maxChunkLoadsPerTick, cancellationToken).ConfigureAwait(false);

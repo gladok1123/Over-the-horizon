@@ -62,6 +62,16 @@ internal sealed partial class ClientMenuController
             }
         }
 
+        if (Mode == UiOverlayMode.BlockInventory && !_containers.CursorStack.IsEmpty)
+        {
+            var (wx, wy, ww, wh) = ClientInventoryScreenBuilder.GetCreativeWindowBounds(width, height);
+            if (mousePos.X < wx || mousePos.X > wx + ww || mousePos.Y < wy - 90.0f || mousePos.Y > wy + wh)
+            {
+                _containers.ClearCursor();
+                return "creative_delete";
+            }
+        }
+
         if (isRightClick) return null;
         for (var i = 0; i < buttons.Count; i++)
         {
@@ -90,12 +100,15 @@ internal sealed partial class ClientMenuController
         long worldTimeTicks,
         float skyBrightness,
         ClientChatHistory chatHistory,
-        string latestDebugText)
+        string latestDebugText,
+        IReadOnlyList<MinecartVisual>? minecarts = null,
+        IReadOnlyList<ArrowProjectileVisual>? arrows = null)
     {
         var width = viewport.X > 64.0f ? viewport.X : 1280.0f;
         var height = viewport.Y > 64.0f ? viewport.Y : 720.0f;
         player.Hotbar.RefreshSlotVisuals(player.Mode);
-        player.Camera.FarPlane = Math.Max(160.0f, (ActiveViewDistance + 3) * 16.0f);
+        var chunkFogDist = Math.Max(48.0f, (ActiveViewDistance + 2) * 16.0f);
+        player.Camera.FarPlane = Math.Max(640.0f, chunkFogDist + 160.0f);
 
         var (title, subtitle) = Mode switch
         {
@@ -223,6 +236,13 @@ internal sealed partial class ClientMenuController
             CreativeSearchQuery = CreativeSearchQuery,
             CreativeSelectedTab = _creativeTabIndex,
             CreativeScrollNormalized = _creativeScrollNorm,
+            LocalPlayerArmor = player.Hotbar.BuildLocalArmorVisual(),
+            Minecarts = minecarts,
+            Arrows = arrows,
+            HeldIsBow = player.Hotbar.SelectedIsBow,
+            BowChargeNormalized = player.BowChargeNormalized,
+            ChunkFogDistance = chunkFogDist,
+            SleepFadeAlpha = player.SleepFadeAlpha,
         };
     }
 

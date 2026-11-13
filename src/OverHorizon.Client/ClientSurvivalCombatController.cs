@@ -4,7 +4,9 @@ using OverHorizon.Core.Items;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
 using OverHorizon.Gameplay;
+using OverHorizon.Gameplay.Inventory;
 using OverHorizon.Gameplay.Mobs;
+using OverHorizon.Gameplay.Projectiles;
 using OverHorizon.Gameplay.Survival;
 using OverHorizon.Networking.Packets.Serverbound;
 using OverHorizon.Rendering.Hud;
@@ -28,6 +30,8 @@ internal sealed class ClientSurvivalCombatController
     private double _hitSoundCooldown;
     private double _attackCooldown;
     private double _useCooldown;
+    private float _bowDrawSeconds;
+    private bool _bowDrawing;
     private int _dropSequence;
 
     public ClientSurvivalCombatController(
@@ -52,7 +56,8 @@ internal sealed class ClientSurvivalCombatController
         ClientPlayerController player,
         WorldMobManager mobManager,
         ClientRemotePlayerTracker remotePlayers,
-        ClientMultiplayerTransport transport)
+        ClientMultiplayerTransport transport,
+        ClientWorldSyncAndMobBridge? worldBridge = null)
     {
         if (_attackCooldown > 0.0 || player.IsDead)
         {
@@ -67,6 +72,30 @@ internal sealed class ClientSurvivalCombatController
         if (player.CurrentTarget is { } blockHit)
         {
             maxReach = Math.Min(maxReach, blockHit.Distance + 0.25);
+        }
+
+        if (worldBridge is not null &&
+            worldBridge.Minecarts.TryBreakAlongRay(player.Camera.Position, f, maxReach, out var brokenCartPos))
+        {
+            _attackCooldown = 0.24;
+            player.TriggerHandSwing();
+            if (player.RidingMinecartId >= 0 && worldBridge.Minecarts.RiddenMinecart is null)
+            {
+                player.DismountMinecart();
+            }
+
+            if (player.Mode == GameMode.Survival)
+            {
+                var cartItemId = (ushort)Math.Max(0, _items.GetId(BuiltInItems.Minecart));
+                if (cartItemId > 0)
+                {
+                    _ = player.Hotbar.SurvivalInventory.AddItem(new ItemStack(cartItemId, 1), _items);
+                    player.Hotbar.RefreshSlotVisuals(player.Mode);
+                }
+            }
+
+            _audio.PlayPositional(SoundCue.FootstepMetal, brokenCartPos, gain: 0.78f * player.MasterVolume, pitch: 0.90f);
+            return true;
         }
 
         if (mobManager.TryAttackAlongRay(
@@ -249,6 +278,74 @@ internal sealed class ClientSurvivalCombatController
 
         return _useHandler.TryUseOrPlace(
             player, world, worldBridge, mobManager, chatHistory, applyWorldBlockChange, ref _useCooldown, out openContainerMode, out openedContainerPos);
+    }
+
+    public void StepBowChargeAndRelease(
+        double dt,
+        bool rightMouseHeld,
+        ClientPlayerController player,
+        ClientWorldSyncAndMobBridge worldBridge)
+    {
+        if (player.IsDead || !player.Hotbar.SelectedIsBow)
+        {
+            _bowDrawing = false;
+            _bowDrawSeconds = 0.0f;
+            player.BowChargeNormalized = 0.0f;
+            return;
+        }
+
+        var arrowItemId = (ushort)Math.Max(0, _items.GetId(BuiltInItems.Arrow));
+        var hasArrow = player.Mode == GameMode.Creative || FindArrowSlot(player.Hotbar.SurvivalInventory, arrowItemId) >= 0;
+
+        if (rightMouseHeld && hasArrow)
+        {
+            _bowDrawing = true;
+            _bowDrawSeconds = MathF.Min(2.0f, _bowDrawSeconds + (float)dt);
+            player.BowChargeNormalized = ArrowProjectileManager.ComputeChargeNormalized(_bowDrawSeconds);
+            return;
+        }
+
+        if (_bowDrawing)
+        {
+            var charge = ArrowProjectileManager.ComputeChargeNormalized(_bowDrawSeconds);
+            _bowDrawing = false;
+            _bowDrawSeconds = 0.0f;
+            player.BowChargeNormalized = 0.0f;
+
+            if (charge >= 0.12f && hasArrow)
+            {
+                if (player.Mode == GameMode.Survival)
+                {
+                    var arrowSlot = FindArrowSlot(player.Hotbar.SurvivalInventory, arrowItemId);
+                    if (arrowSlot < 0) return;
+                    var st = player.Hotbar.SurvivalInventory.GetSlot(arrowSlot);
+                    player.Hotbar.SurvivalInventory.SetSlot(arrowSlot, st.WithCount(st.Count - 1));
+                    player.Hotbar.RefreshSlotVisuals(player.Mode);
+                }
+
+                _ = worldBridge.Arrows.SpawnPlayerArrow(
+                    player.Camera.Position,
+                    player.Camera.Forward,
+                    charge,
+                    canBePickedUp: player.Mode == GameMode.Survival);
+                player.TriggerHandSwing();
+                var pitch = 0.88f + (charge * 0.24f);
+                _audio.PlayPositional(SoundCue.BowShoot, player.Camera.Position, gain: 0.86f * player.MasterVolume, pitch: pitch);
+            }
+        }
+    }
+
+    private static int FindArrowSlot(PlayerInventory inv, ushort arrowItemId)
+    {
+        if (arrowItemId == 0) return -1;
+        if (inv.OffhandItem.ItemId == arrowItemId && !inv.OffhandItem.IsEmpty) return PlayerInventory.OffhandSlotIndex;
+        for (var i = 0; i < PlayerInventory.MainSlotCount; i++)
+        {
+            var s = inv.GetSlot(i);
+            if (!s.IsEmpty && s.ItemId == arrowItemId) return i;
+        }
+
+        return -1;
     }
 
     internal static SoundCue ResolveMobHurtOrDeathCue(MobType type, bool isDead) => (type, isDead) switch

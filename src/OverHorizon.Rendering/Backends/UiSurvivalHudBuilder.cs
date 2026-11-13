@@ -83,6 +83,13 @@ internal static class UiSurvivalHudBuilder
             var alpha = Math.Clamp(state.HurtFlashStrength, 0.0f, 1.0f) * 0.34f;
             DrawRect(v, 0, 0, width, height, new Vector4(0.88f, 0.08f, 0.08f, alpha));
         }
+
+        if (state.SleepFadeAlpha > 0.01f)
+        {
+            var sleepA = Math.Clamp(state.SleepFadeAlpha, 0.0f, 0.94f);
+            DrawRect(v, 0, 0, width, height, new Vector4(0.02f, 0.03f, 0.09f, sleepA));
+            UiGeometryBuilder.DrawCenteredText(v, "Sleeping until dawn...", width * 0.5f, height * 0.44f, 2.1f, new Vector4(0.92f, 0.94f, 1.0f, sleepA), shadow: true);
+        }
     }
 
     public static void BuildSurvivalBarsAndMiningProgress(

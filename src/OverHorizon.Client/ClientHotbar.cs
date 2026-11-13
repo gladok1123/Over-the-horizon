@@ -5,6 +5,7 @@ using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
 using OverHorizon.Gameplay;
 using OverHorizon.Gameplay.Inventory;
+using OverHorizon.Rendering.Hud;
 using OverHorizon.Rendering.Textures;
 
 namespace OverHorizon.Client;
@@ -97,6 +98,9 @@ public sealed partial class ClientHotbar
     /// <summary>Gets whether the selected main-hand item is a <c>Shield</c>.</summary>
     public bool SelectedIsShield => SelectedBlockKey == BuiltInItems.Shield;
 
+    /// <summary>Gets whether the selected main-hand item is a <c>Bow</c>.</summary>
+    public bool SelectedIsBow => SelectedBlockKey == BuiltInItems.Bow;
+
     /// <summary>Gets whether the selected hotbar slot is empty.</summary>
     public bool SelectedIsEmpty => SelectedItem is null;
 
@@ -172,6 +176,23 @@ public sealed partial class ClientHotbar
         }
     }
 
+    /// <summary>Builds a <see cref="PlayerArmorVisual"/> snapshot from the 4 equipped Armor slots (<c>36..39</c>).</summary>
+    public PlayerArmorVisual BuildLocalArmorVisual() => new(
+        HelmetTier: ResolveArmorTierCode(SurvivalInventory.GetSlot(PlayerInventory.ArmorSlotStart + 0)),
+        ChestplateTier: ResolveArmorTierCode(SurvivalInventory.GetSlot(PlayerInventory.ArmorSlotStart + 1)),
+        LeggingsTier: ResolveArmorTierCode(SurvivalInventory.GetSlot(PlayerInventory.ArmorSlotStart + 2)),
+        BootsTier: ResolveArmorTierCode(SurvivalInventory.GetSlot(PlayerInventory.ArmorSlotStart + 3)));
+
+    private byte ResolveArmorTierCode(ItemStack stack)
+    {
+        if (stack.IsEmpty) return 0;
+        var path = _items.GetById(stack.ItemId).Key.Path;
+        if (path.StartsWith("leather_", StringComparison.Ordinal)) return 1;
+        if (path.StartsWith("iron_", StringComparison.Ordinal)) return 2;
+        if (path.StartsWith("golden_", StringComparison.Ordinal)) return 3;
+        return path.StartsWith("diamond_", StringComparison.Ordinal) ? (byte)4 : (byte)0;
+    }
+
     /// <summary>Gets the default <see cref="BlockState"/> placed by the selected item.</summary>
     public BlockState SelectedBlockState =>
         SelectedItem?.PlacedBlockKey is { } blockKey ? _blocks.GetDefaultState(blockKey) : BlockState.Air;
@@ -231,8 +252,40 @@ public sealed partial class ClientHotbar
     /// <summary>Clears a Creative hotbar slot (used by the Creative Delete Item / Trash slot).</summary>
     public void ClearCreativeSlot(int hotbarSlot)
     {
-        _creativeSlots[Math.Clamp(hotbarSlot, 0, PlayerInventory.HotbarSlotCount - 1)] = -1;
+        var clamped = Math.Clamp(hotbarSlot, 0, PlayerInventory.HotbarSlotCount - 1);
+        _creativeSlots[clamped] = -1;
+        SurvivalInventory.SetSlot(clamped, ItemStack.Empty);
         RefreshSlotVisuals(ActiveMode);
+    }
+
+    /// <summary>Synchronizes <c>_creativeSlots[slot]</c> from <see cref="SurvivalInventory"/> after a GUI drag-and-drop click.</summary>
+    public void SyncCreativeSlotFromInventory(int slotIndex)
+    {
+        if (slotIndex is < 0 or >= PlayerInventory.HotbarSlotCount) return;
+        var st = SurvivalInventory.GetSlot(slotIndex);
+        _creativeSlots[slotIndex] = st.IsEmpty ? -1 : FindCatalogIndex(_items.GetById(st.ItemId).Key);
+    }
+
+    /// <summary>Synchronizes Creative hotbar slots into <see cref="SurvivalInventory"/> when opening the Creative GUI.</summary>
+    public void SyncInventoryFromCreativeSlots()
+    {
+        for (var i = 0; i < PlayerInventory.HotbarSlotCount; i++)
+        {
+            var cur = SurvivalInventory.GetSlot(i);
+            var cIdx = _creativeSlots[i];
+            if (cIdx < 0)
+            {
+                if (!cur.IsEmpty) SurvivalInventory.SetSlot(i, ItemStack.Empty);
+                continue;
+            }
+
+            var key = Catalog[cIdx].Key;
+            var rawId = _items.GetId(key);
+            if (rawId > 0 && cur.ItemId != rawId)
+            {
+                SurvivalInventory.SetSlot(i, new ItemStack((ushort)rawId, 1));
+            }
+        }
     }
 
     /// <summary>Clears all 41 inventory slots (hotbar, storage, armor, offhand) and Creative quick-slots.</summary>
@@ -303,8 +356,10 @@ public sealed partial class ClientHotbar
             ItemUseAction.WaterBucket => "Right-Click: Pour flowing Water source",
             ItemUseAction.EmptyBucket => "Right-Click: Scoop Water source",
             ItemUseAction.IgniteTnt => "Right-Click: Spark Fire or ignite physics TNT",
+            ItemUseAction.ShootBow => "Hold Right-Click to draw & release 3D ballistic Arrows!",
+            ItemUseAction.PlaceMinecart => "Right-Click on Rail / Powered Rail to place & ride!",
             ItemUseAction.PlaceBlock => "Placeable Voxel Block (Right-Click)",
-            _ => "Crafting & Smelting Material",
+            _ => key == BuiltInItems.Arrow ? "Ammunition for Bow (consumed in Survival)" : "Crafting & Smelting Material",
         };
     }
 
@@ -326,7 +381,15 @@ public sealed partial class ClientHotbar
     /// <summary>Equips a Creative Catalog item into <paramref name="hotbarSlot"/>.</summary>
     public void EquipPaletteEntryInSlot(int paletteIndex, int hotbarSlot)
     {
-        _creativeSlots[Math.Clamp(hotbarSlot, 0, PlayerInventory.HotbarSlotCount - 1)] = Math.Clamp(paletteIndex, 0, Catalog.Length - 1);
+        var s = Math.Clamp(hotbarSlot, 0, PlayerInventory.HotbarSlotCount - 1);
+        var p = Math.Clamp(paletteIndex, 0, Catalog.Length - 1);
+        _creativeSlots[s] = p;
+        var rawId = _items.GetId(Catalog[p].Key);
+        if (rawId > 0)
+        {
+            SurvivalInventory.SetSlot(s, new ItemStack((ushort)rawId, 1));
+        }
+
         RefreshSlotVisuals(ActiveMode);
     }
 
@@ -401,6 +464,8 @@ public sealed partial class ClientHotbar
         item?.PlacedBlockKey is { } bk &&
         !IsTorchStyleKey(bk) &&
         bk != BuiltInBlocks.Rail &&
+        bk != BuiltInBlocks.PoweredRail &&
+        bk != BuiltInBlocks.RedBed &&
         bk != BuiltInBlocks.Ladder &&
         bk != BuiltInBlocks.Cobweb &&
         bk != BuiltInBlocks.RedstoneWire &&

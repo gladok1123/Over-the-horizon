@@ -4,7 +4,7 @@ namespace OverHorizon.Rendering.Textures;
 /// Clean-room <c>16x16</c> pixel-art item &amp; cutout block sprite painter providing baseline transparent-background icons
 /// for weapons, tools, armor, torches, ladders, rails, cobwebs, buckets, food, and ingots.
 /// </summary>
-internal static class ProceduralItemTilePainter
+internal static partial class ProceduralItemTilePainter
 {
     public static void PaintSword(byte[] atlas, ushort tile, byte r, byte g, byte b)
     {
@@ -108,10 +108,10 @@ internal static class ProceduralItemTilePainter
             {
                 var draw = slotKind switch
                 {
-                    0 => y <= 9 && (y <= 5 || x <= 5 || x >= 10), // Helmet
-                    1 => y >= 4 && !(y <= 5 && x is >= 6 and <= 9), // Chestplate
-                    2 => y >= 4 && (y <= 6 || x <= 6 || x >= 9), // Leggings
-                    _ => y >= 8 && (x <= 6 || x >= 9), // Boots
+                    0 => y <= 9 && (y <= 5 || x <= 5 || x >= 10),
+                    1 => y >= 4 && !(y <= 5 && x is >= 6 and <= 9),
+                    2 => y >= 4 && (y <= 6 || x <= 6 || x >= 9),
+                    _ => y >= 8 && (x <= 6 || x >= 9),
                 };
                 if (draw)
                 {
@@ -135,28 +135,6 @@ internal static class ProceduralItemTilePainter
         SetPx(atlas, tile, 8, 7, 255, 168, 36);
         SetPx(atlas, tile, 7, 6, 255, 246, 162);
         SetPx(atlas, tile, 8, 6, 255, 224, 96);
-    }
-
-    public static void PaintLanternTile(byte[] atlas, ushort tile)
-    {
-        ClearTile(atlas, tile);
-        SetPx(atlas, tile, 7, 3, 72, 76, 84);
-        SetPx(atlas, tile, 8, 3, 72, 76, 84);
-        for (var y = 4; y <= 13; y++)
-        {
-            for (var x = 5; x <= 10; x++)
-            {
-                var frame = y is 4 or 13 || x is 5 or 10;
-                if (frame)
-                {
-                    SetPx(atlas, tile, x, y, 64, 68, 76);
-                }
-                else
-                {
-                    SetPx(atlas, tile, x, y, 255, 214, 92);
-                }
-            }
-        }
     }
 
     public static void PaintLadderTile(byte[] atlas, ushort tile)
@@ -276,14 +254,7 @@ internal static class ProceduralItemTilePainter
                 var hi = 0;
                 if (y <= 6) hi = 26;
                 else if (y >= 9) hi = -22;
-                SetPx(
-                    atlas,
-                    tile,
-                    x,
-                    y,
-                    (byte)Math.Clamp(r + hi, 0, 255),
-                    (byte)Math.Clamp(g + hi, 0, 255),
-                    (byte)Math.Clamp(b + hi, 0, 255));
+                SetPx(atlas, tile, x, y, (byte)Math.Clamp(r + hi, 0, 255), (byte)Math.Clamp(g + hi, 0, 255), (byte)Math.Clamp(b + hi, 0, 255));
             }
         }
     }

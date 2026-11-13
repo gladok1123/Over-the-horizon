@@ -60,8 +60,8 @@ internal sealed class ClientInputBinder
         var fwd = (kb.IsKeyPressed(Key.W) ? 1.0f : 0.0f) - (kb.IsKeyPressed(Key.S) ? 1.0f : 0.0f);
         var strafe = (kb.IsKeyPressed(Key.D) ? 1.0f : 0.0f) - (kb.IsKeyPressed(Key.A) ? 1.0f : 0.0f);
         var jump = kb.IsKeyPressed(Key.Space);
-        var descend = kb.IsKeyPressed(Key.C) || (_player.IsFlying && kb.IsKeyPressed(Key.ShiftLeft));
-        var sprint = kb.IsKeyPressed(Key.ControlLeft) || (!_player.IsFlying && kb.IsKeyPressed(Key.ShiftLeft));
+        var descend = kb.IsKeyPressed(Key.C) || ((_player.IsFlying || _player.RidingMinecartId >= 0) && kb.IsKeyPressed(Key.ShiftLeft));
+        var sprint = kb.IsKeyPressed(Key.ControlLeft) || (!_player.IsFlying && _player.RidingMinecartId < 0 && kb.IsKeyPressed(Key.ShiftLeft));
         return ((fwd, strafe, jump, sprint), descend);
     }
 
@@ -75,6 +75,24 @@ internal sealed class ClientInputBinder
         for (var i = 0; i < input.Mice.Count; i++)
         {
             if (input.Mice[i].IsButtonPressed(MouseButton.Left))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public bool IsRightMouseHeld(IInputContext? input)
+    {
+        if (!_menu.IsGameplayActive || input is null)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < input.Mice.Count; i++)
+        {
+            if (input.Mice[i].IsButtonPressed(MouseButton.Right))
             {
                 return true;
             }

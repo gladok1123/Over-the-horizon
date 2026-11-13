@@ -64,8 +64,15 @@ public static class BlockAttachmentAndShapeRules
             return true;
         }
 
-        if (key == BuiltInBlocks.RedstoneWire || key == BuiltInBlocks.Rail || key == BuiltInBlocks.StonePressurePlate)
+        if (key == BuiltInBlocks.RedstoneWire || key == BuiltInBlocks.Rail || key == BuiltInBlocks.PoweredRail || key == BuiltInBlocks.StonePressurePlate)
         {
+            if ((key == BuiltInBlocks.Rail || key == BuiltInBlocks.PoweredRail) &&
+                RailPlacementRules.GetRailShape(meta).StartsWith("ascending_", StringComparison.Ordinal))
+            {
+                localBounds = new BoundingBox(0.0, 0.0, 0.0, 1.0, 0.625, 1.0);
+                return true;
+            }
+
             localBounds = new BoundingBox(0.0, 0.0, 0.0, 1.0, 0.125, 1.0);
             return true;
         }
@@ -98,7 +105,10 @@ public static class BlockAttachmentAndShapeRules
 
         if (key == BuiltInBlocks.Lantern)
         {
-            localBounds = new BoundingBox(0.3125, 0.0, 0.3125, 0.6875, 0.5625, 0.6875);
+            var hanging = meta.Properties.TryGetValue("hanging", out var hv) && string.Equals(hv, "true", StringComparison.OrdinalIgnoreCase);
+            localBounds = hanging
+                ? new BoundingBox(0.3125, 0.0625, 0.3125, 0.6875, 1.0, 0.6875)
+                : new BoundingBox(0.3125, 0.0, 0.3125, 0.6875, 0.6875, 0.6875);
             return true;
         }
 
@@ -194,12 +204,38 @@ public static class BlockAttachmentAndShapeRules
             return false;
         }
 
-        // 3. FLOOR-SUPPORTED FLAT BLOCKS: Redstone Wire, Repeater, Pressure Plate, Rail, Lantern
+        // 3. LANTERN: Floor-mounted (hanging=false) OR ceiling-hung (hanging=true)!
+        if (blockKey == BuiltInBlocks.Lantern)
+        {
+            var canFloor = IsFullSupportBlock(blocks, getBlock(placePos.Offset(Direction.Down)));
+            var canCeiling = IsFullSupportBlock(blocks, getBlock(placePos.Offset(Direction.Up)));
+            if (clickedFace == Direction.Down && canCeiling)
+            {
+                resolvedState = blocks.WithProperty(resolvedState, "hanging", "true");
+                return true;
+            }
+
+            if (canFloor)
+            {
+                resolvedState = blocks.WithProperty(resolvedState, "hanging", "false");
+                return true;
+            }
+
+            if (canCeiling)
+            {
+                resolvedState = blocks.WithProperty(resolvedState, "hanging", "true");
+                return true;
+            }
+
+            return false;
+        }
+
+        // 4. FLOOR-SUPPORTED FLAT BLOCKS: Redstone Wire, Repeater, Pressure Plate, Rail & PoweredRail
         if (blockKey == BuiltInBlocks.RedstoneWire ||
             blockKey == BuiltInBlocks.RedstoneRepeater ||
             blockKey == BuiltInBlocks.StonePressurePlate ||
             blockKey == BuiltInBlocks.Rail ||
-            blockKey == BuiltInBlocks.Lantern)
+            blockKey == BuiltInBlocks.PoweredRail)
         {
             if (!IsFullSupportBlock(blocks, getBlock(placePos.Offset(Direction.Down))))
             {
@@ -211,19 +247,45 @@ public static class BlockAttachmentAndShapeRules
                 var horiz = HorizontalLookDirection(playerForward);
                 resolvedState = blocks.WithProperty(resolvedState, "facing", DirectionName(horiz));
             }
+            else if (RailPlacementRules.IsRailBlock(blockKey))
+            {
+                resolvedState = RailPlacementRules.ResolveRailState(blocks, getBlock, blockKey, placePos, playerForward);
+            }
 
             return true;
         }
 
-        // 4. PISTON & STICKY PISTON: Face toward the player along all 6 directions!
-        if (blockKey == BuiltInBlocks.Piston || blockKey == BuiltInBlocks.StickyPiston)
+        // 5. 6-WAY DIRECTIONAL BLOCKS: Piston, Sticky Piston, and Barrel orient their top/head toward the player!
+        if (blockKey == BuiltInBlocks.Piston || blockKey == BuiltInBlocks.StickyPiston || blockKey == BuiltInBlocks.Barrel)
         {
             var lookSix = SixWayLookDirection(playerForward).Opposite();
             resolvedState = blocks.WithProperty(resolvedState, "facing", DirectionName(lookSix));
             return true;
         }
 
-        // 5. RED BED: Places 2 horizontal blocks (foot at placePos, head 1 block ahead along player horizontal look)
+        // 6. PILLAR / AXIS BLOCKS: Oak Log, Birch Log, and Hay Block orient their cut/top rings toward the player!
+        if (blockKey == BuiltInBlocks.OakLog || blockKey == BuiltInBlocks.BirchLog || blockKey == BuiltInBlocks.HayBlock)
+        {
+            var axisDir = SixWayLookDirection(playerForward).Opposite().GetAxis();
+            var axisToken = axisDir switch
+            {
+                Axis.X => "x",
+                Axis.Z => "z",
+                _ => "y",
+            };
+            resolvedState = blocks.WithProperty(resolvedState, "axis", axisToken);
+            return true;
+        }
+
+        // 7. HORIZONTAL FRONT-FACING BLOCKS: Furnace, Lit Furnace, and Chest face horizontally toward the player!
+        if (blockKey == BuiltInBlocks.Furnace || blockKey == BuiltInBlocks.LitFurnace || blockKey == BuiltInBlocks.Chest)
+        {
+            var frontDir = HorizontalLookDirection(playerForward).Opposite();
+            resolvedState = blocks.WithProperty(resolvedState, "facing", DirectionName(frontDir));
+            return true;
+        }
+
+        // 8. RED BED: Places 2 horizontal blocks (foot at placePos, head 1 block ahead along player horizontal look)
         if (blockKey == BuiltInBlocks.RedBed)
         {
             var horiz = HorizontalLookDirection(playerForward);
@@ -284,16 +346,69 @@ public static class BlockAttachmentAndShapeRules
             return IsFullSupportBlock(blocks, getBlock(pos.Offset(supportDir)));
         }
 
+        if (key == BuiltInBlocks.Lantern)
+        {
+            var hanging = meta.Properties.TryGetValue("hanging", out var hv) && string.Equals(hv, "true", StringComparison.OrdinalIgnoreCase);
+            return IsFullSupportBlock(blocks, getBlock(pos.Offset(hanging ? Direction.Up : Direction.Down)));
+        }
+
+        if (key == BuiltInBlocks.RedBed)
+        {
+            if (!IsFullSupportBlock(blocks, getBlock(pos.Offset(Direction.Down))))
+            {
+                return false;
+            }
+
+            return TryGetPartnerBedPosition(meta, pos, out var partnerPos, out var expectedPartnerPart) &&
+                IsMatchingBedPartner(blocks, getBlock(partnerPos), GetFacing(meta, "north"), expectedPartnerPart);
+        }
+
         if (key == BuiltInBlocks.RedstoneWire ||
             key == BuiltInBlocks.RedstoneRepeater ||
             key == BuiltInBlocks.StonePressurePlate ||
             key == BuiltInBlocks.Rail ||
+            key == BuiltInBlocks.PoweredRail ||
             key == BuiltInBlocks.Fire)
         {
             return IsFullSupportBlock(blocks, getBlock(pos.Offset(Direction.Down)));
         }
 
         return true;
+    }
+
+    /// <summary>Resolves the partner cell and expected <c>part</c> (<c>head</c> or <c>foot</c>) of a 2-block <c>RedBed</c>.</summary>
+    public static bool TryGetPartnerBedPosition(
+        BlockStateMetadata meta,
+        BlockPos pos,
+        out BlockPos partnerPos,
+        out string expectedPartnerPart)
+    {
+        if (meta.BlockKey != BuiltInBlocks.RedBed)
+        {
+            partnerPos = default;
+            expectedPartnerPart = string.Empty;
+            return false;
+        }
+
+        var facingDir = ParseDirection(GetFacing(meta, "north"));
+        var isHead = meta.Properties.TryGetValue("part", out var p) && string.Equals(p, "head", StringComparison.OrdinalIgnoreCase);
+        partnerPos = isHead ? pos.Offset(facingDir.Opposite()) : pos.Offset(facingDir);
+        expectedPartnerPart = isHead ? "foot" : "head";
+        return true;
+    }
+
+    private static bool IsMatchingBedPartner(IBlockRegistry blocks, BlockState partnerState, string expectedFacing, string expectedPart)
+    {
+        if (partnerState.IsAir)
+        {
+            return false;
+        }
+
+        var pm = blocks.GetStateMetadata(partnerState);
+        return pm.BlockKey == BuiltInBlocks.RedBed &&
+            string.Equals(GetFacing(pm, "north"), expectedFacing, StringComparison.OrdinalIgnoreCase) &&
+            pm.Properties.TryGetValue("part", out var pp) &&
+            string.Equals(pp, expectedPart, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Gets whether <paramref name="state"/> can support attached Torches, Ladders, or Redstone components.</summary>

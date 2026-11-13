@@ -51,7 +51,7 @@ internal static class EntityBoxUvBuilder
         EmitEntityFace(dst, cell, c000, c100, c101, c001, u + dz + dx, v, u + dz + (2 * dx), v + dz, Shade(baseTint, 0.56f));
     }
 
-    private static void EmitEntityFace(
+    internal static void EmitEntityFace(
         List<OverlayVertex> dst,
         int cell,
         Vector3 pBL,

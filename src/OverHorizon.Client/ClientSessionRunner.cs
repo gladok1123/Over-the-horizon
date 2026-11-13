@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Numerics;
 using Microsoft.Extensions.Logging;
 using OverHorizon.Audio;
@@ -47,6 +48,7 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
     private readonly ClientWorldSyncAndMobBridge _worldBridge;
     private readonly ClientSurvivalCombatController _survivalCombat;
     private readonly ClientAsyncMeshQueue _meshQueue;
+    private readonly ConcurrentQueue<Action> _mainThreadQueue = new();
 
     private WorldSubsystem? _ownedSavedWorld;
     private SavedWorldMetadata? _activeWorldMeta;
@@ -158,7 +160,7 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
             _worldBridge.SeedInitialStarterMobs();
             if (_menu.Mode == UiOverlayMode.InGame)
             {
-                _chatHistory.AddMessage("Welcome to Over-the-Horizon v0.6.0-alpha! Type /help for commands.");
+                _chatHistory.AddMessage("Welcome to Over-the-Horizon v0.7.0-alpha! Type /help for commands.");
             }
         }
     }
@@ -254,8 +256,8 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
                 RefreshDebugTelemetry(metrics, dt);
                 var flyTag = _player.IsFlying ? " [FLY]" : string.Empty;
                 silkRenderer.WindowTitle = _menu.Mode == UiOverlayMode.TitleMenu
-                    ? "Over-the-Horizon: C# EDITION (v0.6.0-alpha)"
-                    : $"Over-the-Horizon v0.6.0 | {_lastFps:F0} FPS | {_player.Mode}{flyTag} | RD:{_menu.ActiveViewDistance} | [{_player.Hotbar.SelectedSlot + 1}: {_player.Hotbar.SelectedBlockDisplayName}]";
+                    ? "Over-the-Horizon: C# EDITION (v0.7.0-alpha)"
+                    : $"Over-the-Horizon v0.7.0 | {_lastFps:F0} FPS | {_player.Mode}{flyTag} | RD:{_menu.ActiveViewDistance} | [{_player.Hotbar.SelectedSlot + 1}: {_player.Hotbar.SelectedBlockDisplayName}]";
             },
             onResize: (w, h) => _player.Camera.SetAspectRatio(w, h),
             cancellationToken: cancellationToken);
@@ -279,8 +281,37 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
         }
 
         _menuActions.Dispose();
+        while (_mainThreadQueue.TryDequeue(out var leftover))
+        {
+            leftover();
+        }
+
         _sessionCts?.Dispose();
         _sessionCts = null;
+    }
+
+    private Task EnqueueOnMainThreadAsync(Action work)
+    {
+        if (_options.Headless || !_renderer.IsContextInitialized)
+        {
+            work();
+            return Task.CompletedTask;
+        }
+
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _mainThreadQueue.Enqueue(() =>
+        {
+            try
+            {
+                work();
+                tcs.TrySetResult();
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                tcs.TrySetException(ex);
+            }
+        });
+        return tcs.Task;
     }
 
     private void RefreshDebugTelemetry(RenderFrameMetrics metrics, double dt)

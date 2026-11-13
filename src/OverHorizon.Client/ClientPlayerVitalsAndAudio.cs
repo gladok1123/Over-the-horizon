@@ -191,15 +191,46 @@ internal sealed class ClientPlayerVitalsAndAudio
         }
 
         _stepDistanceAccumulator -= FootstepStrideBlocks;
-        var belowPos = new BlockPos(
-            (int)Math.Floor(player.FeetPosition.X),
-            (int)Math.Floor(player.FeetPosition.Y - 0.2),
-            (int)Math.Floor(player.FeetPosition.Z));
+        var groundKey = SampleStandingSurfaceBlockPath(player.FeetPosition, world, blocks);
+        if (groundKey.Length == 0 || groundKey is "air" or "water" or "fire")
+        {
+            return;
+        }
 
-        var groundKey = blocks.GetStateMetadata(world.GetBlockState(belowPos)).BlockKey.Path;
         var cue = ResolveFootstepCue(groundKey);
         var pitchJitter = 0.93f + (((_stepPitchCounter++ * 37) % 15) * 0.01f);
         audio.PlayPositional(cue, player.FeetPosition, gain: 0.48f * player.MasterVolume, pitch: pitchJitter);
+    }
+
+    private static string SampleStandingSurfaceBlockPath(Vec3d feet, ClientWorldCache world, IBlockRegistry blocks)
+    {
+        // 1. Check feet voxel itself first (Rails, Powered Rails, Red Bed slabs, Pressure Plates)!
+        var atFeet = blocks.GetStateMetadata(world.GetBlockState(feet.ToBlockPos())).BlockKey.Path;
+        if (atFeet is "rail" or "powered_rail" or "red_bed" or "stone_pressure_plate")
+        {
+            return atFeet;
+        }
+
+        // 2. Check center + 4 footprint corners at Y - 0.2 so walking along block edges NEVER samples Air -> Stone!
+        var sampleY = (int)Math.Floor(feet.Y - 0.2);
+        ReadOnlySpan<(double Ox, double Oz)> offsets =
+        [
+            (0.0, 0.0), (-0.28, -0.28), (0.28, -0.28), (-0.28, 0.28), (0.28, 0.28),
+        ];
+
+        for (var i = 0; i < offsets.Length; i++)
+        {
+            var bp = new BlockPos((int)Math.Floor(feet.X + offsets[i].Ox), sampleY, (int)Math.Floor(feet.Z + offsets[i].Oz));
+            var state = world.GetBlockState(bp);
+            if (state.IsAir) continue;
+            var path = blocks.GetStateMetadata(state).BlockKey.Path;
+            if (path is not ("air" or "water" or "torch" or "redstone_torch" or "redstone_wire"))
+            {
+                return path;
+            }
+        }
+
+        return string.Empty;
     }
 
     public static SoundCue ResolveFootstepCue(string blockPath) => blockPath switch
@@ -208,9 +239,10 @@ internal sealed class ClientPlayerVitalsAndAudio
         "sand" => SoundCue.FootstepSand,
         "gravel" => SoundCue.FootstepGravel,
         "snow_block" => SoundCue.FootstepSnow,
-        "crimson_wool" or "white_wool" or "blue_wool" or "red_bed" => SoundCue.FootstepCloth,
+        "iron_block" or "gold_block" or "copper_block" or "diamond_block" or "emerald_block" or "lantern" or "rail" or "powered_rail" => SoundCue.FootstepMetal,
+        "crimson_wool" or "white_wool" or "blue_wool" or "red_bed" or "tnt" or "cobweb" => SoundCue.FootstepCloth,
         "ladder" => SoundCue.FootstepLadder,
-        "oak_log" or "birch_log" or "oak_planks" or "birch_planks" or "oak_fence" or "crafting_table" or "chest" or "barrel" or "bookshelf" => SoundCue.FootstepWood,
+        "oak_log" or "birch_log" or "oak_planks" or "birch_planks" or "oak_fence" or "crafting_table" or "chest" or "barrel" or "bookshelf" or "piston" or "sticky_piston" or "piston_head" => SoundCue.FootstepWood,
         _ => SoundCue.FootstepStone,
     };
 }

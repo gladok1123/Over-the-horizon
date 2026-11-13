@@ -53,17 +53,17 @@ internal sealed class ClientContainerSlotController
 
         var itemId = (ushort)rawId;
         var count = fullStack ? itemDef.MaxStackSize : 1;
-        if (_cursorStack.IsEmpty)
+        if (_cursorStack.IsEmpty || _cursorStack.ItemId != itemId)
         {
             _cursorStack = new ItemStack(itemId, count);
         }
-        else if (_cursorStack.ItemId == itemId && !fullStack)
+        else if (!fullStack)
         {
             _cursorStack = new ItemStack(itemId, Math.Min(itemDef.MaxStackSize, _cursorStack.Count + 1));
         }
         else
         {
-            _cursorStack = ItemStack.Empty;
+            _cursorStack = new ItemStack(itemId, itemDef.MaxStackSize);
         }
 
         hotbar.RefreshSlotVisuals(mode);
@@ -217,6 +217,11 @@ internal sealed class ClientContainerSlotController
 
             SlotClickInteraction.ClickSlot(ref st, ref _cursorStack, isRightClick, _items, filter);
             inv.SetSlot(cellId, st);
+            if (player.Mode == GameMode.Creative && cellId < PlayerInventory.HotbarSlotCount)
+            {
+                player.Hotbar.SyncCreativeSlotFromInventory(cellId);
+            }
+
             player.Hotbar.RefreshSlotVisuals(player.Mode);
         }
 

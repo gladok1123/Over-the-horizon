@@ -28,4 +28,10 @@ public enum ItemUseAction : byte
 
     /// <summary>Equips this armor piece into the matching player armor slot (<c>36..39</c>).</summary>
     EquipArmor = 7,
+
+    /// <summary>Places a rideable 3D <c>Minecart</c> onto a targeted <c>Rail</c> or <c>PoweredRail</c>.</summary>
+    PlaceMinecart = 8,
+
+    /// <summary>Draws a <c>Bow</c> while right-mouse is held and releases a ballistic 3D <c>Arrow</c>.</summary>
+    DrawBow = 9,
 }

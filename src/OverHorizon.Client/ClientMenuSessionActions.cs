@@ -36,6 +36,7 @@ internal sealed class ClientMenuSessionActions : IDisposable
         Func<CancellationToken, Task> saveAndReturnToTitleAsync,
         Func<ClientMultiplayerTransport> getTransport,
         Action<ClientMultiplayerTransport> setTransport,
+        Func<Action, Task> enqueueMainThread,
         CancellationToken ct)
     {
         while (inputBinder.TryDequeueUiAction(out var action))
@@ -70,12 +71,12 @@ internal sealed class ClientMenuSessionActions : IDisposable
 
                 case "join_server":
                     if (_pendingTask is { IsCompleted: false }) break;
-                    _pendingTask = ConnectFromMenuAsync(hostLocalFirst: false, getTransport, setTransport, ct);
+                    _pendingTask = ConnectFromMenuAsync(hostLocalFirst: false, getTransport, setTransport, enqueueMainThread, ct);
                     break;
 
                 case "host_and_join":
                     if (_pendingTask is { IsCompleted: false }) break;
-                    _pendingTask = ConnectFromMenuAsync(hostLocalFirst: true, getTransport, setTransport, ct);
+                    _pendingTask = ConnectFromMenuAsync(hostLocalFirst: true, getTransport, setTransport, enqueueMainThread, ct);
                     break;
 
                 case "save_and_title":
@@ -105,6 +106,7 @@ internal sealed class ClientMenuSessionActions : IDisposable
         bool hostLocalFirst,
         Func<ClientMultiplayerTransport> getTransport,
         Action<ClientMultiplayerTransport> setTransport,
+        Func<Action, Task> enqueueMainThread,
         CancellationToken ct)
     {
         try
@@ -137,13 +139,16 @@ internal sealed class ClientMenuSessionActions : IDisposable
 
             await getTransport().DisposeAsync().ConfigureAwait(false);
             var freshTransport = new ClientMultiplayerTransport();
-            setTransport(freshTransport);
             var login = await freshTransport.ConnectAndLoginAsync(host, port, user, ct).ConfigureAwait(false);
             ClientLog.MultiplayerConnected(_logger, host, port, login.Username, login.AssignedEntityId);
 
-            _menu.StatusMessage = string.Empty;
-            _menu.Mode = UiOverlayMode.InGame;
-            _chatHistory.AddMessage($"Connected to {host}:{port} as {user}! Type /help for commands.");
+            await enqueueMainThread(() =>
+            {
+                setTransport(freshTransport);
+                _menu.StatusMessage = string.Empty;
+                _menu.Mode = UiOverlayMode.InGame;
+                _chatHistory.AddMessage($"Connected to {host}:{port} as {user}! Type /help for commands.");
+            }).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

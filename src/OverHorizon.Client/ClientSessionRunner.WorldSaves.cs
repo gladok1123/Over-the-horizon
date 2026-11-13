@@ -24,71 +24,88 @@ public sealed partial class ClientSessionRunner
         if (_backgroundWorldStreamTask is not null) await _backgroundWorldStreamTask.ConfigureAwait(false);
         await PersistActiveWorldIfAnyAsync().ConfigureAwait(false);
 
-        if (_ownedSavedWorld is not null)
+        var oldSavedWorld = _ownedSavedWorld;
+        _ownedSavedWorld = null;
+        if (oldSavedWorld is not null)
         {
-            await _ownedSavedWorld.DisposeAsync().ConfigureAwait(false);
-            _ownedSavedWorld = null;
+            await oldSavedWorld.DisposeAsync().ConfigureAwait(false);
         }
 
-        _worldCache.ClearAll(_renderer);
         var freshWorld = WorldSaveManager.OpenWorldSubsystem(meta, _registries);
-        _ownedSavedWorld = freshWorld;
-        _activeWorldMeta = meta;
-        _currentSeed = meta.Seed;
-        _worldBridge.SetActiveLocalWorld(freshWorld, meta.WorldTimeTicks);
-        _player.SetGameMode(meta.DefaultGameMode);
-
         var startPos = meta.HasSavedPose ? new Vec3d(meta.PlayerX, meta.PlayerY, meta.PlayerZ) : new Vec3d(0.5, 80.0, 0.5);
         var centerChunk = startPos.ToBlockPos().ToChunkPos();
         freshWorld.Chunks.UpsertTicket(new ChunkTicket(LocalTicketOwnerId, ChunkTicketType.Player, centerChunk, Math.Min(_menu.ActiveViewDistance, 5)));
         _ = await Task.Run(async () => await freshWorld.Chunks.ProcessTicketsAsync(25, ct).ConfigureAwait(false), ct).ConfigureAwait(false);
 
+        var resolvedSpawnY = _localSpawnY;
         if (!meta.HasSavedPose && freshWorld.Chunks.TryGetSnapshot(new ChunkPos(0, 0), out var snap))
         {
-            _localSpawnY = snap.GetHeight(HeightmapType.MotionBlocking, 0, 0);
-            startPos = new Vec3d(0.5, _localSpawnY, 0.5);
+            resolvedSpawnY = snap.GetHeight(HeightmapType.MotionBlocking, 0, 0);
+            startPos = new Vec3d(0.5, resolvedSpawnY, 0.5);
         }
 
-        _player.ApplyAuthoritativePose(startPos, 0.0f, 0.0f);
-        if (WorldSaveManager.GetRespawnVec(meta) is { } bedSpawn)
+        // Marshal ALL OpenGL chunk VAO/VBO disposal & live world swap onto the GLFW main thread (prevents GlfwException: NoContext!)
+        await EnqueueOnMainThreadAsync(() =>
         {
-            _player.SpawnPosition = bedSpawn;
-        }
+            _worldCache.ClearAll(_renderer);
+            _ownedSavedWorld = freshWorld;
+            _activeWorldMeta = meta;
+            _currentSeed = meta.Seed;
+            _localSpawnY = resolvedSpawnY;
+            _worldBridge.SetActiveLocalWorld(freshWorld, meta.WorldTimeTicks);
+            _player.DismountMinecart();
+            _player.SetGameMode(meta.DefaultGameMode);
+            _player.ApplyAuthoritativePose(startPos, 0.0f, 0.0f);
+            if (WorldSaveManager.GetRespawnVec(meta) is { } bedSpawn)
+            {
+                _player.SpawnPosition = bedSpawn;
+            }
 
-        _worldBridge.SyncLocalSnapshots(centerChunk, Math.Min(_menu.ActiveViewDistance, 5), fullImmediateRadius: 2);
-        _worldBridge.SeedInitialStarterMobs();
-        _menu.StatusMessage = string.Empty;
-        _menu.Mode = UiOverlayMode.InGame;
-        _chatHistory.AddMessage($"Loaded '{meta.WorldName}' (Seed: {meta.Seed}). E: Inv | F: Offhand | /: Cmds.");
+            _worldBridge.SyncLocalSnapshots(centerChunk, Math.Min(_menu.ActiveViewDistance, 5), fullImmediateRadius: 2);
+            _worldBridge.SeedInitialStarterMobs();
+            _menu.StatusMessage = string.Empty;
+            _menu.Mode = UiOverlayMode.InGame;
+            _chatHistory.AddMessage($"Loaded '{meta.WorldName}' (Seed: {meta.Seed}). E: Inv | F: Offhand | /: Cmds.");
+        }).ConfigureAwait(false);
     }
 
     private async Task SaveAndReturnToTitleAsync(CancellationToken ct)
     {
         if (_transport.IsConnected)
         {
-            await _transport.DisposeAsync().ConfigureAwait(false);
-            _transport = new ClientMultiplayerTransport();
-        }
-        else
-        {
-            if (_backgroundWorldStreamTask is not null) await _backgroundWorldStreamTask.ConfigureAwait(false);
-            await PersistActiveWorldIfAnyAsync().ConfigureAwait(false);
-            if (_ownedSavedWorld is not null)
+            var oldTransport = _transport;
+            await oldTransport.DisposeAsync().ConfigureAwait(false);
+            await EnqueueOnMainThreadAsync(() =>
             {
-                await _ownedSavedWorld.DisposeAsync().ConfigureAwait(false);
-                _ownedSavedWorld = null;
-            }
+                _transport = new ClientMultiplayerTransport();
+                _menu.RefreshSavedWorlds();
+                _menu.Mode = UiOverlayMode.TitleMenu;
+            }).ConfigureAwait(false);
+            return;
+        }
 
-            _activeWorldMeta = null;
-            _currentSeed = DefaultPanoramaSeed;
-            _worldCache.ClearAll(_renderer);
-            _worldBridge.SetActiveLocalWorld(_panoramaWorld, WorldTimeCycle.DayTicks);
-            _worldBridge.SyncLocalSnapshots(new ChunkPos(0, 0), 4, fullImmediateRadius: 2);
+        if (_backgroundWorldStreamTask is not null) await _backgroundWorldStreamTask.ConfigureAwait(false);
+        await PersistActiveWorldIfAnyAsync().ConfigureAwait(false);
+
+        var oldSavedWorld = _ownedSavedWorld;
+        _ownedSavedWorld = null;
+        if (oldSavedWorld is not null)
+        {
+            await oldSavedWorld.DisposeAsync().ConfigureAwait(false);
         }
 
         _ = ct;
-        _menu.RefreshSavedWorlds();
-        _menu.Mode = UiOverlayMode.TitleMenu;
+        await EnqueueOnMainThreadAsync(() =>
+        {
+            _activeWorldMeta = null;
+            _currentSeed = DefaultPanoramaSeed;
+            _player.DismountMinecart();
+            _worldCache.ClearAll(_renderer);
+            _worldBridge.SetActiveLocalWorld(_panoramaWorld, WorldTimeCycle.DayTicks);
+            _worldBridge.SyncLocalSnapshots(new ChunkPos(0, 0), 4, fullImmediateRadius: 2);
+            _menu.RefreshSavedWorlds();
+            _menu.Mode = UiOverlayMode.TitleMenu;
+        }).ConfigureAwait(false);
     }
 
     private async ValueTask PersistActiveWorldIfAnyAsync()
@@ -201,7 +218,7 @@ public sealed partial class ClientSessionRunner
         _remotePlayers.StepInterpolation(dt);
         if (!_transport.IsConnected)
         {
-            _worldBridge.StepWorldSimulationAndMobs(_player, (float)dt);
+            _worldBridge.StepWorldSimulationAndMobs(_player, (float)dt, move.Forward);
         }
         else
         {
@@ -210,15 +227,18 @@ public sealed partial class ClientSessionRunner
 
         var (leftClicked, rightClicked) = _inputBinder.ConsumeActionRequests();
         var leftHeld = _inputBinder.IsLeftMouseHeld(silkRenderer.InputContext);
+        var rightHeld = _inputBinder.IsRightMouseHeld(silkRenderer.InputContext);
 
         if (_menu.IsGameplayActive)
         {
-            var swungMelee = leftClicked && _survivalCombat.TryExecuteMeleeAttack(_player, _mobManager, _remotePlayers, _transport);
+            _survivalCombat.StepBowChargeAndRelease(dt, rightHeld, _player, _worldBridge);
+            var swungMelee = leftClicked && _survivalCombat.TryExecuteMeleeAttack(_player, _mobManager, _remotePlayers, _transport, _worldBridge);
             if (!swungMelee) _survivalCombat.StepMining(dt, leftClicked, leftHeld, _player, _worldCache, ApplyWorldBlockChange);
-            if (rightClicked) _ = TryPlaceSelectedBlock();
+            if (rightClicked && !_player.Hotbar.SelectedIsBow) _ = TryPlaceSelectedBlock();
         }
         else
         {
+            _survivalCombat.StepBowChargeAndRelease(dt, rightMouseHeld: false, _player, _worldBridge);
             _player.MiningProgress = 0.0f;
         }
 
@@ -237,7 +257,9 @@ public sealed partial class ClientSessionRunner
             _worldBridge.TimeCycle.TotalTicks,
             _worldBridge.TimeCycle.SkyBrightness,
             _chatHistory,
-            _latestDebugText);
+            _latestDebugText,
+            _worldBridge.BuildMinecartVisuals(),
+            _worldBridge.BuildArrowVisuals());
 
     private async ValueTask StepFrameAsync(double deltaSeconds, (float Forward, float Strafe, bool Jump, bool Sprint) movement, CancellationToken ct)
     {

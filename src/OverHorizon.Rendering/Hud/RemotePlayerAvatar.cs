@@ -21,4 +21,5 @@ public readonly record struct RemotePlayerAvatar(
     float PitchDegrees,
     float WalkPhase,
     float HurtFlash = 0.0f,
-    float Health = 20.0f);
+    float Health = 20.0f,
+    PlayerArmorVisual Armor = default);

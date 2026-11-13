@@ -39,7 +39,7 @@ public static class KinematicsIntegrator
         }
 
         var box = BoundingBox.FromEntityFeet(feetPosition, width, height);
-        var (inFluid, currentPush) = SampleFluidContact(world, box);
+        var (inFluid, submergedDepth, currentPush) = SampleFluidContact(world, box);
 
         var vx = velocity.X;
         var vy = velocity.Y;
@@ -51,7 +51,8 @@ public static class KinematicsIntegrator
             {
                 if (swimUp)
                 {
-                    vy = Math.Min(PhysicsConstants.MaxWaterSwimUpSpeed, vy + (PhysicsConstants.WaterSwimUpAcceleration * deltaSeconds));
+                    var surfaceScale = Math.Clamp(submergedDepth / 0.42, 0.35, 1.0);
+                    vy = Math.Min(PhysicsConstants.MaxWaterSwimUpSpeed * surfaceScale, vy + (PhysicsConstants.WaterSwimUpAcceleration * surfaceScale * deltaSeconds));
                 }
                 else
                 {
@@ -75,6 +76,12 @@ public static class KinematicsIntegrator
         if (Math.Abs(actualMove.Y - requestedMove.Y) > 1e-7)
         {
             vy = 0.0;
+        }
+
+        // Shoreline climb-out: when swimming up against a 1-block riverbank ledge, give a smooth hop onto shore!
+        if (inFluid && swimUp && hitHorizontal && vy >= 0.0 && vy < 4.4)
+        {
+            vy = 4.4;
         }
 
         if (Math.Abs(actualMove.X - requestedMove.X) > 1e-7)
@@ -132,7 +139,7 @@ public static class KinematicsIntegrator
             inFluid);
     }
 
-    private static (bool InFluid, Vec3d FlowDirection) SampleFluidContact(IVoxelCollisionReader world, BoundingBox box)
+    private static (bool InFluid, double MaxSubmergedDepth, Vec3d FlowDirection) SampleFluidContact(IVoxelCollisionReader world, BoundingBox box)
     {
         var contracted = box.Inflate(-0.001, -0.001, -0.001);
         var minX = (int)Math.Floor(contracted.MinX);
@@ -143,6 +150,7 @@ public static class KinematicsIntegrator
         var maxZ = (int)Math.Floor(contracted.MaxZ);
 
         var anyFluid = false;
+        var maxSubmerged = 0.0;
         var flow = Vec3d.Zero;
 
         for (var y = minY; y <= maxY; y++)
@@ -158,13 +166,26 @@ public static class KinematicsIntegrator
                         continue;
                     }
 
+                    var aboveLevel = world.GetFluidLevelOrNegative(pos.Offset(Direction.Up));
+                    var surfaceY = y + (aboveLevel >= 0 ? 1.0 : FluidSimulator.GetSurfaceHeight(level));
+                    if (contracted.MinY >= surfaceY)
+                    {
+                        continue;
+                    }
+
                     anyFluid = true;
+                    var depth = Math.Min(contracted.MaxY, surfaceY) - contracted.MinY;
+                    if (depth > maxSubmerged)
+                    {
+                        maxSubmerged = depth;
+                    }
+
                     flow += ComputeHorizontalGradient(world, pos, level);
                 }
             }
         }
 
-        return (anyFluid, anyFluid ? flow.Normalize() : Vec3d.Zero);
+        return (anyFluid, maxSubmerged, anyFluid ? flow.Normalize() : Vec3d.Zero);
     }
 
     private static Vec3d ComputeHorizontalGradient(IVoxelCollisionReader world, BlockPos center, int centerLevel)

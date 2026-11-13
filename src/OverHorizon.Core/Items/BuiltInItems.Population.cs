@@ -144,6 +144,10 @@ public static partial class BuiltInItems
         RegisterFood(registry, CookedMutton, "Cooked Mutton", nutrition: 6, saturation: 9.6f, heal: 0.0f);
         RegisterFood(registry, RottenFlesh, "Rotten Flesh", nutrition: 4, saturation: 0.8f, heal: 0.0f);
         RegisterFood(registry, GoldenApple, "Golden Apple", nutrition: 4, saturation: 9.6f, heal: 8.0f);
+
+        _ = registry.Register(Minecart, new ItemDefinition(Minecart, MaxStackSize: 1, DisplayName: "Minecart", Category: ItemCategory.Redstone, UseAction: ItemUseAction.PlaceMinecart));
+        _ = registry.Register(Bow, new ItemDefinition(Bow, MaxStackSize: 1, DisplayName: "Bow", Category: ItemCategory.CombatAndTools, AttackDamage: 2.0f, UseAction: ItemUseAction.DrawBow));
+        _ = registry.Register(Arrow, new ItemDefinition(Arrow, MaxStackSize: 64, DisplayName: "Arrow", Category: ItemCategory.CombatAndTools));
     }
 
     /// <summary>Creates, populates, and freezes the default item registry.</summary>
@@ -161,7 +165,8 @@ public static partial class BuiltInItems
             key == BuiltInBlocks.Lever || key == BuiltInBlocks.StoneButton ||
             key == BuiltInBlocks.StonePressurePlate || key == BuiltInBlocks.RedstoneRepeater ||
             key == BuiltInBlocks.RedstoneLamp || key == BuiltInBlocks.Piston ||
-            key == BuiltInBlocks.StickyPiston || key == BuiltInBlocks.Tnt || key == BuiltInBlocks.Rail)
+            key == BuiltInBlocks.StickyPiston || key == BuiltInBlocks.Tnt ||
+            key == BuiltInBlocks.Rail || key == BuiltInBlocks.PoweredRail)
         {
             return ItemCategory.Redstone;
         }

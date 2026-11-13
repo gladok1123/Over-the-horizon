@@ -176,6 +176,15 @@ public sealed class RedstoneEngine
                 {
                     PistonMechanics.EvaluatePiston(_blocks, this, pos, state, meta, getBlock, setBlock, soundEvents);
                 }
+                else if (key == BuiltInBlocks.PoweredRail)
+                {
+                    var shouldPowerRail = RailPlacementRules.IsPoweredRailEnergized(_blocks, this, getBlock, pos);
+                    if (IsTrue(meta, "powered") != shouldPowerRail)
+                    {
+                        setBlock(pos, _blocks.WithProperty(state, "powered", shouldPowerRail ? "true" : "false"));
+                        NotifyBlockChanged(pos);
+                    }
+                }
                 else if (key == BuiltInBlocks.Tnt && GetPowerReceivedAt(pos, getBlock, ignoreSource: null) > 0)
                 {
                     setBlock(pos, BlockState.Air);

@@ -115,6 +115,10 @@ public static partial class ProceduralAtlasGenerator
     internal const ushort TileRedBedTopHead = 85;
     internal const ushort TileRedBedTopFoot = 86;
     internal const ushort TileRedBedSide = 87;
+    internal const ushort TileRailCorner = 88;
+    internal const ushort TilePoweredRailOff = 89;
+    internal const ushort TilePoweredRailOn = 100;
+    internal const ushort TileRedBedHeadSide = 101;
 
     private const ushort FirstCustomTile = 104;
     private const ushort FirstItemSpriteTile = 128;
@@ -146,7 +150,13 @@ public static partial class ProceduralAtlasGenerator
                     var (_, tile, stem, tr, tg, tb) = itemTiles[i];
                     _ = resourcePack.TryBlitItemTile(pixels, tile, stem, tr, tg, tb);
                 }
+
+                _ = resourcePack.TryBlitItemTile(pixels, ProceduralItemTileManifest.TileBowPulling0, "bow_pulling_0");
+                _ = resourcePack.TryBlitItemTile(pixels, ProceduralItemTileManifest.TileBowPulling1, "bow_pulling_1");
+                _ = resourcePack.TryBlitItemTile(pixels, ProceduralItemTileManifest.TileBowPulling2, "bow_pulling_2");
             }
+
+            _ = resourcePack.TryExtractRedBedTiles(pixels, TileRedBedTopHead, TileRedBedTopFoot, TileRedBedHeadSide, TileRedBedSide);
         }
 
         var lookup = BuildFaceLookup();

@@ -175,5 +175,11 @@ public sealed partial class ClientHotbar
         (BuiltInItems.SlimeBall, "Slimeball", ItemCategory.FoodAndMaterials, new Vector3(0.46f, 0.84f, 0.38f)),
         (BuiltInItems.Wheat, "Wheat", ItemCategory.FoodAndMaterials, new Vector3(0.86f, 0.76f, 0.32f)),
         (BuiltInItems.SugarCane, "Sugar Cane", ItemCategory.FoodAndMaterials, new Vector3(0.54f, 0.84f, 0.38f)),
+
+        // v0.7.0-alpha Powered Rails, Minecarts, Bows & Arrows (148..151)
+        (BuiltInBlocks.PoweredRail, "Powered Rail", ItemCategory.Redstone, new Vector3(0.95f, 0.78f, 0.22f)),
+        (BuiltInItems.Minecart, "Minecart", ItemCategory.Redstone, new Vector3(0.76f, 0.78f, 0.82f)),
+        (BuiltInItems.Bow, "Bow", ItemCategory.CombatAndTools, new Vector3(0.62f, 0.44f, 0.24f)),
+        (BuiltInItems.Arrow, "Arrow", ItemCategory.CombatAndTools, new Vector3(0.82f, 0.82f, 0.85f)),
     ];
 }

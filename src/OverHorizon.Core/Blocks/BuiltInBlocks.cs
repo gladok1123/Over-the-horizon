@@ -226,6 +226,9 @@ public static class BuiltInBlocks
     /// <summary>Key for <c>overhorizon:copper_block</c>.</summary>
     public static readonly ResourceKey CopperBlock = ResourceKey.OverHorizon("copper_block");
 
+    /// <summary>Key for <c>overhorizon:powered_rail</c> (Redstone-boosted or braking minecart track).</summary>
+    public static readonly ResourceKey PoweredRail = ResourceKey.OverHorizon("powered_rail");
+
     /// <summary>
     /// Registers all built-in blocks into an unfrozen <see cref="BlockRegistry"/>.
     /// </summary>
@@ -236,13 +239,38 @@ public static class BuiltInBlocks
         var attachFacing = new BlockProperty("facing", ["up", "north", "south", "west", "east"]);
         var horizFacing = new BlockProperty("facing", ["north", "south", "west", "east"]);
         var sixFacing = new BlockProperty("facing", ["north", "south", "west", "east", "up", "down"]);
+        var pillarAxis = new BlockProperty("axis", ["y", "x", "z"]);
+        var railShape = new BlockProperty(
+            "shape",
+            [
+                "north_south",
+                "east_west",
+                "ascending_east",
+                "ascending_west",
+                "ascending_north",
+                "ascending_south",
+                "south_east",
+                "south_west",
+                "north_west",
+                "north_east",
+            ]);
+        var poweredRailShape = new BlockProperty(
+            "shape",
+            [
+                "north_south",
+                "east_west",
+                "ascending_east",
+                "ascending_west",
+                "ascending_north",
+                "ascending_south",
+            ]);
 
         _ = registry.Register(new BlockDefinition(Air, isSolid: false, isOpaque: false, hardness: 0.0f));
         _ = registry.Register(new BlockDefinition(Stone, hardness: 1.5f));
         _ = registry.Register(new BlockDefinition(Dirt, hardness: 0.5f));
         _ = registry.Register(new BlockDefinition(GrassBlock, hardness: 0.6f, properties: [BlockProperty.Boolean("snowy")]));
         _ = registry.Register(new BlockDefinition(Cobblestone, hardness: 2.0f));
-        _ = registry.Register(new BlockDefinition(OakLog, hardness: 2.0f, properties: [new BlockProperty("axis", ["y", "x", "z"])]));
+        _ = registry.Register(new BlockDefinition(OakLog, hardness: 2.0f, properties: [pillarAxis]));
         _ = registry.Register(new BlockDefinition(OakLeaves, isSolid: true, isOpaque: false, hardness: 0.2f));
         _ = registry.Register(new BlockDefinition(Sand, hardness: 0.5f));
         _ = registry.Register(new BlockDefinition(
@@ -276,17 +304,17 @@ public static class BuiltInBlocks
         _ = registry.Register(new BlockDefinition(BlueWool, hardness: 0.8f));
 
         _ = registry.Register(new BlockDefinition(Torch, isSolid: false, isOpaque: false, lightEmission: 14, hardness: 0.05f, properties: [attachFacing]));
-        _ = registry.Register(new BlockDefinition(Lantern, isSolid: true, isOpaque: false, lightEmission: 15, hardness: 0.5f));
-        _ = registry.Register(new BlockDefinition(Furnace, hardness: 3.5f));
-        _ = registry.Register(new BlockDefinition(LitFurnace, lightEmission: 13, hardness: 3.5f));
-        _ = registry.Register(new BlockDefinition(Chest, hardness: 2.5f));
-        _ = registry.Register(new BlockDefinition(Barrel, hardness: 2.5f));
+        _ = registry.Register(new BlockDefinition(Lantern, isSolid: true, isOpaque: false, lightEmission: 15, hardness: 0.5f, properties: [BlockProperty.Boolean("hanging")]));
+        _ = registry.Register(new BlockDefinition(Furnace, hardness: 3.5f, properties: [horizFacing]));
+        _ = registry.Register(new BlockDefinition(LitFurnace, lightEmission: 13, hardness: 3.5f, properties: [horizFacing]));
+        _ = registry.Register(new BlockDefinition(Chest, hardness: 2.5f, properties: [horizFacing]));
+        _ = registry.Register(new BlockDefinition(Barrel, hardness: 2.5f, properties: [new BlockProperty("facing", ["up", "down", "north", "south", "west", "east"])]));
         _ = registry.Register(new BlockDefinition(Ladder, isSolid: false, isOpaque: false, hardness: 0.4f, properties: [horizFacing]));
-        _ = registry.Register(new BlockDefinition(Rail, isSolid: false, isOpaque: false, hardness: 0.5f));
+        _ = registry.Register(new BlockDefinition(Rail, isSolid: false, isOpaque: false, hardness: 0.5f, properties: [railShape]));
         _ = registry.Register(new BlockDefinition(Cobweb, isSolid: false, isOpaque: false, hardness: 2.5f));
         _ = registry.Register(new BlockDefinition(OakFence, isSolid: true, isOpaque: false, hardness: 2.0f));
         _ = registry.Register(new BlockDefinition(Farmland, hardness: 0.6f));
-        _ = registry.Register(new BlockDefinition(HayBlock, hardness: 0.5f));
+        _ = registry.Register(new BlockDefinition(HayBlock, hardness: 0.5f, properties: [pillarAxis]));
 
         _ = registry.Register(new BlockDefinition(Deepslate, hardness: 3.0f));
         _ = registry.Register(new BlockDefinition(CobbledDeepslate, hardness: 3.5f));
@@ -294,7 +322,7 @@ public static class BuiltInBlocks
         _ = registry.Register(new BlockDefinition(LapisOre, hardness: 3.0f));
         _ = registry.Register(new BlockDefinition(RedstoneOre, lightEmission: 7, hardness: 3.0f));
         _ = registry.Register(new BlockDefinition(EmeraldOre, hardness: 3.0f));
-        _ = registry.Register(new BlockDefinition(BirchLog, hardness: 2.0f));
+        _ = registry.Register(new BlockDefinition(BirchLog, hardness: 2.0f, properties: [pillarAxis]));
         _ = registry.Register(new BlockDefinition(BirchLeaves, isSolid: true, isOpaque: false, hardness: 0.2f));
         _ = registry.Register(new BlockDefinition(BirchPlanks, hardness: 2.0f));
         _ = registry.Register(new BlockDefinition(CoalBlock, hardness: 5.0f));
@@ -321,6 +349,7 @@ public static class BuiltInBlocks
         _ = registry.Register(new BlockDefinition(EmeraldBlock, hardness: 5.0f));
         _ = registry.Register(new BlockDefinition(LapisBlock, hardness: 3.0f));
         _ = registry.Register(new BlockDefinition(CopperBlock, hardness: 3.0f));
+        _ = registry.Register(new BlockDefinition(PoweredRail, isSolid: false, isOpaque: false, hardness: 0.7f, properties: [poweredRailShape, BlockProperty.Boolean("powered")]));
     }
 
     /// <summary>Creates, populates, and freezes the default <see cref="BlockRegistry"/>.</summary>

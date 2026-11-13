@@ -7,22 +7,24 @@ using OverHorizon.Gameplay;
 using OverHorizon.Gameplay.Inventory;
 using OverHorizon.Gameplay.Mobs;
 using OverHorizon.Gameplay.Physics;
+using OverHorizon.Gameplay.Projectiles;
 using OverHorizon.Gameplay.Redstone;
 using OverHorizon.Gameplay.Survival;
+using OverHorizon.Gameplay.Vehicles;
 using OverHorizon.Rendering;
 using OverHorizon.Rendering.Hud;
 using OverHorizon.World;
-using OverHorizon.World.Lighting;
 using OverHorizon.World.Storage;
 
 namespace OverHorizon.Client;
 
 /// <summary>
 /// Coordinates concentric Chebyshev chunk-ring snapshot synchronization, <see cref="WorldTimeCycle"/>,
-/// <see cref="RedstoneEngine"/> + Pistons, <see cref="PrimedTntAndWorldTicker"/> (TNT craters, falling Sand/Gravel,
-/// flowing Water, Grass spread), attachment support detachment, and 3D peaceful/hostile mob simulation + audio.
+/// <see cref="RedstoneEngine"/> + Pistons + Powered Rails, <see cref="PrimedTntAndWorldTicker"/> (batch craters,
+/// Sand/Gravel, smooth 4-block slope Water), atomic 2-part <c>RedBed</c> rules, <see cref="MinecartManager"/>,
+/// <see cref="ArrowProjectileManager"/>, and 3D mob simulation + audio.
 /// </summary>
-internal sealed class ClientWorldSyncAndMobBridge
+internal sealed partial class ClientWorldSyncAndMobBridge
 {
     private static readonly Direction[] SixNeighbors =
     [
@@ -37,15 +39,21 @@ internal sealed class ClientWorldSyncAndMobBridge
     private readonly WorldMobManager _mobManager;
     private readonly List<WorldMobVisual> _mobVisualScratch = new(36);
     private readonly List<PrimedTntVisual> _tntVisualScratch = new(16);
+    private readonly List<MinecartVisual> _minecartVisualScratch = new(16);
+    private readonly List<ArrowProjectileVisual> _arrowVisualScratch = new(32);
     private readonly List<BlockPos> _ignitedTntScratch = new(8);
     private readonly List<(BlockPos Pos, RedstoneSoundKind Sound)> _redstoneSoundScratch = new(8);
     private readonly List<Vec3d> _detonatedScratch = new(8);
     private readonly List<Vec3d> _creeperDetonations = new(4);
+    private readonly List<(MobType Type, Vec3d Position, bool Died, float FallDamage)> _mobFallScratch = new(8);
+    private readonly List<ItemStack> _arrowDropScratch = new(8);
+    private readonly List<Vec3d> _arrowHitSoundScratch = new(8);
     private readonly HashSet<ChunkPos> _touchedChunksScratch = [];
-    private readonly List<BlockPos> _editedPositionsScratch = new(32);
+    private readonly List<BlockPos> _editedPositionsScratch = new(64);
 
     private IWorldSubsystem _localWorld;
     private double _ambientMobSoundTimer;
+    private double _minecartRollAudioTimer;
     private int _rollingSyncRingCursor = 9;
     private int _dropSeq;
 
@@ -67,21 +75,24 @@ internal sealed class ClientWorldSyncAndMobBridge
         _mobManager = mobManager;
         Redstone = new RedstoneEngine(blocks);
         WorldTicker = new PrimedTntAndWorldTicker(blocks);
+        Minecarts = new MinecartManager(blocks);
+        Arrows = new ArrowProjectileManager(blocks);
     }
 
     public IWorldSubsystem ActiveLocalWorld => _localWorld;
-
     public WorldTimeCycle TimeCycle { get; } = new();
-
     public RedstoneEngine Redstone { get; }
-
     public PrimedTntAndWorldTicker WorldTicker { get; }
+    public MinecartManager Minecarts { get; }
+    public ArrowProjectileManager Arrows { get; }
 
     public void SetActiveLocalWorld(IWorldSubsystem nextWorld, long initialTimeTicks)
     {
         _localWorld = nextWorld;
         TimeCycle.SetTime(initialTimeTicks);
         _mobManager.Clear();
+        Minecarts.Clear();
+        Arrows.Clear();
     }
 
     public void SeedInitialStarterMobs()
@@ -116,10 +127,7 @@ internal sealed class ClientWorldSyncAndMobBridge
         _redstoneSoundScratch.Clear();
 
         var interacted = Redstone.TryInteractComponent(pos, _localWorld.GetBlockState, RecordWorldSet);
-        if (!interacted)
-        {
-            return false;
-        }
+        if (!interacted) return false;
 
         Redstone.EvaluateImmediate(_localWorld.GetBlockState, RecordWorldSet, _ignitedTntScratch, _redstoneSoundScratch);
         ProcessRedstoneOutputsAndRemesh();
@@ -131,6 +139,7 @@ internal sealed class ClientWorldSyncAndMobBridge
         BlockState primaryState,
         PlayerInventory? dropDetachedItemsToInventory)
     {
+        var previousState = _localWorld.GetBlockState(primaryPos);
         if (!_localWorld.SetBlockState(primaryPos, primaryState))
         {
             return false;
@@ -144,7 +153,30 @@ internal sealed class ClientWorldSyncAndMobBridge
         TrackEditedBlock(primaryPos);
         WorldTicker.NotifyWorldBlockChanged(primaryPos, _localWorld.GetBlockState, RecordWorldSet);
 
-        // Detach unsupported neighbor Torches, Ladders, Redstone components, Rails, or Bed halves!
+        // 1. Atomic 2-block RedBed breaking: breaking EITHER head or foot removes its partner without duplicate drops!
+        if (primaryState.IsAir &&
+            !previousState.IsAir &&
+            BlockAttachmentAndShapeRules.TryGetBedPartnerPos(_blocks, primaryPos, previousState, out var partnerBedPos))
+        {
+            var partnerState = _localWorld.GetBlockState(partnerBedPos);
+            if (!partnerState.IsAir &&
+                _blocks.GetStateMetadata(partnerState).BlockKey == BuiltInBlocks.RedBed &&
+                _localWorld.SetBlockState(partnerBedPos, BlockState.Air))
+            {
+                TrackEditedBlock(partnerBedPos);
+                WorldTicker.NotifyWorldBlockChanged(partnerBedPos, _localWorld.GetBlockState, RecordWorldSet);
+            }
+        }
+
+        // 2. Auto-connect adjacent Rails & Powered Rails when placing or breaking tracks!
+        var placedKey = primaryState.IsAir ? BuiltInBlocks.Air : _blocks.GetStateMetadata(primaryState).BlockKey;
+        var prevKey = previousState.IsAir ? BuiltInBlocks.Air : _blocks.GetStateMetadata(previousState).BlockKey;
+        if (RailPlacementRules.IsRailBlock(placedKey) || RailPlacementRules.IsRailBlock(prevKey))
+        {
+            RailPlacementRules.RefreshAdjacentRails(_blocks, _localWorld.GetBlockState, RecordWorldSet, primaryPos);
+        }
+
+        // 3. Detach unsupported neighbor Torches, Lanterns, Ladders, Redstone components, Rails, or Bed halves!
         var checkQueue = new Queue<BlockPos>();
         checkQueue.Enqueue(primaryPos);
         while (checkQueue.Count > 0)
@@ -165,7 +197,8 @@ internal sealed class ClientWorldSyncAndMobBridge
                     WorldTicker.NotifyWorldBlockChanged(nPos, _localWorld.GetBlockState, RecordWorldSet);
                     checkQueue.Enqueue(nPos);
 
-                    if (dropDetachedItemsToInventory is not null)
+                    // Do not duplicate RedBed drop when its partner detaches!
+                    if (dropDetachedItemsToInventory is not null && nKey != BuiltInBlocks.RedBed)
                     {
                         var drop = BlockDropResolver.ResolveDrop(nKey, heldTool: null, _items, _dropSeq++);
                         if (!drop.IsEmpty)
@@ -181,124 +214,6 @@ internal sealed class ClientWorldSyncAndMobBridge
         Redstone.EvaluateImmediate(_localWorld.GetBlockState, RecordWorldSet, _ignitedTntScratch, _redstoneSoundScratch);
         ProcessRedstoneOutputsAndRemesh();
         return true;
-    }
-
-    public void StepWorldSimulationAndMobs(ClientPlayerController player, float dt)
-    {
-        TimeCycle.AdvanceSeconds(dt);
-        var skyBright = TimeCycle.SkyBrightness;
-
-        _editedPositionsScratch.Clear();
-        _touchedChunksScratch.Clear();
-        _ignitedTntScratch.Clear();
-        _redstoneSoundScratch.Clear();
-        _detonatedScratch.Clear();
-        _creeperDetonations.Clear();
-
-        // 1. Step Redstone (buttons, pressure plates, repeaters, pistons, TNT ignition)
-        var mobCount = _mobManager.Mobs.Count;
-        Span<Vec3d> entityFeet = mobCount <= 32 ? stackalloc Vec3d[1 + mobCount] : new Vec3d[1 + mobCount];
-        entityFeet[0] = player.FeetPosition;
-        for (var i = 0; i < mobCount; i++)
-        {
-            entityFeet[1 + i] = _mobManager.Mobs[i].FeetPosition;
-        }
-
-        Redstone.Step(dt, entityFeet, _localWorld.GetBlockState, RecordWorldSet, _ignitedTntScratch, _redstoneSoundScratch);
-
-        // 2. Step Primed TNT, Gravity Blocks (Sand/Gravel), Water Flow (0..7), and Grass Spread/Decay
-        WorldTicker.Step(dt, _worldCache, player.FeetPosition, _localWorld.GetBlockState, _worldCache.GetLight, RecordWorldSet, _detonatedScratch);
-
-        // 3. Step Peaceful & Hostile Mobs (with real daylight burning & Creeper craters!)
-        var mobDamage = _mobManager.Step(
-            _worldCache,
-            ProbeMobSpawnCell,
-            player.FeetPosition,
-            player.Mode,
-            player.Hotbar.TotalArmorDefense,
-            skyBright,
-            dt,
-            _creeperDetonations);
-
-        if (mobDamage > 0.0f)
-        {
-            _ = player.ApplyDamage(mobDamage, _audio);
-        }
-
-        for (var c = 0; c < _creeperDetonations.Count; c++)
-        {
-            _ = WorldTicker.DetonateRaycastExplosion(_creeperDetonations[c], 3.0f, _localWorld.GetBlockState, RecordWorldSet);
-            _detonatedScratch.Add(_creeperDetonations[c]);
-        }
-
-        // Apply explosion damage & knockback to Mobs & Survival Player + play Explosion audio!
-        for (var e = 0; e < _detonatedScratch.Count; e++)
-        {
-            var boomCenter = _detonatedScratch[e];
-            _audio.PlayPositional(SoundCue.Explosion, boomCenter, gain: 1.0f * player.MasterVolume);
-            _ = _mobManager.ApplyExplosionBlast(boomCenter);
-
-            var dist = player.FeetPosition.DistanceTo(boomCenter);
-            if (dist < 8.0 && player.Mode == GameMode.Survival)
-            {
-                var exp = (float)Math.Clamp(1.0 - (dist / 8.0), 0.0, 1.0);
-                var dmg = ((exp * exp) + exp) * 14.0f;
-                _ = player.ApplyDamage(dmg, _audio);
-            }
-        }
-
-        ProcessRedstoneOutputsAndRemesh();
-        StepAmbientMobAudio(player, dt);
-    }
-
-    public IReadOnlyList<WorldMobVisual> BuildMobVisuals(ClientPlayerController player)
-    {
-        _mobVisualScratch.Clear();
-        var mobs = _mobManager.Mobs;
-        var heldTorch = player.Hotbar.CombinedHeldLightEmission;
-        var skyMul = TimeCycle.SkyBrightness;
-        for (var i = 0; i < mobs.Count; i++)
-        {
-            var m = mobs[i];
-            var (sky, blk) = _worldCache.GetLight(m.FeetPosition.ToBlockPos());
-            var effSky = (byte)Math.Clamp((int)MathF.Round(sky * skyMul), 0, 15);
-            var distToPlayer = (float)m.FeetPosition.DistanceTo(player.Camera.Position);
-            var torchAtMob = heldTorch > distToPlayer ? (byte)Math.Clamp((int)MathF.Round(heldTorch - distToPlayer), 0, 15) : (byte)0;
-            var eff = LightingEngine.ComputeEffectiveLightLevel(effSky, blk, torchAtMob);
-            var bright = LightingEngine.LightLevelToBrightness(eff);
-            _mobVisualScratch.Add(new WorldMobVisual(
-                m.FeetPosition,
-                m.YawDegrees,
-                m.WalkPhase,
-                (byte)m.Type,
-                m.HurtFlashTimer,
-                m.CreeperFuseTimer,
-                m.IsSheared,
-                bright,
-                m.IsOnFire));
-        }
-
-        return _mobVisualScratch;
-    }
-
-    public IReadOnlyList<PrimedTntVisual> BuildPrimedTntVisuals(ClientPlayerController player)
-    {
-        _tntVisualScratch.Clear();
-        var tnts = WorldTicker.PrimedTnts;
-        if (tnts.Count == 0) return _tntVisualScratch;
-
-        var skyMul = TimeCycle.SkyBrightness;
-        for (var i = 0; i < tnts.Count; i++)
-        {
-            var t = tnts[i];
-            var (sky, blk) = _worldCache.GetLight(t.FeetPosition.ToBlockPos());
-            var effSky = (byte)Math.Clamp((int)MathF.Round(sky * skyMul), 0, 15);
-            var bright = LightingEngine.LightLevelToBrightness(Math.Max(effSky, blk));
-            _ = player;
-            _tntVisualScratch.Add(new PrimedTntVisual(t.FeetPosition, t.IsFlashingWhite, bright));
-        }
-
-        return _tntVisualScratch;
     }
 
     public void SyncLocalSnapshots(ChunkPos center, int viewDistance, int? fullImmediateRadius = null)
@@ -333,6 +248,18 @@ internal sealed class ClientWorldSyncAndMobBridge
         {
             TrackEditedBlock(pos);
             WorldTicker.NotifyWorldBlockChanged(pos, _localWorld.GetBlockState, static (_, _) => { });
+        }
+    }
+
+    private void RecordWorldBatchSet(IReadOnlyList<(BlockPos Pos, BlockState State)> updates)
+    {
+        if (updates.Count == 0) return;
+        _ = _localWorld.SetBlockStatesBatch(updates);
+        for (var i = 0; i < updates.Count; i++)
+        {
+            var pos = updates[i].Pos;
+            TrackEditedBlock(pos);
+            Redstone.NotifyBlockChanged(pos);
         }
     }
 
@@ -379,37 +306,13 @@ internal sealed class ClientWorldSyncAndMobBridge
             }
         }
 
-        if (_editedPositionsScratch.Count <= 12)
+        if (_editedPositionsScratch.Count <= 16)
         {
             for (var i = 0; i < _editedPositionsScratch.Count; i++)
             {
                 _worldCache.RemeshAroundBlockImmediate(_editedPositionsScratch[i], _renderer);
             }
         }
-    }
-
-    private void StepAmbientMobAudio(ClientPlayerController player, float dt)
-    {
-        _ambientMobSoundTimer += dt;
-        if (_ambientMobSoundTimer < 4.2 || _mobManager.Mobs.Count == 0) return;
-        _ambientMobSoundTimer = 0.0;
-
-        var idx = (int)((uint)Environment.TickCount % (uint)_mobManager.Mobs.Count);
-        var m = _mobManager.Mobs[idx];
-        if (m.FeetPosition.DistanceTo(player.Camera.Position) > 24.0) return;
-
-        var cue = m.Type switch
-        {
-            MobType.Pig => SoundCue.MobPigSay,
-            MobType.Cow => SoundCue.MobCowSay,
-            MobType.Sheep => SoundCue.MobSheepSay,
-            MobType.Chicken => SoundCue.MobChickenSay,
-            MobType.Zombie => SoundCue.MobZombieSay,
-            MobType.Skeleton => SoundCue.MobSkeletonSay,
-            MobType.Spider => SoundCue.MobSpiderSay,
-            _ => SoundCue.MobCreeperHiss,
-        };
-        _audio.PlayPositional(cue, m.FeetPosition, gain: 0.65f * player.MasterVolume);
     }
 
     private void SyncChebyshevRing(ChunkPos center, int ring)
@@ -431,21 +334,5 @@ internal sealed class ClientWorldSyncAndMobBridge
             if (_localWorld.Chunks.TryGetSnapshot(new ChunkPos(center.X - ring, center.Z + dz), out var wSnap)) _worldCache.UpsertSnapshot(wSnap);
             if (_localWorld.Chunks.TryGetSnapshot(new ChunkPos(center.X + ring, center.Z + dz), out var eSnap)) _worldCache.UpsertSnapshot(eSnap);
         }
-    }
-
-    private (byte SkyLight, byte BlockLight, bool IsGrassTop, bool IsSolidGround, bool IsClearSpace) ProbeMobSpawnCell(BlockPos feetBlock)
-    {
-        if (!_worldCache.IsColumnLoaded(feetBlock)) return (15, 0, false, false, false);
-
-        var below = new BlockPos(feetBlock.X, feetBlock.Y - 1, feetBlock.Z);
-        var head = new BlockPos(feetBlock.X, feetBlock.Y + 1, feetBlock.Z);
-        var belowKey = _blocks.GetStateMetadata(_worldCache.GetBlockState(below)).BlockKey;
-        var feetDef = _blocks.GetRequired(_blocks.GetStateMetadata(_worldCache.GetBlockState(feetBlock)).BlockKey);
-        var headDef = _blocks.GetRequired(_blocks.GetStateMetadata(_worldCache.GetBlockState(head)).BlockKey);
-        var (sky, blk) = _worldCache.GetLight(feetBlock);
-
-        var isSolidBelow = _blocks.GetRequired(belowKey).IsSolid;
-        var isClear = !feetDef.IsSolid && !feetDef.IsFluid && !headDef.IsSolid && !headDef.IsFluid;
-        return (sky, blk, belowKey == BuiltInBlocks.GrassBlock, isSolidBelow, isClear);
     }
 }

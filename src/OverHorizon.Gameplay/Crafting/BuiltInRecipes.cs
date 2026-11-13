@@ -159,6 +159,14 @@ public static class BuiltInRecipes
         AddShaped(registry, "bread_from_wheat", 3, 1, [wheat, wheat, wheat], Id(BuiltInItems.Bread), 1);
         AddShapeless(registry, "bread_from_hay", [Id(BuiltInBlocks.HayBlock)], Id(BuiltInItems.Bread), 3);
         AddShaped(registry, "golden_apple", 3, 3, [gold, gold, gold, gold, Id(BuiltInItems.Apple), gold, gold, gold, gold], Id(BuiltInItems.GoldenApple), 1);
+
+        // 9. Minecart, Powered Rail, Bow & Arrows
+        var feather = Id(BuiltInItems.Feather);
+        AddShaped(registry, "powered_rail", 3, 3, [gold, 0, gold, gold, stick, gold, gold, redstone, gold], Id(BuiltInBlocks.PoweredRail), 6);
+        AddShaped(registry, "minecart", 3, 2, [iron, 0, iron, iron, iron, iron], Id(BuiltInItems.Minecart), 1);
+        AddShaped(registry, "bow_right", 3, 3, [0, stick, str, stick, 0, str, 0, stick, str], Id(BuiltInItems.Bow), 1);
+        AddShaped(registry, "bow_left", 3, 3, [str, stick, 0, str, 0, stick, str, stick, 0], Id(BuiltInItems.Bow), 1);
+        AddShaped(registry, "arrow", 1, 3, [flint, stick, feather], Id(BuiltInItems.Arrow), 4);
     }
 
     /// <summary>Creates, populates, and freezes the built-in crafting recipe registry.</summary>

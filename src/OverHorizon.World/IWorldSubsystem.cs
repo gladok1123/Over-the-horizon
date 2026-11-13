@@ -31,4 +31,12 @@ public interface IWorldSubsystem : ITickSubsystem, IAsyncDisposable, IDisposable
     /// <param name="tickNumber">Current simulation tick.</param>
     /// <returns><see langword="true"/> if applied.</returns>
     bool SetBlockState(BlockPos worldPos, BlockState newState, long tickNumber = 0);
+
+    /// <summary>
+    /// Applies a batch of block modifications across loaded chunks and refreshes lighting and snapshots once per touched chunk.
+    /// </summary>
+    /// <param name="changes">Span of world block coordinate and target state pairs.</param>
+    /// <param name="tickNumber">Current simulation tick.</param>
+    /// <returns>Number of blocks whose state changed.</returns>
+    int SetBlockStatesBatch(ReadOnlySpan<(BlockPos Position, BlockState State)> changes, long tickNumber = 0);
 }

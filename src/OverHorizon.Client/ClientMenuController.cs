@@ -126,6 +126,11 @@ internal sealed partial class ClientMenuController
         {
             _inventoryScrollRow = 0;
             StatusMessage = string.Empty;
+            if (player.Mode == GameMode.Creative)
+            {
+                player.Hotbar.SyncInventoryFromCreativeSlots();
+            }
+
             Mode = player.Mode == GameMode.Survival ? UiOverlayMode.SurvivalInventory : UiOverlayMode.BlockInventory;
         }
     }

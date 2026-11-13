@@ -138,6 +138,68 @@ public sealed partial class WorldMobManager
         return true;
     }
 
+    /// <summary>Tests a ballistic projectile segment against active mobs and applies arrow damage, knockback, and death drops.</summary>
+    public bool TryHitMobAlongSegment(
+        Vec3d start,
+        Vec3d end,
+        float arrowDamage,
+        Vec3d arrowVelocity,
+        IRegistry<ItemDefinition> items,
+        out ActiveMob? hitMob,
+        out List<ItemStack> drops)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        hitMob = null;
+        drops = [];
+
+        var delta = end - start;
+        var len = delta.Length;
+        if (len <= 1e-6)
+        {
+            return false;
+        }
+
+        var dir = new Vector3((float)(delta.X / len), (float)(delta.Y / len), (float)(delta.Z / len));
+        var bestT = len + 0.001;
+        for (var i = 0; i < _mobs.Count; i++)
+        {
+            var candidate = _mobs[i];
+            if (candidate.IsDead) continue;
+            if (TryIntersectRayBox(start, dir, len, candidate.Hitbox.Inflate(0.22, 0.16, 0.22), out var t) && t < bestT)
+            {
+                bestT = t;
+                hitMob = candidate;
+            }
+        }
+
+        if (hitMob is null)
+        {
+            return false;
+        }
+
+        hitMob.Health = MathF.Max(0.0f, hitMob.Health - MathF.Max(1.0f, arrowDamage));
+        hitMob.HurtFlashTimer = 1.0f;
+        hitMob.InvulnerabilityTimer = 0.20f;
+        if (!hitMob.IsHostile)
+        {
+            hitMob.PanicTimer = 4.0f;
+        }
+
+        var hLen = Math.Sqrt((arrowVelocity.X * arrowVelocity.X) + (arrowVelocity.Z * arrowVelocity.Z));
+        var kx = hLen > 1e-4 ? (arrowVelocity.X / hLen) * 6.2 : 0.0;
+        var kz = hLen > 1e-4 ? (arrowVelocity.Z / hLen) * 6.2 : 0.0;
+        hitMob.Velocity = new Vec3d(kx, 3.8, kz);
+        hitMob.OnGround = false;
+
+        if (hitMob.IsDead)
+        {
+            PopulateDeathDrops(hitMob, items, drops);
+            _ = _mobs.Remove(hitMob);
+        }
+
+        return true;
+    }
+
     /// <summary>Shears a targeted <see cref="MobType.Sheep"/> within reach, yielding <c>1..3</c> White Wool.</summary>
     public bool TryShearAlongRay(
         Vec3d rayOrigin,
@@ -206,6 +268,7 @@ public sealed partial class WorldMobManager
                 break;
             case MobType.Skeleton:
                 Add(BuiltInItems.Bone, 1, 2);
+                Add(BuiltInItems.Arrow, 0, 2);
                 break;
             case MobType.Spider:
                 Add(BuiltInItems.String, 1, 2);

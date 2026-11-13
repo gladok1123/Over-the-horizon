@@ -68,7 +68,7 @@ internal static class UiTitleAndCreativeScreenBuilder
             UiGeometryBuilder.DrawCenteredText(v, state.StatusMessage, cx, height - 62.0f, 1.6f, new Vector4(1.0f, 0.76f, 0.42f, 1.0f), shadow: true);
         }
 
-        UiGeometryBuilder.DrawText(v, "Over-the-Horizon v0.6.0-alpha (C# / .NET 9)", 14.0f, height - 24.0f, 1.5f, new Vector4(0.92f, 0.94f, 0.98f, 0.94f), shadow: true);
+        UiGeometryBuilder.DrawText(v, "Over-the-Horizon v0.7.0-alpha (C# / .NET 9)", 14.0f, height - 24.0f, 1.5f, new Vector4(0.92f, 0.94f, 0.98f, 0.94f), shadow: true);
         const string rightNote = "Clean-Room Engine - 23w13a Assets";
         UiGeometryBuilder.DrawText(v, rightNote, width - UiGeometryBuilder.MeasureText(rightNote, 1.5f) - 14.0f, height - 24.0f, 1.5f, new Vector4(0.84f, 0.86f, 0.90f, 0.88f), shadow: true);
     }
@@ -155,7 +155,12 @@ internal static class UiTitleAndCreativeScreenBuilder
         var labelCol = new Vector4(0.24f, 0.24f, 0.26f, 1.0f);
         UiGeometryBuilder.DrawText(v, state.MenuTitle, winX + (8.0f * s), winY + (6.0f * s), 1.45f, labelCol, shadow: false);
 
-        if (selTab != 6)
+        if (selTab == 6)
+        {
+            // Crisp red [X] badge inside the Delete Item trash slot (173, 112) on tab_inventory.png!
+            UiGeometryBuilder.DrawCenteredText(v, "X", winX + (181.0f * s), winY + (116.0f * s), 1.6f, new Vector4(0.82f, 0.20f, 0.20f, 0.92f), shadow: false);
+        }
+        else
         {
             if (selTab == 5 || !string.IsNullOrEmpty(state.CreativeSearchQuery))
             {

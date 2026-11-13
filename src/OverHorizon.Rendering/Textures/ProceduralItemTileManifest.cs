@@ -10,6 +10,15 @@ namespace OverHorizon.Rendering.Textures;
 /// </summary>
 internal static class ProceduralItemTileManifest
 {
+    /// <summary>Sprite tile index for bow draw stage 0 (<c>bow_pulling_0</c>).</summary>
+    public const ushort TileBowPulling0 = 220;
+
+    /// <summary>Sprite tile index for bow draw stage 1 (<c>bow_pulling_1</c>).</summary>
+    public const ushort TileBowPulling1 = 221;
+
+    /// <summary>Sprite tile index for bow draw stage 2 (<c>bow_pulling_2</c>).</summary>
+    public const ushort TileBowPulling2 = 222;
+
     public static readonly (ResourceKey ItemKey, ushort Tile, string PngStem, byte TintR, byte TintG, byte TintB)[] BuiltInItemTiles =
     [
         (BuiltInItems.Stick, 128, "stick", 255, 255, 255),
@@ -101,5 +110,9 @@ internal static class ProceduralItemTileManifest
         (BuiltInItems.GoldenBoots, 214, "golden_boots", 255, 255, 255),
         (BuiltInItems.Shield, 215, "shield", 255, 255, 255),
         (BuiltInBlocks.RedBed, 216, "red_bed", 255, 255, 255),
+        (BuiltInItems.Minecart, 217, "minecart", 255, 255, 255),
+        (BuiltInItems.Bow, 218, "bow", 255, 255, 255),
+        (BuiltInItems.Arrow, 219, "arrow", 255, 255, 255),
+        (BuiltInBlocks.PoweredRail, 223, "powered_rail", 255, 255, 255),
     ];
 }

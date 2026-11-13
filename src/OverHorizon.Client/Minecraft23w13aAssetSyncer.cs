@@ -49,6 +49,18 @@ public static class Minecraft23w13aAssetSyncer
         "textures/entity/creeper/creeper.png",
         "textures/entity/bed/red.png",
         "textures/entity/shield/base.png",
+        "textures/entity/minecart.png",
+        "textures/entity/projectiles/arrow.png",
+        "textures/models/armor/leather_layer_1.png",
+        "textures/models/armor/leather_layer_1_overlay.png",
+        "textures/models/armor/leather_layer_2.png",
+        "textures/models/armor/leather_layer_2_overlay.png",
+        "textures/models/armor/iron_layer_1.png",
+        "textures/models/armor/iron_layer_2.png",
+        "textures/models/armor/gold_layer_1.png",
+        "textures/models/armor/gold_layer_2.png",
+        "textures/models/armor/diamond_layer_1.png",
+        "textures/models/armor/diamond_layer_2.png",
 
         // Block Mining Crack Stages 0..9 (textures/block/destroy_stage_*.png)
         "textures/block/destroy_stage_0.png",
@@ -138,6 +150,9 @@ public static class Minecraft23w13aAssetSyncer
         "textures/block/lantern.png",
         "textures/block/ladder.png",
         "textures/block/rail.png",
+        "textures/block/rail_corner.png",
+        "textures/block/powered_rail.png",
+        "textures/block/powered_rail_on.png",
         "textures/block/cobweb.png",
         "textures/block/white_wool.png",
         "textures/block/red_wool.png",
@@ -188,6 +203,12 @@ public static class Minecraft23w13aAssetSyncer
         "textures/item/wheat.png",
         "textures/item/sugar_cane.png",
         "textures/item/lantern.png",
+        "textures/item/minecart.png",
+        "textures/item/bow.png",
+        "textures/item/bow_pulling_0.png",
+        "textures/item/bow_pulling_1.png",
+        "textures/item/bow_pulling_2.png",
+        "textures/item/arrow.png",
         "textures/item/wooden_sword.png",
         "textures/item/stone_sword.png",
         "textures/item/iron_sword.png",
@@ -258,7 +279,9 @@ public static class Minecraft23w13aAssetSyncer
         "sounds/step/sand1.ogg",
         "sounds/step/gravel1.ogg",
         "sounds/step/cloth1.ogg",
+        "sounds/step/snow1.ogg",
         "sounds/step/ladder1.ogg",
+        "sounds/block/lantern/break1.ogg",
         "sounds/dig/stone1.ogg",
         "sounds/dig/grass1.ogg",
         "sounds/dig/wood1.ogg",
@@ -282,6 +305,11 @@ public static class Minecraft23w13aAssetSyncer
         "sounds/entity/player/attack/strong1.ogg",
         "sounds/entity/player/attack/crit1.ogg",
         "sounds/damage/hit1.ogg",
+        "sounds/damage/fallsmall.ogg",
+        "sounds/damage/fallbig.ogg",
+        "sounds/random/bow.ogg",
+        "sounds/random/bowhit1.ogg",
+        "sounds/minecart/base.ogg",
         "sounds/fire/ignite.ogg",
         "sounds/fire/fire.ogg",
         "sounds/tile/piston/out.ogg",
@@ -336,7 +364,7 @@ public static class Minecraft23w13aAssetSyncer
         {
             Timeout = TimeSpan.FromSeconds(10),
         };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("OverHorizon-Client/0.6.0-alpha");
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("OverHorizon-Client/0.7.0-alpha");
 
         var downloaded = 0;
         var parallelOptions = new ParallelOptions

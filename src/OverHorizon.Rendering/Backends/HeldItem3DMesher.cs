@@ -26,6 +26,15 @@ public static class HeldItem3DMesher
         var light = Math.Clamp(state.HeldLightBrightness, 0.055f, 1.0f);
 
         // 1. Right Hand (Main Hand) — always renders item or empty Steve right arm, animated by HandSwingProgress!
+        var activeSpriteTile = state.HeldItemSpriteTile;
+        var bowCharge = state.HeldIsBow ? Math.Clamp(state.BowChargeNormalized, 0.0f, 1.0f) : 0.0f;
+        if (state.HeldIsBow && bowCharge > 0.01f)
+        {
+            activeSpriteTile = bowCharge >= 0.90f
+                ? ProceduralItemTileManifest.TileBowPulling2
+                : (bowCharge >= 0.55f ? ProceduralItemTileManifest.TileBowPulling1 : ProceduralItemTileManifest.TileBowPulling0);
+        }
+
         AppendSingleHand(
             dst,
             atlas,
@@ -35,11 +44,13 @@ public static class HeldItem3DMesher
             isTorchStyle: state.HeldIsTorchStyle,
             isBlock3D: state.HeldIsBlock3D,
             isToolOrWeapon: state.HeldIsToolOrWeapon,
+            isBow: state.HeldIsBow,
+            bowCharge: bowCharge,
             topTile: state.HeldTopTile,
             bottomTile: state.HeldBottomTile,
             frontTile: state.HeldFrontTile,
             sideTile: state.HeldSideTile,
-            spriteTile: state.HeldItemSpriteTile,
+            spriteTile: activeSpriteTile,
             bobX: bobX,
             bobY: bobY,
             swingSin: swingSin,
@@ -58,6 +69,8 @@ public static class HeldItem3DMesher
                 isTorchStyle: state.OffhandIsTorchStyle,
                 isBlock3D: state.OffhandIsBlock3D,
                 isToolOrWeapon: state.OffhandIsToolOrWeapon,
+                isBow: false,
+                bowCharge: 0.0f,
                 topTile: state.OffhandTopTile,
                 bottomTile: state.OffhandBottomTile,
                 frontTile: state.OffhandFrontTile,
@@ -80,6 +93,8 @@ public static class HeldItem3DMesher
         bool isTorchStyle,
         bool isBlock3D,
         bool isToolOrWeapon,
+        bool isBow,
+        float bowCharge,
         int topTile,
         int bottomTile,
         int frontTile,
@@ -119,7 +134,7 @@ public static class HeldItem3DMesher
 
         if (spriteTile >= 0 && atlas is not null)
         {
-            AppendExtruded16x16Item(dst, atlas, xSign, spriteTile, isToolOrWeapon, bobX, bobY, swingSin, swingSinSq, light);
+            AppendExtruded16x16Item(dst, atlas, xSign, spriteTile, isToolOrWeapon, isBow, bowCharge, bobX, bobY, swingSin, swingSinSq, light);
             return;
         }
 
@@ -128,10 +143,16 @@ public static class HeldItem3DMesher
 
     private static void AppendEmptyHandArm(List<OverlayVertex> dst, float xSign, float bobX, float bobY, float swingSin, float swingSinSq, float light)
     {
-        var pivot = new Vector3((0.56f * xSign) + bobX - (swingSinSq * 0.24f * xSign), -0.52f - bobY + (swingSin * 0.14f), -0.72f - (swingSin * 0.20f));
-        var rot = Matrix4x4.CreateRotationZ((0.42f + (swingSin * 0.35f)) * xSign) *
-                  Matrix4x4.CreateRotationX(-0.92f - (swingSinSq * 0.95f)) *
-                  Matrix4x4.CreateRotationY((-0.38f + (swingSin * 0.45f)) * xSign) *
+        // EntityBoxUvBuilder places shoulder (cyan sleeve v=16..20) at +Y and hand/fist (tan skin v=28..32) at -Y.
+        // RotationX(2.18f) = RotationX(pi - 0.96f) flips the box so -Y (tan skin fist!) points UP-AND-FORWARD (-Z) into screen center,
+        // while +Y (cyan sleeve!) anchors DOWN-AND-BACK at the bottom-right shoulder!
+        var pivot = new Vector3(
+            (0.56f * xSign) + bobX - (swingSinSq * 0.24f * xSign),
+            -0.50f - bobY + (swingSin * 0.14f),
+            -0.72f - (swingSin * 0.22f));
+        var rot = Matrix4x4.CreateRotationX(2.18f - (swingSinSq * 0.68f)) *
+                  Matrix4x4.CreateRotationZ((0.40f + (swingSin * 0.34f)) * xSign) *
+                  Matrix4x4.CreateRotationY((-0.34f + (swingSin * 0.42f)) * xSign) *
                   Matrix4x4.CreateTranslation(pivot);
 
         var tint = new Vector4(light, light, light, 1.0f);
@@ -139,7 +160,7 @@ public static class HeldItem3DMesher
             dst,
             EntityTextureAtlasGenerator.CellSteve,
             40, 16, 4, 12, 4,
-            new Vector3(-0.085f, -0.26f, -0.085f),
+            new Vector3(-0.085f, -0.28f, -0.085f),
             new Vector3(0.17f, 0.56f, 0.17f),
             rot,
             tint);
@@ -167,6 +188,15 @@ public static class HeldItem3DMesher
                   Matrix4x4.CreateRotationX(-0.22f - (swingSinSq * 0.85f)) *
                   Matrix4x4.CreateRotationY(0.45f * xSign) *
                   Matrix4x4.CreateTranslation(pivot);
+
+        if (tile == ProceduralAtlasGenerator.TileLantern)
+        {
+            var (su0, sv0, su1, sv1) = TileUvBounds(tile, 0.0f, 2.0f / 16.0f, 6.0f / 16.0f, 9.0f / 16.0f);
+            var (cu0, cv0, cu1, cv1) = TileUvBounds(tile, 1.0f / 16.0f, 0.0f, 5.0f / 16.0f, 2.0f / 16.0f);
+            EmitTexturedBoxSingleUv(dst, new Vector3(-0.11f, -0.10f, -0.11f), new Vector3(0.22f, 0.26f, 0.22f), rot, su0, sv0, su1, sv1, light);
+            EmitTexturedBoxSingleUv(dst, new Vector3(-0.075f, 0.16f, -0.075f), new Vector3(0.15f, 0.075f, 0.15f), rot, cu0, cv0, cu1, cv1, light * 0.92f);
+            return;
+        }
 
         var (tu0, tv0, tu1, tv1) = TileUvBounds(tile, 0.4375f, 0.375f, 0.5625f, 1.0f);
         EmitTexturedBoxSingleUv(dst, new Vector3(-0.045f, -0.14f, -0.045f), new Vector3(0.09f, 0.46f, 0.09f), rot, tu0, tv0, tu1, tv1, light);
@@ -210,6 +240,8 @@ public static class HeldItem3DMesher
         float xSign,
         int tileIndex,
         bool isToolOrWeapon,
+        bool isBow,
+        float bowCharge,
         float bobX,
         float bobY,
         float swingSin,
@@ -217,7 +249,19 @@ public static class HeldItem3DMesher
         float light)
     {
         Matrix4x4 rot;
-        if (isToolOrWeapon)
+        if (isBow)
+        {
+            var jitter = bowCharge >= 0.98f ? MathF.Sin(bobX * 140.0f) * 0.005f : 0.0f;
+            var pivot = new Vector3(
+                (0.46f - (bowCharge * 0.12f)) * xSign + (bobX * (1.0f - (bowCharge * 0.6f))) + jitter,
+                -0.36f + (bowCharge * 0.06f) - (bobY * (1.0f - (bowCharge * 0.6f))),
+                -0.72f + (bowCharge * 0.11f) - (swingSin * 0.16f));
+            rot = Matrix4x4.CreateRotationZ(-0.74f + (bowCharge * 0.08f)) *
+                  Matrix4x4.CreateRotationY((-1.32f + (bowCharge * 0.18f)) * xSign) *
+                  Matrix4x4.CreateRotationX(0.08f - (swingSinSq * 0.55f)) *
+                  Matrix4x4.CreateTranslation(pivot);
+        }
+        else if (isToolOrWeapon)
         {
             // Verified handheld basis: Z(+65 deg) -> Y(-90 deg) maps grip (-1,-1) to bottom-hand and blade (+1,+1) to upright-forward (-Z, +Y),
             // with axe chopping blade & front pickaxe prong facing forward (-Z) away from the player!
@@ -236,7 +280,7 @@ public static class HeldItem3DMesher
                   Matrix4x4.CreateTranslation(pivot);
         }
 
-        var scale = isToolOrWeapon ? 0.56f : 0.40f;
+        var scale = (isToolOrWeapon || isBow) ? 0.56f : 0.40f;
         var halfThick = scale * (0.5f / 16.0f);
         var pxSize = scale / 16.0f;
         var (u0, v0, u1, v1) = TileUvBounds(tileIndex, 0.002f, 0.002f, 0.998f, 0.998f);

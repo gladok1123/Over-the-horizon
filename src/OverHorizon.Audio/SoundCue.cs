@@ -157,4 +157,16 @@ public enum SoundCue : byte
 
     /// <summary>Snow footstep (<c>step/snow1.ogg</c>).</summary>
     FootstepSnow = 50,
+
+    /// <summary>Metallic/lantern/rail footstep (<c>block/lantern/break1.ogg</c>).</summary>
+    FootstepMetal = 51,
+
+    /// <summary>Bow string release (<c>random/bow.ogg</c>).</summary>
+    BowShoot = 52,
+
+    /// <summary>Arrow impacting block or target (<c>random/bowhit1.ogg</c>).</summary>
+    ArrowHit = 53,
+
+    /// <summary>Minecart rolling on rails (<c>minecart/base.ogg</c>).</summary>
+    MinecartRoll = 54,
 }

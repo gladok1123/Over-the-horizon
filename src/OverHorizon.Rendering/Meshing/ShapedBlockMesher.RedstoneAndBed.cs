@@ -101,7 +101,17 @@ internal static partial class ShapedBlockMesher
                 "east" => (Vector3.Zero, new Vector3(0.75f, 1.0f, 1.0f)),
                 _ => (Vector3.Zero, new Vector3(1.0f, 0.75f, 1.0f)),
             };
-            EmitSubBox(verts, indices, o, min, max, ProceduralAtlasGenerator.TilePistonBottom, packedLight, Vector2.Zero, Vector2.One);
+            EmitDirectionalSubBox(
+                verts,
+                indices,
+                o,
+                min,
+                max,
+                facing,
+                frontTile: ProceduralAtlasGenerator.TilePistonInner,
+                backTile: ProceduralAtlasGenerator.TilePistonBottom,
+                sideTile: ProceduralAtlasGenerator.TilePistonSide,
+                packedLight);
         }
         else if (key == BuiltInBlocks.PistonHead)
         {
@@ -117,18 +127,22 @@ internal static partial class ShapedBlockMesher
                 "east" => (new Vector3(0.75f, 0.0f, 0.0f), Vector3.One, new Vector3(-0.25f, 0.375f, 0.375f), new Vector3(0.75f, 0.625f, 0.625f)),
                 _ => (new Vector3(0.0f, 0.75f, 0.0f), Vector3.One, new Vector3(0.375f, -0.25f, 0.375f), new Vector3(0.625f, 0.75f, 0.625f)),
             };
-            EmitSubBox(verts, indices, o, pMin, pMax, headTile, packedLight, Vector2.Zero, Vector2.One);
+            EmitDirectionalSubBox(
+                verts,
+                indices,
+                o,
+                pMin,
+                pMax,
+                facing,
+                frontTile: headTile,
+                backTile: ProceduralAtlasGenerator.TilePistonTop,
+                sideTile: ProceduralAtlasGenerator.TileOakPlanks,
+                packedLight);
             EmitSubBox(verts, indices, o, rMin, rMax, ProceduralAtlasGenerator.TileOakPlanks, packedLight, Vector2.Zero, Vector2.One);
         }
         else if (key == BuiltInBlocks.RedBed)
         {
-            var isHead = meta.Properties.TryGetValue("part", out var pt) && string.Equals(pt, "head", StringComparison.OrdinalIgnoreCase);
-            var topTile = isHead ? ProceduralAtlasGenerator.TileRedBedTopHead : ProceduralAtlasGenerator.TileRedBedTopFoot;
-            EmitSubBox(verts, indices, o, new Vector3(0.0f, 0.1875f, 0.0f), new Vector3(1.0f, 0.5625f, 1.0f), topTile, packedLight, Vector2.Zero, Vector2.One);
-            EmitSubBox(verts, indices, o, new Vector3(0.0f, 0.0f, 0.0f), new Vector3(0.1875f, 0.1875f, 0.1875f), ProceduralAtlasGenerator.TileOakPlanks, packedLight, Vector2.Zero, new Vector2(0.25f, 0.25f));
-            EmitSubBox(verts, indices, o, new Vector3(0.8125f, 0.0f, 0.0f), new Vector3(1.0f, 0.1875f, 0.1875f), ProceduralAtlasGenerator.TileOakPlanks, packedLight, Vector2.Zero, new Vector2(0.25f, 0.25f));
-            EmitSubBox(verts, indices, o, new Vector3(0.0f, 0.0f, 0.8125f), new Vector3(0.1875f, 0.1875f, 1.0f), ProceduralAtlasGenerator.TileOakPlanks, packedLight, Vector2.Zero, new Vector2(0.25f, 0.25f));
-            EmitSubBox(verts, indices, o, new Vector3(0.8125f, 0.0f, 0.8125f), new Vector3(1.0f, 0.1875f, 1.0f), ProceduralAtlasGenerator.TileOakPlanks, packedLight, Vector2.Zero, new Vector2(0.25f, 0.25f));
+            EmitBedHalf(verts, indices, o, meta, packedLight);
         }
     }
 
@@ -216,6 +230,106 @@ internal static partial class ShapedBlockMesher
         EmitQuad(verts, indices, new Vector3(a.X, b.Y, a.Z), new Vector3(a.X, b.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(b.X, b.Y, a.Z), uvTL, uvBL, uvBR, uvTR, tile, 1.0f * shadeScale, packedLight);
         EmitQuad(verts, indices, new Vector3(a.X, a.Y, a.Z), new Vector3(b.X, a.Y, a.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(a.X, a.Y, b.Z), uvBL, uvBR, uvTR, uvTL, tile, 0.55f * shadeScale, packedLight);
     }
+
+    private static void EmitDirectionalSubBox(
+        List<ChunkVertex> verts,
+        List<uint> indices,
+        Vector3 o,
+        Vector3 min,
+        Vector3 max,
+        string facing,
+        ushort frontTile,
+        ushort backTile,
+        ushort sideTile,
+        float packedLight)
+    {
+        var a = o + min;
+        var b = o + max;
+        var uvBL = new Vector2(0.0f, 1.0f);
+        var uvBR = new Vector2(1.0f, 1.0f);
+        var uvTR = new Vector2(1.0f, 0.0f);
+        var uvTL = new Vector2(0.0f, 0.0f);
+
+        ushort Pick(string dir) => dir == facing ? frontTile : (IsOpposite(dir, facing) ? backTile : sideTile);
+
+        EmitQuad(verts, indices, new Vector3(a.X, a.Y, b.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(a.X, b.Y, b.Z), uvBL, uvBR, uvTR, uvTL, Pick("south"), 0.84f, packedLight);
+        EmitQuad(verts, indices, new Vector3(b.X, a.Y, a.Z), new Vector3(a.X, a.Y, a.Z), new Vector3(a.X, b.Y, a.Z), new Vector3(b.X, b.Y, a.Z), uvBL, uvBR, uvTR, uvTL, Pick("north"), 0.84f, packedLight);
+        EmitQuad(verts, indices, new Vector3(b.X, a.Y, b.Z), new Vector3(b.X, a.Y, a.Z), new Vector3(b.X, b.Y, a.Z), new Vector3(b.X, b.Y, b.Z), uvBL, uvBR, uvTR, uvTL, Pick("east"), 0.72f, packedLight);
+        EmitQuad(verts, indices, new Vector3(a.X, a.Y, a.Z), new Vector3(a.X, a.Y, b.Z), new Vector3(a.X, b.Y, b.Z), new Vector3(a.X, b.Y, a.Z), uvBL, uvBR, uvTR, uvTL, Pick("west"), 0.72f, packedLight);
+        EmitQuad(verts, indices, new Vector3(a.X, b.Y, a.Z), new Vector3(a.X, b.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(b.X, b.Y, a.Z), uvTL, uvBL, uvBR, uvTR, Pick("up"), 1.0f, packedLight);
+        EmitQuad(verts, indices, new Vector3(a.X, a.Y, a.Z), new Vector3(b.X, a.Y, a.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(a.X, a.Y, b.Z), uvBL, uvBR, uvTR, uvTL, Pick("down"), 0.55f, packedLight);
+    }
+
+    private static bool IsOpposite(string a, string b) =>
+        (a == "north" && b == "south") || (a == "south" && b == "north") ||
+        (a == "east" && b == "west") || (a == "west" && b == "east") ||
+        (a == "up" && b == "down") || (a == "down" && b == "up");
+
+    private static void EmitBedHalf(List<ChunkVertex> verts, List<uint> indices, Vector3 o, BlockStateMetadata meta, float packedLight)
+    {
+        var isHead = meta.Properties.TryGetValue("part", out var pt) && string.Equals(pt, "head", StringComparison.OrdinalIgnoreCase);
+        var facing = meta.Properties.TryGetValue("facing", out var f) ? f : "north";
+        var topTile = isHead ? ProceduralAtlasGenerator.TileRedBedTopHead : ProceduralAtlasGenerator.TileRedBedTopFoot;
+        var sideTile = isHead ? ProceduralAtlasGenerator.TileRedBedHeadSide : ProceduralAtlasGenerator.TileRedBedSide;
+
+        var a = o + new Vector3(0.0f, 0.1875f, 0.0f);
+        var b = o + new Vector3(1.0f, 0.5625f, 1.0f);
+        var rotSteps = facing switch
+        {
+            "east" => 1,
+            "south" => 2,
+            "west" => 3,
+            _ => 0,
+        };
+        var (t0, t1, t2, t3) = GetRotatedUv90(rotSteps);
+
+        // Top pillow/blanket + Oak bottom + mattress sides (culling the internal seam face between head & foot!)
+        var seamDir = isHead ? OppositeName(facing) : facing;
+        EmitQuad(verts, indices, new Vector3(a.X, b.Y, a.Z), new Vector3(a.X, b.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(b.X, b.Y, a.Z), t0, t1, t2, t3, topTile, 1.0f, packedLight);
+        EmitQuad(verts, indices, new Vector3(a.X, a.Y, a.Z), new Vector3(b.X, a.Y, a.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(a.X, a.Y, b.Z), Vector2.Zero, Vector2.UnitX, Vector2.One, Vector2.UnitY, ProceduralAtlasGenerator.TileOakPlanks, 0.58f, packedLight);
+
+        var sBL = new Vector2(0.0f, 13.0f / 16.0f);
+        var sBR = new Vector2(1.0f, 13.0f / 16.0f);
+        var sTR = new Vector2(1.0f, 7.0f / 16.0f);
+        var sTL = new Vector2(0.0f, 7.0f / 16.0f);
+        if (seamDir != "south") EmitQuad(verts, indices, new Vector3(a.X, a.Y, b.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(a.X, b.Y, b.Z), sBL, sBR, sTR, sTL, sideTile, 0.86f, packedLight);
+        if (seamDir != "north") EmitQuad(verts, indices, new Vector3(b.X, a.Y, a.Z), new Vector3(a.X, a.Y, a.Z), new Vector3(a.X, b.Y, a.Z), new Vector3(b.X, b.Y, a.Z), sBL, sBR, sTR, sTL, sideTile, 0.86f, packedLight);
+        if (seamDir != "east") EmitQuad(verts, indices, new Vector3(b.X, a.Y, b.Z), new Vector3(b.X, a.Y, a.Z), new Vector3(b.X, b.Y, a.Z), new Vector3(b.X, b.Y, b.Z), sBL, sBR, sTR, sTL, sideTile, 0.74f, packedLight);
+        if (seamDir != "west") EmitQuad(verts, indices, new Vector3(a.X, a.Y, a.Z), new Vector3(a.X, a.Y, b.Z), new Vector3(a.X, b.Y, b.Z), new Vector3(a.X, b.Y, a.Z), sBL, sBR, sTR, sTL, sideTile, 0.74f, packedLight);
+
+        // Emit ONLY the 2 outer corner wooden legs on this bed half (4 legs total across the 2-block bed!)
+        var endDir = isHead ? facing : OppositeName(facing);
+        if (endDir == "north")
+        {
+            EmitSubBox(verts, indices, o, new Vector3(0.0f, 0.0f, 0.0f), new Vector3(0.1875f, 0.1875f, 0.1875f), ProceduralAtlasGenerator.TileOakPlanks, packedLight, Vector2.Zero, new Vector2(0.25f, 0.25f));
+            EmitSubBox(verts, indices, o, new Vector3(0.8125f, 0.0f, 0.0f), new Vector3(1.0f, 0.1875f, 0.1875f), ProceduralAtlasGenerator.TileOakPlanks, packedLight, Vector2.Zero, new Vector2(0.25f, 0.25f));
+        }
+        else if (endDir == "south")
+        {
+            EmitSubBox(verts, indices, o, new Vector3(0.0f, 0.0f, 0.8125f), new Vector3(0.1875f, 0.1875f, 1.0f), ProceduralAtlasGenerator.TileOakPlanks, packedLight, Vector2.Zero, new Vector2(0.25f, 0.25f));
+            EmitSubBox(verts, indices, o, new Vector3(0.8125f, 0.0f, 0.8125f), new Vector3(1.0f, 0.1875f, 1.0f), ProceduralAtlasGenerator.TileOakPlanks, packedLight, Vector2.Zero, new Vector2(0.25f, 0.25f));
+        }
+        else if (endDir == "west")
+        {
+            EmitSubBox(verts, indices, o, new Vector3(0.0f, 0.0f, 0.0f), new Vector3(0.1875f, 0.1875f, 0.1875f), ProceduralAtlasGenerator.TileOakPlanks, packedLight, Vector2.Zero, new Vector2(0.25f, 0.25f));
+            EmitSubBox(verts, indices, o, new Vector3(0.0f, 0.0f, 0.8125f), new Vector3(0.1875f, 0.1875f, 1.0f), ProceduralAtlasGenerator.TileOakPlanks, packedLight, Vector2.Zero, new Vector2(0.25f, 0.25f));
+        }
+        else
+        {
+            EmitSubBox(verts, indices, o, new Vector3(0.8125f, 0.0f, 0.0f), new Vector3(1.0f, 0.1875f, 0.1875f), ProceduralAtlasGenerator.TileOakPlanks, packedLight, Vector2.Zero, new Vector2(0.25f, 0.25f));
+            EmitSubBox(verts, indices, o, new Vector3(0.8125f, 0.0f, 0.8125f), new Vector3(1.0f, 0.1875f, 1.0f), ProceduralAtlasGenerator.TileOakPlanks, packedLight, Vector2.Zero, new Vector2(0.25f, 0.25f));
+        }
+    }
+
+    private static string OppositeName(string dir) => dir switch
+    {
+        "north" => "south",
+        "south" => "north",
+        "west" => "east",
+        "east" => "west",
+        "up" => "down",
+        _ => "up",
+    };
 
     private static void EmitQuad(List<ChunkVertex> verts, List<uint> indices, Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, Vector2 uv0, Vector2 uv1, Vector2 uv2, Vector2 uv3, ushort tile, float shade, float packedLight)
     {

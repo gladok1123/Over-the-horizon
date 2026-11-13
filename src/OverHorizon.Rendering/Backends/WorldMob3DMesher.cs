@@ -10,7 +10,7 @@ namespace OverHorizon.Rendering.Backends;
 /// (<c>steve.png</c>, <c>pig.png</c>, <c>cow.png</c>, <c>sheep.png</c> + <c>sheep_fur.png</c>, <c>chicken.png</c>,
 /// <c>zombie.png</c>, <c>skeleton.png</c>, <c>spider.png</c>, <c>creeper.png</c>), burning mob flames, and physics <c>PrimedTnt</c>.
 /// </summary>
-public static class WorldMob3DMesher
+public static partial class WorldMob3DMesher
 {
     /// <summary>Appends 3D textured articulated geometry for all visible peaceful and hostile mobs.</summary>
     public static void AppendWorldMobs(
@@ -74,14 +74,15 @@ public static class WorldMob3DMesher
         }
     }
 
-    /// <summary>Appends a full 3D <c>steve.png</c>-textured player model (used for both Remote Players and the 3D Inventory Preview).</summary>
+    /// <summary>Appends a full 3D <c>steve.png</c>-textured player model + optional 3D worn armor overlays.</summary>
     public static void AppendSteveModel(
         List<OverlayVertex> dst,
         Matrix4x4 root,
         float headYawRad,
         float headPitchRad,
         float walkSwing,
-        Vector4 baseTint)
+        Vector4 baseTint,
+        PlayerArmorVisual armor = default)
     {
         const int c = EntityTextureAtlasGenerator.CellSteve;
         EntityBoxUvBuilder.EmitEntityBox(dst, c, 16, 48, 4, 12, 4, new Vector3(-0.125f, -0.75f, -0.125f), new Vector3(0.25f, 0.75f, 0.25f), Limb(root, new Vector3(-0.125f, 0.75f, 0.0f), walkSwing), baseTint);
@@ -96,6 +97,11 @@ public static class WorldMob3DMesher
                         root;
         EntityBoxUvBuilder.EmitEntityBox(dst, c, 0, 0, 8, 8, 8, new Vector3(-0.25f, 0.0f, -0.25f), new Vector3(0.50f, 0.50f, 0.50f), headXform, baseTint);
         EntityBoxUvBuilder.EmitEntityBox(dst, c, 32, 0, 8, 8, 8, new Vector3(-0.268f, -0.018f, -0.268f), new Vector3(0.536f, 0.536f, 0.536f), headXform, baseTint);
+
+        if (armor.HasAny)
+        {
+            AppendPlayerArmorLayers(dst, root, headXform, walkSwing, baseTint, armor);
+        }
     }
 
     /// <summary>Appends live physics-simulated 3D <c>PrimedTnt</c> cubes with bright white fuse flashing.</summary>
@@ -206,7 +212,9 @@ public static class WorldMob3DMesher
         EntityBoxUvBuilder.EmitEntityBox(dst, c, 16, 16, 8, 12, 4, new Vector3(-0.25f, 0.75f, -0.125f), new Vector3(0.50f, 0.75f, 0.25f), root, t);
         EntityBoxUvBuilder.EmitEntityBox(dst, c, 0, 0, 8, 8, 8, new Vector3(-0.25f, 1.50f, -0.25f), new Vector3(0.50f, 0.50f, 0.50f), root, t);
         EntityBoxUvBuilder.EmitEntityBox(dst, c, 40, 16, 2, 12, 2, new Vector3(-0.0625f, -0.72f, -0.0625f), new Vector3(0.125f, 0.75f, 0.125f), Limb(root, new Vector3(-0.3125f, 1.44f, 0.0f), -swing * 0.7f), t);
-        EntityBoxUvBuilder.EmitEntityBox(dst, c, 40, 16, 2, 12, 2, new Vector3(-0.0625f, -0.72f, -0.0625f), new Vector3(0.125f, 0.75f, 0.125f), Matrix4x4.CreateRotationX(-1.15f) * Matrix4x4.CreateTranslation(0.3125f, 1.44f, 0.0f) * root, t);
+        var rightArmXform = Matrix4x4.CreateRotationX(-1.15f) * Matrix4x4.CreateTranslation(0.3125f, 1.44f, 0.0f) * root;
+        EntityBoxUvBuilder.EmitEntityBox(dst, c, 40, 16, 2, 12, 2, new Vector3(-0.0625f, -0.72f, -0.0625f), new Vector3(0.125f, 0.75f, 0.125f), rightArmXform, t);
+        AppendSkeletonHeldBow(dst, rightArmXform, t);
     }
 
     private static void AppendSpider(List<OverlayVertex> dst, Matrix4x4 root, float swing, Vector4 t)

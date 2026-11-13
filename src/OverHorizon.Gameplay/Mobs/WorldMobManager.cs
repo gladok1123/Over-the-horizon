@@ -44,7 +44,9 @@ public sealed partial class WorldMobManager
         int playerArmorDefense,
         float skyBrightness,
         float deltaSeconds,
-        List<Vec3d>? creeperDetonations = null)
+        List<Vec3d>? creeperDetonations = null,
+        Action<Vec3d, Vec3d>? onSkeletonShootArrow = null,
+        List<(MobType Type, Vec3d Position, bool Died, float FallDamage)>? mobLandingHurtEvents = null)
     {
         ArgumentNullException.ThrowIfNull(collisionWorld);
         ArgumentNullException.ThrowIfNull(spawnProbe);
@@ -77,8 +79,8 @@ public sealed partial class WorldMobManager
             UpdateSunlightBurning(collisionWorld, spawnProbe, mob, skyBrightness, dt);
             if (!mob.IsDead)
             {
-                UpdateMobAiAndAttack(mob, playerFeetPos, playerCanBeTargeted, dt, ref totalDamageToPlayer, creeperDetonations);
-                StepMobPhysics(collisionWorld, mob, dt);
+                UpdateMobAiAndAttack(mob, playerFeetPos, playerCanBeTargeted, dt, ref totalDamageToPlayer, creeperDetonations, onSkeletonShootArrow);
+                StepMobPhysics(collisionWorld, mob, dt, mobLandingHurtEvents);
             }
 
             if (mob.IsDead)
@@ -143,7 +145,8 @@ public sealed partial class WorldMobManager
         bool playerCanBeTargeted,
         float dt,
         ref float totalDamageToPlayer,
-        List<Vec3d>? creeperDetonations)
+        List<Vec3d>? creeperDetonations,
+        Action<Vec3d, Vec3d>? onSkeletonShootArrow)
     {
         if (!mob.IsHostile)
         {
@@ -201,6 +204,21 @@ public sealed partial class WorldMobManager
                 return;
             }
 
+            if (mob.Type == MobType.Skeleton && onSkeletonShootArrow is not null && dist <= 16.5)
+            {
+                mob.DesiredSpeed = dist > 9.5 ? 2.45f : 0.0f;
+                if (mob.AttackCooldownTimer <= 0.0f && dist >= 1.5)
+                {
+                    var shootOrigin = new Vec3d(mob.FeetPosition.X, mob.FeetPosition.Y + 1.52, mob.FeetPosition.Z);
+                    var aimTarget = new Vec3d(playerFeetPos.X, playerFeetPos.Y + 1.35 + (dist * 0.14), playerFeetPos.Z);
+                    var dir = (aimTarget - shootOrigin).Normalize();
+                    onSkeletonShootArrow(shootOrigin, dir * 21.5);
+                    mob.AttackCooldownTimer = 1.95f;
+                }
+
+                return;
+            }
+
             mob.DesiredSpeed = mob.Type == MobType.Spider ? 3.55f : 2.75f;
             if (dist <= 1.65 && Math.Abs(dy) <= 1.8 && mob.AttackCooldownTimer <= 0.0f)
             {
@@ -234,7 +252,11 @@ public sealed partial class WorldMobManager
         }
     }
 
-    private static void StepMobPhysics(IVoxelCollisionReader world, ActiveMob mob, float dt)
+    private static void StepMobPhysics(
+        IVoxelCollisionReader world,
+        ActiveMob mob,
+        float dt,
+        List<(MobType Type, Vec3d Position, bool Died, float FallDamage)>? mobLandingHurtEvents)
     {
         var yawRad = mob.YawDegrees * (Math.PI / 180.0);
         var wishVx = Math.Sin(yawRad) * mob.DesiredSpeed;
@@ -242,12 +264,43 @@ public sealed partial class WorldMobManager
         var blend = Math.Min(1.0, dt * 10.0);
         var vx = (mob.Velocity.X * (1.0 - blend)) + (wishVx * blend);
         var vz = (mob.Velocity.Z * (1.0 - blend)) + (wishVz * blend);
+        var vy = mob.Type == MobType.Chicken ? Math.Max(mob.Velocity.Y, -2.2) : mob.Velocity.Y;
 
         var prevPos = mob.FeetPosition;
-        var step = KinematicsIntegrator.StepEntity(world, mob.FeetPosition, new Vec3d(vx, mob.Velocity.Y, vz), mob.Width, mob.Height, dt, swimUp: true);
+        var wasOnGround = mob.OnGround;
+        var step = KinematicsIntegrator.StepEntity(world, mob.FeetPosition, new Vec3d(vx, vy, vz), mob.Width, mob.Height, dt, swimUp: true);
         var nextVel = step.Velocity;
+        if (mob.Type == MobType.Chicken && nextVel.Y < -2.2)
+        {
+            nextVel = new Vec3d(nextVel.X, -2.2, nextVel.Z);
+        }
 
-        if (step.OnGround && step.CollidedHorizontally && mob.DesiredSpeed > 0.2f)
+        if (step.InFluid || mob.Type == MobType.Chicken)
+        {
+            mob.FallDistance = 0.0;
+        }
+        else
+        {
+            var dy = step.Position.Y - prevPos.Y;
+            if (!step.OnGround && dy < 0.0)
+            {
+                mob.FallDistance += -dy;
+            }
+            else if (step.OnGround)
+            {
+                if (!wasOnGround && mob.FallDistance > 3.0)
+                {
+                    var fallDmg = MathF.Ceiling((float)(mob.FallDistance - 3.0));
+                    mob.Health = MathF.Max(0.0f, mob.Health - fallDmg);
+                    mob.HurtFlashTimer = 1.0f;
+                    mobLandingHurtEvents?.Add((mob.Type, step.Position, mob.IsDead, fallDmg));
+                }
+
+                mob.FallDistance = 0.0;
+            }
+        }
+
+        if (step.OnGround && step.CollidedHorizontally && mob.DesiredSpeed > 0.2f && !mob.IsDead)
         {
             nextVel = new Vec3d(wishVx, 8.8, wishVz);
         }

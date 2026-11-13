@@ -90,6 +90,9 @@ public sealed class ActiveMob
     /// <summary>Gets or sets accumulated burn damage tick timer in seconds.</summary>
     public float BurnDamageTickTimer { get; set; }
 
+    /// <summary>Gets or sets accumulated downward fall distance in blocks while airborne.</summary>
+    public double FallDistance { get; set; }
+
     /// <summary>Gets whether this mob is currently engulfed in flames.</summary>
     public bool IsOnFire => BurnTimer > 0.01f;
 

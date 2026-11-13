@@ -45,6 +45,16 @@ internal sealed class ClientItemUseHandler
         openedContainerPos = null;
 
         var held = player.Hotbar.SelectedItem;
+        if (player.RidingMinecartId < 0 &&
+            worldBridge.Minecarts.TryMountAlongRay(player.Camera.Position, player.Camera.Forward, 4.2) is { } mountedCart)
+        {
+            useCooldown = 0.25;
+            player.MountMinecart(mountedCart.Id);
+            _audio.PlayPositional(SoundCue.MinecartRoll, mountedCart.FeetPosition, gain: 0.55f * player.MasterVolume);
+            chatHistory.AddMessage("[Minecart] Mounted! Press W/S to steer, Left-Shift or C to dismount.");
+            return true;
+        }
+
         if (held is { ToolType: ToolKind.Shears } &&
             mobManager.TryShearAlongRay(player.Camera.Position, player.Camera.Forward, 3.8, _items, out var woolDrop))
         {
@@ -137,6 +147,7 @@ internal sealed class ClientItemUseHandler
         }
 
         worldBridge.TimeCycle.SkipNightToMorning();
+        player.StartSleepVignette();
         chatHistory.AddMessage("[Bed] Good morning! Slept through the night.");
     }
 
@@ -194,6 +205,17 @@ internal sealed class ClientItemUseHandler
 
             case ItemUseAction.IgniteTnt:
                 return TryUseFlintAndSteel(player, world, worldBridge, applyWorldBlockChange, ref useCooldown);
+
+            case ItemUseAction.PlaceMinecart:
+                if (player.CurrentTarget is not { } cartHit) return false;
+                var railKey = _blocks.GetStateMetadata(world.GetBlockState(cartHit.BlockPosition)).BlockKey;
+                if (!RailPlacementRules.IsRailBlock(railKey)) return false;
+                if (worldBridge.Minecarts.TrySpawnOnRail(cartHit.BlockPosition, world.GetBlockState) is not { } spawnedCart) return false;
+                useCooldown = 0.22;
+                player.TriggerHandSwing();
+                _audio.PlayPositional(SoundCue.FootstepMetal, spawnedCart.FeetPosition, gain: 0.75f * player.MasterVolume);
+                ConsumeOneFromSlotInSurvival(player, invSlot);
+                return true;
 
             case ItemUseAction.PlaceBlock:
                 if (itemDef.PlacedBlockKey is not { } placeKey || player.CurrentTarget is not { } placeHit) return false;

@@ -268,4 +268,13 @@ public static partial class BuiltInItems
 
     /// <summary>Key for <c>overhorizon:golden_apple</c>.</summary>
     public static readonly ResourceKey GoldenApple = ResourceKey.OverHorizon("golden_apple");
+
+    /// <summary>Key for <c>overhorizon:minecart</c> (rideable rail vehicle).</summary>
+    public static readonly ResourceKey Minecart = ResourceKey.OverHorizon("minecart");
+
+    /// <summary>Key for <c>overhorizon:bow</c> (ranged weapon charging ballistic arrows).</summary>
+    public static readonly ResourceKey Bow = ResourceKey.OverHorizon("bow");
+
+    /// <summary>Key for <c>overhorizon:arrow</c> (ammunition for <see cref="Bow"/>).</summary>
+    public static readonly ResourceKey Arrow = ResourceKey.OverHorizon("arrow");
 }

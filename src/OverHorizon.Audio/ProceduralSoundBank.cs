@@ -81,6 +81,10 @@ public static class ProceduralSoundBank
         (SoundCue.FallBig, "sounds/damage/fallbig.ogg"),
         (SoundCue.FireHurt, "sounds/random/fizz.ogg"),
         (SoundCue.FootstepSnow, "sounds/step/snow1.ogg"),
+        (SoundCue.FootstepMetal, "sounds/block/lantern/break1.ogg"),
+        (SoundCue.BowShoot, "sounds/random/bow.ogg"),
+        (SoundCue.ArrowHit, "sounds/random/bowhit1.ogg"),
+        (SoundCue.MinecartRoll, "sounds/minecart/base.ogg"),
     ];
 
     /// <summary>
@@ -222,6 +226,10 @@ public static class ProceduralSoundBank
             SoundCue.MobZombieSay or SoundCue.MobZombieHurt or SoundCue.MobZombieDeath => (0.38, 122.0, 0.42, -28.0),
             SoundCue.MobSkeletonSay or SoundCue.MobSkeletonHurt or SoundCue.MobSkeletonDeath => (0.20, 840.0, 0.62, -180.0),
             SoundCue.MobSpiderSay or SoundCue.MobSpiderDeath => (0.24, 520.0, 0.78, -120.0),
+            SoundCue.FootstepMetal => (0.11, 740.0, 0.30, -140.0),
+            SoundCue.BowShoot => (0.17, 460.0, 0.36, 220.0),
+            SoundCue.ArrowHit => (0.15, 620.0, 0.42, -210.0),
+            SoundCue.MinecartRoll => (0.30, 145.0, 0.68, 8.0),
             _ => (0.14, 280.0, 0.52, -40.0),
         };
 

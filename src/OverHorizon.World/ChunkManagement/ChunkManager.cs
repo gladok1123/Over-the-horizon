@@ -120,6 +120,66 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
     }
 
     /// <inheritdoc />
+    public int SetBlockStatesBatch(ReadOnlySpan<(BlockPos Position, BlockState State)> changes, long tickNumber = 0)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (changes.IsEmpty)
+        {
+            return 0;
+        }
+
+        var touched = new Dictionary<long, (ChunkPos Pos, ChunkColumn Column, int MinY, int MaxY)>(8);
+        var changedCount = 0;
+
+        for (var i = 0; i < changes.Length; i++)
+        {
+            var (worldPos, newState) = changes[i];
+            if (worldPos.Y < EngineConstants.WorldMinY || worldPos.Y >= EngineConstants.WorldMaxY)
+            {
+                continue;
+            }
+
+            var chunkPos = worldPos.ToChunkPos();
+            var key = chunkPos.PackInt64();
+            if (!_loadedChunks.TryGetValue(key, out var column))
+            {
+                continue;
+            }
+
+            var lx = worldPos.SectionLocalX;
+            var lz = worldPos.SectionLocalZ;
+            var oldStopY = column.GetHeight(HeightmapType.LightBlocking, lx, lz);
+            var previous = column.SetBlockState(lx, worldPos.Y, lz, newState, _registries.Blocks);
+            if (previous == newState)
+            {
+                continue;
+            }
+
+            changedCount++;
+            var newStopY = column.GetHeight(HeightmapType.LightBlocking, lx, lz);
+            var lowY = Math.Max(EngineConstants.WorldMinY, Math.Min(worldPos.Y, Math.Min(oldStopY, newStopY)) - 16);
+            var highY = Math.Min(EngineConstants.WorldMaxY - 1, Math.Max(worldPos.Y, Math.Max(oldStopY, newStopY)) + 16);
+            column.LastModifiedTick = tickNumber;
+
+            if (touched.TryGetValue(key, out var existing))
+            {
+                touched[key] = (chunkPos, column, Math.Min(existing.MinY, lowY), Math.Max(existing.MaxY, highY));
+            }
+            else
+            {
+                touched[key] = (chunkPos, column, lowY, highY);
+            }
+        }
+
+        foreach (var (_, entry) in touched)
+        {
+            RefreshColumnAndBorderNeighbors(entry.Pos, entry.Column, entry.MinY, entry.MaxY);
+        }
+
+        return changedCount;
+    }
+
+    /// <inheritdoc />
     public async ValueTask<int> ProcessTicketsAsync(int maxChunksToLoad, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);

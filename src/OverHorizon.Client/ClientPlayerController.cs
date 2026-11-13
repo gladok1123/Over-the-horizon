@@ -41,6 +41,7 @@ public sealed class ClientPlayerController
     private readonly ClientPlayerVitalsAndAudio _vitals = new();
     private double _fallDistance;
     private float _handSwingTimer;
+    private float _sleepAnimTimer;
     private bool _inFluid;
 
     /// <summary>Initializes a new instance of the <see cref="ClientPlayerController"/> class.</summary>
@@ -106,6 +107,15 @@ public sealed class ClientPlayerController
 
     /// <summary>Gets or sets progressive Survival block-breaking ratio (<c>0.0..1.0</c>).</summary>
     public float MiningProgress { get; set; }
+
+    /// <summary>Gets or sets normalized Bow draw progress (<c>0.0..1.0</c>) while holding Right-Click.</summary>
+    public float BowChargeNormalized { get; set; }
+
+    /// <summary>Gets the entity ID of the currently ridden <c>Minecart</c>, or <c>-1</c> when on foot.</summary>
+    public int RidingMinecartId { get; private set; } = -1;
+
+    /// <summary>Gets screen sleep-vignette opacity (<c>0.0..1.0</c>) during a Bed night-skip transition.</summary>
+    public float SleepFadeAlpha => _sleepAnimTimer <= 0.0f ? 0.0f : MathF.Sin(Math.Clamp(1.0f - (_sleepAnimTimer / 1.10f), 0.0f, 1.0f) * MathF.PI);
 
     /// <summary>Gets whether the player has died in Survival mode.</summary>
     public bool IsDead => Mode == GameMode.Survival && Health <= 0.0f;
@@ -174,6 +184,39 @@ public sealed class ClientPlayerController
     /// <summary>Triggers the first-person block/sword/empty-hand swing animation.</summary>
     public void TriggerHandSwing() => _handSwingTimer = HandSwingDurationSeconds * 0.995f;
 
+    /// <summary>Starts the smooth 1.1-second Bed sleep screen vignette.</summary>
+    public void StartSleepVignette() => _sleepAnimTimer = 1.10f;
+
+    /// <summary>Mounts a <c>Minecart</c> vehicle by entity ID.</summary>
+    public void MountMinecart(int cartEntityId)
+    {
+        RidingMinecartId = cartEntityId;
+        IsFlying = false;
+        _fallDistance = 0.0;
+        Velocity = Vec3d.Zero;
+    }
+
+    /// <summary>Dismounts the currently ridden <c>Minecart</c> slightly above the track.</summary>
+    public void DismountMinecart()
+    {
+        if (RidingMinecartId < 0) return;
+        RidingMinecartId = -1;
+        FeetPosition += new Vec3d(0.0, 0.42, 0.0);
+        Velocity = Vec3d.Zero;
+        _fallDistance = 0.0;
+        Camera.Position = FeetPosition + new Vec3d(0.0, EyeHeight, 0.0);
+    }
+
+    /// <summary>Synchronizes the player's seated pose to a moving <c>Minecart</c>.</summary>
+    public void SyncMountedMinecartPose(Vec3d seatFeetPosition)
+    {
+        FeetPosition = seatFeetPosition;
+        Velocity = Vec3d.Zero;
+        OnGround = true;
+        _fallDistance = 0.0;
+        Camera.Position = seatFeetPosition + new Vec3d(0.0, EyeHeight - 0.34, 0.0);
+    }
+
     /// <summary>Swaps the currently selected main-hand slot with the offhand slot (<c>F</c> key).</summary>
     public bool SwapOffhand()
     {
@@ -236,6 +279,8 @@ public sealed class ClientPlayerController
         AirSupplySeconds = MaxAirSeconds;
         HurtFlashStrength = 0.0f;
         MiningProgress = 0.0f;
+        BowChargeNormalized = 0.0f;
+        RidingMinecartId = -1;
         _fallDistance = 0.0;
         _vitals.ResetTimers();
         FeetPosition = bedOrSpawn;
@@ -296,11 +341,29 @@ public sealed class ClientPlayerController
         var clampedDt = Math.Clamp(deltaSeconds, 0.0005, 0.1);
         HurtFlashStrength = MathF.Max(0.0f, HurtFlashStrength - ((float)clampedDt * 2.4f));
         if (_handSwingTimer > 0.0f) _handSwingTimer = MathF.Max(0.0f, _handSwingTimer - (float)clampedDt);
+        if (_sleepAnimTimer > 0.0f) _sleepAnimTimer = MathF.Max(0.0f, _sleepAnimTimer - (float)clampedDt);
 
         if (IsDead)
         {
+            RidingMinecartId = -1;
             IsHeadUnderwater = _vitals.UpdateUnderwaterState(world, blocks, audio, Camera.Position, FeetPosition, IsHeadUnderwater, MasterVolume, clampedDt, false);
             return;
+        }
+
+        if (RidingMinecartId >= 0)
+        {
+            if (descend)
+            {
+                DismountMinecart();
+            }
+            else
+            {
+                IsHeadUnderwater = _vitals.UpdateUnderwaterState(world, blocks, audio, Camera.Position, FeetPosition, IsHeadUnderwater, MasterVolume, clampedDt, false);
+                _vitals.StepSurvivalVitals(this, BuiltInBlocks.Air, MaxAirSeconds, clampedDt, 0.0, false, false, audio);
+                RefreshRaycastTarget(world);
+                audio.UpdateListener(Camera.Position, Camera.Forward, Camera.Up, MasterVolume);
+                return;
+            }
         }
 
         if (Mode != GameMode.Creative) IsFlying = false;

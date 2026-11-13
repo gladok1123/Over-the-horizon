@@ -77,4 +77,11 @@ public sealed record FrameOverlayState(
     bool ShowInventoryPlayerModel = false,
     Vector4 InventoryPlayerPreviewRect = default,
     int CreativeSelectedTab = 0,
-    float CreativeScrollNormalized = 0.0f);
+    float CreativeScrollNormalized = 0.0f,
+    PlayerArmorVisual LocalPlayerArmor = default,
+    IReadOnlyList<MinecartVisual>? Minecarts = null,
+    IReadOnlyList<ArrowProjectileVisual>? Arrows = null,
+    bool HeldIsBow = false,
+    float BowChargeNormalized = 0.0f,
+    float ChunkFogDistance = 160.0f,
+    float SleepFadeAlpha = 0.0f);

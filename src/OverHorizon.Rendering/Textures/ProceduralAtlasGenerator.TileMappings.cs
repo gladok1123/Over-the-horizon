@@ -85,8 +85,8 @@ public static partial class ProceduralAtlasGenerator
         ProceduralItemTilePainter.PaintStick(pixels, TileLever);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileRepeaterOff, 158, 152, 152, variation: 14, alpha: 255);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileRepeaterOn, 196, 136, 136, variation: 14, alpha: 255);
-        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileRedstoneLampOff, 118, 78, 44, variation: 18, alpha: 255);
-        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileRedstoneLampOn, 244, 198, 108, variation: 22, alpha: 255);
+        ProceduralItemTilePainter.PaintRedstoneLampTile(pixels, TileRedstoneLampOff, lit: false);
+        ProceduralItemTilePainter.PaintRedstoneLampTile(pixels, TileRedstoneLampOn, lit: true);
         ProceduralBlockTilePainter.PaintCobblestoneTile(pixels, TilePistonBottom, mossy: false);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TilePistonSide, 146, 128, 98, variation: 16, alpha: 255);
         ProceduralBlockTilePainter.PaintPlanksTile(pixels, TilePistonTop);
@@ -99,9 +99,13 @@ public static partial class ProceduralAtlasGenerator
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileTntBottom, 168, 52, 42, variation: 14, alpha: 255);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileSandstoneTop, 224, 214, 168, variation: 10, alpha: 255);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileSandstoneBottom, 212, 200, 152, variation: 12, alpha: 255);
-        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileRedBedTopHead, 236, 236, 242, variation: 8, alpha: 255);
-        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileRedBedTopFoot, 196, 36, 40, variation: 10, alpha: 255);
-        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileRedBedSide, 176, 56, 48, variation: 14, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileRedBedTopHead, 240, 240, 246, variation: 6, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileRedBedTopFoot, 196, 36, 40, variation: 8, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileRedBedSide, 186, 42, 44, variation: 10, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileRedBedHeadSide, 232, 232, 238, variation: 8, alpha: 255);
+        ProceduralItemTilePainter.PaintRailCornerTile(pixels, TileRailCorner);
+        ProceduralItemTilePainter.PaintPoweredRailTile(pixels, TilePoweredRailOff, energized: false);
+        ProceduralItemTilePainter.PaintPoweredRailTile(pixels, TilePoweredRailOn, energized: true);
 
         for (var stage = 0; stage < 10; stage++)
         {
@@ -184,6 +188,7 @@ public static partial class ProceduralAtlasGenerator
         ProceduralItemTilePainter.PaintIngot(pixels, 196, 146, 78, 54);
         ProceduralItemTilePainter.PaintLanternTile(pixels, 197);
 
+        ProceduralItemTilePainter.PaintLanternItemIcon(pixels, 197);
         ProceduralItemTilePainter.PaintIngot(pixels, 198, 242, 242, 236);
         ProceduralItemTilePainter.PaintIngot(pixels, 199, 148, 92, 52);
         ProceduralItemTilePainter.PaintDiscOrGem(pixels, 200, 116, 214, 96);
@@ -203,6 +208,8 @@ public static partial class ProceduralAtlasGenerator
         ProceduralItemTilePainter.PaintArmor(pixels, 214, 248, 214, 62, 3);
         ProceduralItemTilePainter.PaintShield(pixels, 215);
         ProceduralItemTilePainter.PaintBedItem(pixels, 216);
+        ProceduralItemTilePainter.PaintBowAndArrowTiles(pixels, bowBaseTile: 218, arrowTile: 219, minecartTile: 217);
+        ProceduralItemTilePainter.PaintPoweredRailTile(pixels, 223, energized: false);
     }
 
     private static Dictionary<(ResourceKey, Direction), ushort> BuildFaceLookup()
@@ -248,6 +255,7 @@ public static partial class ProceduralAtlasGenerator
         MapBlockTopBottomSide(lookup, BuiltInBlocks.Barrel, TileBarrelTop, TileBarrelTop, TileBarrelSide);
         MapAllFaces(lookup, BuiltInBlocks.Ladder, TileLadder);
         MapAllFaces(lookup, BuiltInBlocks.Rail, TileRail);
+        MapAllFaces(lookup, BuiltInBlocks.PoweredRail, TilePoweredRailOff);
         MapAllFaces(lookup, BuiltInBlocks.Cobweb, TileCobweb);
         MapAllFaces(lookup, BuiltInBlocks.OakFence, TileOakPlanks);
         MapBlockTopBottomSide(lookup, BuiltInBlocks.Farmland, TileFarmland, TileDirt, TileDirt);
@@ -336,6 +344,9 @@ public static partial class ProceduralAtlasGenerator
         _ = pack.TryBlitTile(pixels, TileBarrelTop, "barrel_top");
         _ = pack.TryBlitTile(pixels, TileLadder, "ladder");
         _ = pack.TryBlitTile(pixels, TileRail, "rail");
+        _ = pack.TryBlitTile(pixels, TileRailCorner, "rail_corner");
+        _ = pack.TryBlitTile(pixels, TilePoweredRailOff, "powered_rail");
+        _ = pack.TryBlitTile(pixels, TilePoweredRailOn, "powered_rail_on");
         _ = pack.TryBlitTile(pixels, TileCobweb, "cobweb");
         _ = pack.TryBlitTile(pixels, TileFarmland, "farmland_moist");
         _ = pack.TryBlitTile(pixels, TileHaySide, "hay_block_side");

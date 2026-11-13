@@ -232,7 +232,8 @@ public static class BlockDropResolver
 
     private static ToolKind GetPreferredTool(ResourceKey key)
     {
-        if (RequiresPickaxeForFastHarvest(key) || key == BuiltInBlocks.Rail)
+        if (RequiresPickaxeForFastHarvest(key) || key == BuiltInBlocks.Rail || key == BuiltInBlocks.PoweredRail ||
+            key == BuiltInBlocks.Piston || key == BuiltInBlocks.StickyPiston)
         {
             return ToolKind.Pickaxe;
         }

@@ -119,6 +119,73 @@ public sealed class ResourcePackLoader : IDisposable
         return true;
     }
 
+    /// <summary>Extracts <c>16x16</c> bed top &amp; side tiles directly from <c>textures/entity/bed/red.png</c> (<c>64x64</c>) when present.</summary>
+    public bool TryExtractRedBedTiles(byte[] atlas, ushort headTopTile, ushort footTopTile, ushort headSideTile, ushort footSideTile)
+    {
+        ArgumentNullException.ThrowIfNull(atlas);
+
+        if ((!_entityTextures.TryGetValue("bed/red", out var pngBytes) &&
+             !_entityTextures.TryGetValue("red", out pngBytes)) ||
+            !PngImageDecoder.TryDecodeRgba(pngBytes, out var w, out var h, out var bedRgba) ||
+            w < 44 || h < 44)
+        {
+            return false;
+        }
+
+        BlitSubRect16(bedRgba, w, 6, 6, atlas, headTopTile);
+        BlitSubRect16(bedRgba, w, 6, 28, atlas, footTopTile);
+        BlitBedSideStrip(bedRgba, w, 0, 6, atlas, headSideTile);
+        BlitBedSideStrip(bedRgba, w, 0, 28, atlas, footSideTile);
+        return true;
+    }
+
+    private static void BlitSubRect16(byte[] src, int srcW, int sx, int sy, byte[] atlas, ushort tile)
+    {
+        var ax0 = (tile % 16) * 16;
+        var ay0 = (tile / 16) * 16;
+        for (var y = 0; y < 16; y++)
+        {
+            for (var x = 0; x < 16; x++)
+            {
+                var si = (((sy + y) * srcW) + sx + x) * 4;
+                var di = (((ay0 + y) * 256) + ax0 + x) * 4;
+                atlas[di + 0] = src[si + 0];
+                atlas[di + 1] = src[si + 1];
+                atlas[di + 2] = src[si + 2];
+                atlas[di + 3] = 255;
+            }
+        }
+    }
+
+    private static void BlitBedSideStrip(byte[] src, int srcW, int sx, int sy, byte[] atlas, ushort tile)
+    {
+        var ax0 = (tile % 16) * 16;
+        var ay0 = (tile / 16) * 16;
+        for (var y = 0; y < 16; y++)
+        {
+            for (var x = 0; x < 16; x++)
+            {
+                var di = (((ay0 + y) * 256) + ax0 + x) * 4;
+                if (y is >= 7 and <= 12)
+                {
+                    // Rotate 6x16 vertical side strip from bed/red.png into horizontal 16x6 mattress side!
+                    var si = (((sy + x) * srcW) + sx + (12 - y)) * 4;
+                    atlas[di + 0] = src[si + 0];
+                    atlas[di + 1] = src[si + 1];
+                    atlas[di + 2] = src[si + 2];
+                    atlas[di + 3] = 255;
+                }
+                else
+                {
+                    atlas[di + 0] = 154;
+                    atlas[di + 1] = 114;
+                    atlas[di + 2] = 68;
+                    atlas[di + 3] = 255;
+                }
+            }
+        }
+    }
+
     /// <inheritdoc />
     public void Dispose()
     {
@@ -239,6 +306,7 @@ public sealed class ResourcePackLoader : IDisposable
                 LoadPngFolder(Path.Combine(relPrefix, "textures", "items"), _itemTextures);
                 LoadSubPngTree(Path.Combine(relPrefix, "textures", "gui"), string.Empty, _guiTextures);
                 LoadSubPngTree(Path.Combine(relPrefix, "textures", "entity"), string.Empty, _entityTextures);
+                LoadSubPngTree(Path.Combine(relPrefix, "textures", "models"), "models", _entityTextures);
 
                 var langDir = Path.Combine(relPrefix, "lang");
                 if (Directory.Exists(langDir))
@@ -314,8 +382,10 @@ public sealed class ResourcePackLoader : IDisposable
                 {
                     var guiMarker = "/textures/gui/";
                     var entityMarker = "/textures/entity/";
+                    var modelsMarker = "/textures/models/";
                     var guiIdx = norm.IndexOf(guiMarker, StringComparison.OrdinalIgnoreCase);
                     var entIdx = norm.IndexOf(entityMarker, StringComparison.OrdinalIgnoreCase);
+                    var modIdx = norm.IndexOf(modelsMarker, StringComparison.OrdinalIgnoreCase);
                     if (guiIdx >= 0)
                     {
                         var relGui = norm[(guiIdx + guiMarker.Length)..];
@@ -325,6 +395,11 @@ public sealed class ResourcePackLoader : IDisposable
                     {
                         var relEnt = norm[(entIdx + entityMarker.Length)..];
                         _entityTextures[relEnt[..^4]] = ReadEntryBytes(entry);
+                    }
+                    else if (modIdx >= 0)
+                    {
+                        var relMod = norm[(modIdx + modelsMarker.Length)..];
+                        _entityTextures[$"models/{relMod[..^4]}"] = ReadEntryBytes(entry);
                     }
                     else if (norm.Contains("/textures/block/", StringComparison.OrdinalIgnoreCase) ||
                              norm.Contains("/textures/blocks/", StringComparison.OrdinalIgnoreCase) ||

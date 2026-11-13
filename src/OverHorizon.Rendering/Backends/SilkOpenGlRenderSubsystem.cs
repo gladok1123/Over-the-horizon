@@ -216,8 +216,15 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         window.Render += onRender;
         window.Closing += ReleaseGpuResources;
 
-        window.Run();
-        _window = null;
+        try
+        {
+            window.Run();
+        }
+        finally
+        {
+            ReleaseGpuResources();
+            _window = null;
+        }
     }
 
     /// <inheritdoc />
@@ -238,16 +245,18 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         var clampedSky = Math.Clamp(skyBrightness, 0.08f, 1.0f);
         var underwater = overlay?.IsUnderwater == true;
         var skyColor = SilkOpenGlChunkPassDrawer.ComputeSkyAtmosphereColor(clampedSky, overlay?.WorldTimeTicks ?? 1000L, underwater);
+        var chunkFogDist = overlay is { ChunkFogDistance: > 16.0f } ? overlay.ChunkFogDistance : camera.FarPlane;
 
         gl.ClearColor(skyColor.X, skyColor.Y, skyColor.Z, 1.0f);
         gl.Clear((uint)(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit));
+
+        var skyCalls = (overlay is not null && _overlayRenderer is not null) ? _overlayRenderer.RenderSkyDome(camera, overlay) : 0;
 
         gl.Enable(EnableCap.DepthTest);
         gl.DepthFunc(DepthFunction.Lequal);
         gl.Enable(EnableCap.CullFace);
         gl.CullFace(TriangleFace.Back);
         gl.FrontFace(FrontFaceDirection.Ccw);
-
         gl.UseProgram(prog.ProgramHandle);
 
         var viewProj = camera.BuildCameraRelativeViewProjectionMatrix();
@@ -255,29 +264,24 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         gl.Uniform1(prog.LocAtlas, 0);
         gl.Uniform1(prog.LocSkyBrightness, clampedSky);
         gl.Uniform1(prog.LocHeldTorchLight, overlay?.HeldTorchLightLevel ?? 0.0f);
-        gl.Uniform1(prog.LocFogStart, underwater ? 1.5f : camera.FarPlane * 0.62f);
-        gl.Uniform1(prog.LocFogEnd, underwater ? 24.0f : camera.FarPlane * 0.96f);
+        gl.Uniform1(prog.LocFogStart, underwater ? 0.8f : chunkFogDist * 0.62f);
+        gl.Uniform1(prog.LocFogEnd, underwater ? 13.5f : chunkFogDist * 0.96f);
         gl.Uniform3(prog.LocSkyColor, skyColor.X, skyColor.Y, skyColor.Z);
         gl.Uniform1(prog.LocUnderwater, underwater ? 1.0f : 0.0f);
 
         gl.ActiveTexture(TextureUnit.Texture0);
         gl.BindTexture(TextureTarget.Texture2D, prog.AtlasTexture);
 
-        var maxHorizDistSq = (camera.FarPlane + 24.0f) * (camera.FarPlane + 24.0f);
+        var maxHorizDistSq = (chunkFogDist + 24.0f) * (chunkFogDist + 24.0f);
         var (visible, culled, drawCalls, triangles) = SilkOpenGlChunkPassDrawer.DrawOpaqueAndCollectTranslucent(gl, prog, _gpuColumns, _translucentSortScratch, in frustum, camera.Position, maxHorizDistSq);
         var (transCalls, transTris) = SilkOpenGlChunkPassDrawer.DrawTranslucentPass(gl, prog, _translucentSortScratch, camera.Position);
         var overlayCalls = (overlay is not null && _overlayRenderer is not null)
-            ? _overlayRenderer.RenderOverlays(camera, overlay, prog.AtlasTexture, prog.EntityAtlasTexture, _stagedAtlas)
+            ? _overlayRenderer.RenderOverlays(camera, overlay, prog.AtlasTexture, prog.EntityAtlasTexture, _stagedAtlas, skyColor, chunkFogDist)
             : 0;
 
         gl.BindVertexArray(0);
         _frameCount++;
-        LastFrameMetrics = new RenderFrameMetrics(
-            visible,
-            culled,
-            drawCalls + transCalls + overlayCalls,
-            triangles + transTris,
-            _frameCount);
+        LastFrameMetrics = new RenderFrameMetrics(visible, culled, skyCalls + drawCalls + transCalls + overlayCalls, triangles + transTris, _frameCount);
         return LastFrameMetrics;
     }
 
@@ -403,18 +407,23 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
 
     private void ReleaseGpuResources()
     {
-        foreach (var col in _gpuColumns.Values)
+        var hasValidContext = _gl is not null && _window?.GLContext?.IsCurrent == true;
+        if (hasValidContext)
         {
-            col.Dispose();
+            foreach (var col in _gpuColumns.Values)
+            {
+                col.Dispose();
+            }
+
+            _overlayRenderer?.Dispose();
+            _program?.Dispose();
+            _inputContext?.Dispose();
         }
 
         _gpuColumns.Clear();
         _gpuSectionCount = 0;
-        _overlayRenderer?.Dispose();
         _overlayRenderer = null;
-        _program?.Dispose();
         _program = null;
-        _inputContext?.Dispose();
         _inputContext = null;
         _gl = null;
     }
