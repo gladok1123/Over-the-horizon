@@ -11,159 +11,210 @@ public static class BuiltInItems
     /// <summary>Key for <c>overhorizon:air</c> (empty item ID 0).</summary>
     public static readonly ResourceKey Air = BuiltInBlocks.Air;
 
-    // Crafting materials, ores & mob drops
     /// <summary>Key for <c>overhorizon:stick</c>.</summary>
     public static readonly ResourceKey Stick = ResourceKey.OverHorizon("stick");
+
     /// <summary>Key for <c>overhorizon:coal</c>.</summary>
     public static readonly ResourceKey Coal = ResourceKey.OverHorizon("coal");
+
     /// <summary>Key for <c>overhorizon:charcoal</c>.</summary>
     public static readonly ResourceKey Charcoal = ResourceKey.OverHorizon("charcoal");
+
     /// <summary>Key for <c>overhorizon:raw_iron</c>.</summary>
     public static readonly ResourceKey RawIron = ResourceKey.OverHorizon("raw_iron");
+
     /// <summary>Key for <c>overhorizon:raw_gold</c>.</summary>
     public static readonly ResourceKey RawGold = ResourceKey.OverHorizon("raw_gold");
+
     /// <summary>Key for <c>overhorizon:raw_copper</c>.</summary>
     public static readonly ResourceKey RawCopper = ResourceKey.OverHorizon("raw_copper");
+
     /// <summary>Key for <c>overhorizon:iron_ingot</c>.</summary>
     public static readonly ResourceKey IronIngot = ResourceKey.OverHorizon("iron_ingot");
+
     /// <summary>Key for <c>overhorizon:gold_ingot</c>.</summary>
     public static readonly ResourceKey GoldIngot = ResourceKey.OverHorizon("gold_ingot");
+
     /// <summary>Key for <c>overhorizon:copper_ingot</c>.</summary>
     public static readonly ResourceKey CopperIngot = ResourceKey.OverHorizon("copper_ingot");
+
     /// <summary>Key for <c>overhorizon:diamond</c>.</summary>
     public static readonly ResourceKey Diamond = ResourceKey.OverHorizon("diamond");
+
     /// <summary>Key for <c>overhorizon:emerald</c>.</summary>
     public static readonly ResourceKey Emerald = ResourceKey.OverHorizon("emerald");
+
     /// <summary>Key for <c>overhorizon:lapis_lazuli</c>.</summary>
     public static readonly ResourceKey LapisLazuli = ResourceKey.OverHorizon("lapis_lazuli");
+
     /// <summary>Key for <c>overhorizon:redstone</c>.</summary>
     public static readonly ResourceKey Redstone = ResourceKey.OverHorizon("redstone");
+
     /// <summary>Key for <c>overhorizon:netherite_ingot</c>.</summary>
     public static readonly ResourceKey NetheriteIngot = ResourceKey.OverHorizon("netherite_ingot");
+
     /// <summary>Key for <c>overhorizon:flint</c>.</summary>
     public static readonly ResourceKey Flint = ResourceKey.OverHorizon("flint");
+
     /// <summary>Key for <c>overhorizon:bone</c>.</summary>
     public static readonly ResourceKey Bone = ResourceKey.OverHorizon("bone");
+
     /// <summary>Key for <c>overhorizon:string</c>.</summary>
     public static readonly ResourceKey String = ResourceKey.OverHorizon("string");
+
     /// <summary>Key for <c>overhorizon:gunpowder</c>.</summary>
     public static readonly ResourceKey Gunpowder = ResourceKey.OverHorizon("gunpowder");
+
     /// <summary>Key for <c>overhorizon:spider_eye</c>.</summary>
     public static readonly ResourceKey SpiderEye = ResourceKey.OverHorizon("spider_eye");
+
     /// <summary>Key for <c>overhorizon:leather</c>.</summary>
     public static readonly ResourceKey Leather = ResourceKey.OverHorizon("leather");
+
     /// <summary>Key for <c>overhorizon:feather</c>.</summary>
     public static readonly ResourceKey Feather = ResourceKey.OverHorizon("feather");
 
-    // Swords (PvP & Mob melee weapons)
     /// <summary>Key for <c>overhorizon:wooden_sword</c>.</summary>
     public static readonly ResourceKey WoodenSword = ResourceKey.OverHorizon("wooden_sword");
+
     /// <summary>Key for <c>overhorizon:stone_sword</c>.</summary>
     public static readonly ResourceKey StoneSword = ResourceKey.OverHorizon("stone_sword");
+
     /// <summary>Key for <c>overhorizon:iron_sword</c>.</summary>
     public static readonly ResourceKey IronSword = ResourceKey.OverHorizon("iron_sword");
+
     /// <summary>Key for <c>overhorizon:golden_sword</c>.</summary>
     public static readonly ResourceKey GoldenSword = ResourceKey.OverHorizon("golden_sword");
+
     /// <summary>Key for <c>overhorizon:diamond_sword</c>.</summary>
     public static readonly ResourceKey DiamondSword = ResourceKey.OverHorizon("diamond_sword");
+
     /// <summary>Key for <c>overhorizon:netherite_sword</c>.</summary>
     public static readonly ResourceKey NetheriteSword = ResourceKey.OverHorizon("netherite_sword");
 
-    // Pickaxes
     /// <summary>Key for <c>overhorizon:wooden_pickaxe</c>.</summary>
     public static readonly ResourceKey WoodenPickaxe = ResourceKey.OverHorizon("wooden_pickaxe");
+
     /// <summary>Key for <c>overhorizon:stone_pickaxe</c>.</summary>
     public static readonly ResourceKey StonePickaxe = ResourceKey.OverHorizon("stone_pickaxe");
+
     /// <summary>Key for <c>overhorizon:iron_pickaxe</c>.</summary>
     public static readonly ResourceKey IronPickaxe = ResourceKey.OverHorizon("iron_pickaxe");
+
     /// <summary>Key for <c>overhorizon:golden_pickaxe</c>.</summary>
     public static readonly ResourceKey GoldenPickaxe = ResourceKey.OverHorizon("golden_pickaxe");
+
     /// <summary>Key for <c>overhorizon:diamond_pickaxe</c>.</summary>
     public static readonly ResourceKey DiamondPickaxe = ResourceKey.OverHorizon("diamond_pickaxe");
+
     /// <summary>Key for <c>overhorizon:netherite_pickaxe</c>.</summary>
     public static readonly ResourceKey NetheritePickaxe = ResourceKey.OverHorizon("netherite_pickaxe");
 
-    // Axes
     /// <summary>Key for <c>overhorizon:wooden_axe</c>.</summary>
     public static readonly ResourceKey WoodenAxe = ResourceKey.OverHorizon("wooden_axe");
+
     /// <summary>Key for <c>overhorizon:stone_axe</c>.</summary>
     public static readonly ResourceKey StoneAxe = ResourceKey.OverHorizon("stone_axe");
+
     /// <summary>Key for <c>overhorizon:iron_axe</c>.</summary>
     public static readonly ResourceKey IronAxe = ResourceKey.OverHorizon("iron_axe");
+
     /// <summary>Key for <c>overhorizon:diamond_axe</c>.</summary>
     public static readonly ResourceKey DiamondAxe = ResourceKey.OverHorizon("diamond_axe");
 
-    // Shovels
     /// <summary>Key for <c>overhorizon:wooden_shovel</c>.</summary>
     public static readonly ResourceKey WoodenShovel = ResourceKey.OverHorizon("wooden_shovel");
+
     /// <summary>Key for <c>overhorizon:stone_shovel</c>.</summary>
     public static readonly ResourceKey StoneShovel = ResourceKey.OverHorizon("stone_shovel");
+
     /// <summary>Key for <c>overhorizon:iron_shovel</c>.</summary>
     public static readonly ResourceKey IronShovel = ResourceKey.OverHorizon("iron_shovel");
+
     /// <summary>Key for <c>overhorizon:diamond_shovel</c>.</summary>
     public static readonly ResourceKey DiamondShovel = ResourceKey.OverHorizon("diamond_shovel");
 
-    // Hoes
     /// <summary>Key for <c>overhorizon:wooden_hoe</c>.</summary>
     public static readonly ResourceKey WoodenHoe = ResourceKey.OverHorizon("wooden_hoe");
+
     /// <summary>Key for <c>overhorizon:stone_hoe</c>.</summary>
     public static readonly ResourceKey StoneHoe = ResourceKey.OverHorizon("stone_hoe");
+
     /// <summary>Key for <c>overhorizon:iron_hoe</c>.</summary>
     public static readonly ResourceKey IronHoe = ResourceKey.OverHorizon("iron_hoe");
+
     /// <summary>Key for <c>overhorizon:diamond_hoe</c>.</summary>
     public static readonly ResourceKey DiamondHoe = ResourceKey.OverHorizon("diamond_hoe");
 
-    // Utility Tools & Buckets
     /// <summary>Key for <c>overhorizon:shears</c>.</summary>
     public static readonly ResourceKey Shears = ResourceKey.OverHorizon("shears");
+
     /// <summary>Key for <c>overhorizon:flint_and_steel</c>.</summary>
     public static readonly ResourceKey FlintAndSteel = ResourceKey.OverHorizon("flint_and_steel");
+
     /// <summary>Key for <c>overhorizon:bucket</c>.</summary>
     public static readonly ResourceKey Bucket = ResourceKey.OverHorizon("bucket");
+
     /// <summary>Key for <c>overhorizon:water_bucket</c>.</summary>
     public static readonly ResourceKey WaterBucket = ResourceKey.OverHorizon("water_bucket");
 
-    // Armor Sets (Iron & Diamond)
     /// <summary>Key for <c>overhorizon:iron_helmet</c>.</summary>
     public static readonly ResourceKey IronHelmet = ResourceKey.OverHorizon("iron_helmet");
+
     /// <summary>Key for <c>overhorizon:iron_chestplate</c>.</summary>
     public static readonly ResourceKey IronChestplate = ResourceKey.OverHorizon("iron_chestplate");
+
     /// <summary>Key for <c>overhorizon:iron_leggings</c>.</summary>
     public static readonly ResourceKey IronLeggings = ResourceKey.OverHorizon("iron_leggings");
+
     /// <summary>Key for <c>overhorizon:iron_boots</c>.</summary>
     public static readonly ResourceKey IronBoots = ResourceKey.OverHorizon("iron_boots");
+
     /// <summary>Key for <c>overhorizon:diamond_helmet</c>.</summary>
     public static readonly ResourceKey DiamondHelmet = ResourceKey.OverHorizon("diamond_helmet");
+
     /// <summary>Key for <c>overhorizon:diamond_chestplate</c>.</summary>
     public static readonly ResourceKey DiamondChestplate = ResourceKey.OverHorizon("diamond_chestplate");
+
     /// <summary>Key for <c>overhorizon:diamond_leggings</c>.</summary>
     public static readonly ResourceKey DiamondLeggings = ResourceKey.OverHorizon("diamond_leggings");
+
     /// <summary>Key for <c>overhorizon:diamond_boots</c>.</summary>
     public static readonly ResourceKey DiamondBoots = ResourceKey.OverHorizon("diamond_boots");
 
-    // Edible Foods (Raw & Cooked)
     /// <summary>Key for <c>overhorizon:apple</c>.</summary>
     public static readonly ResourceKey Apple = ResourceKey.OverHorizon("apple");
+
     /// <summary>Key for <c>overhorizon:bread</c>.</summary>
     public static readonly ResourceKey Bread = ResourceKey.OverHorizon("bread");
+
     /// <summary>Key for <c>overhorizon:porkchop</c>.</summary>
     public static readonly ResourceKey RawPorkchop = ResourceKey.OverHorizon("porkchop");
+
     /// <summary>Key for <c>overhorizon:cooked_porkchop</c>.</summary>
     public static readonly ResourceKey CookedPorkchop = ResourceKey.OverHorizon("cooked_porkchop");
+
     /// <summary>Key for <c>overhorizon:beef</c>.</summary>
     public static readonly ResourceKey RawBeef = ResourceKey.OverHorizon("beef");
+
     /// <summary>Key for <c>overhorizon:cooked_beef</c>.</summary>
     public static readonly ResourceKey CookedBeef = ResourceKey.OverHorizon("cooked_beef");
+
     /// <summary>Key for <c>overhorizon:chicken</c>.</summary>
     public static readonly ResourceKey RawChicken = ResourceKey.OverHorizon("chicken");
+
     /// <summary>Key for <c>overhorizon:cooked_chicken</c>.</summary>
     public static readonly ResourceKey CookedChicken = ResourceKey.OverHorizon("cooked_chicken");
+
     /// <summary>Key for <c>overhorizon:mutton</c>.</summary>
     public static readonly ResourceKey RawMutton = ResourceKey.OverHorizon("mutton");
+
     /// <summary>Key for <c>overhorizon:cooked_mutton</c>.</summary>
     public static readonly ResourceKey CookedMutton = ResourceKey.OverHorizon("cooked_mutton");
+
     /// <summary>Key for <c>overhorizon:rotten_flesh</c>.</summary>
     public static readonly ResourceKey RottenFlesh = ResourceKey.OverHorizon("rotten_flesh");
+
     /// <summary>Key for <c>overhorizon:golden_apple</c>.</summary>
     public static readonly ResourceKey GoldenApple = ResourceKey.OverHorizon("golden_apple");
 
