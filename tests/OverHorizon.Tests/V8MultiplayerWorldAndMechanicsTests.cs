@@ -65,13 +65,13 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
             }
         }
 
-        // 1. Repeater set to delay=3 (0.30s): facing="south" means input is South (+Z) and output is North (-Z)!
+        // 1. Repeater set to delay=3 (0.30s): facing="north" means rear input is South (+Z) and front output is North (-Z)!
         var repInputPos = new BlockPos(0, 64, 1);
         var repPos = new BlockPos(0, 64, 0);
         var repLampPos = new BlockPos(0, 64, -1);
 
         var repDelay3 = blocks.WithProperty(
-            blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.RedstoneRepeater), "facing", "south"),
+            blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.RedstoneRepeater), "facing", "north"),
             "delay",
             "3");
         Set(repInputPos, blocks.GetDefaultState(BuiltInBlocks.RedstoneBlock));
@@ -81,7 +81,8 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
         var redstone = new RedstoneEngine(blocks);
         redstone.NotifyBlockChanged(repPos);
 
-        // After 0.10s (1 Redstone tick), delay=3 repeater MUST NOT turn on yet!
+        // First evaluation schedules the 0.30s diode transition -> Repeater MUST NOT turn on immediately!
+        redstone.Step(0.08f, [], Get, Set, [], []);
         redstone.Step(0.10f, [], Get, Set, [], []);
         blocks.GetStateMetadata(Get(repPos)).Properties["powered"].Should().Be("false", "delay=3 repeater waits 0.30s before turning ON");
         blocks.GetStateMetadata(Get(repLampPos)).BlockKey.Should().Be(BuiltInBlocks.RedstoneLamp);
@@ -92,32 +93,32 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
         blocks.GetStateMetadata(Get(repPos)).Properties["powered"].Should().Be("true");
         blocks.GetStateMetadata(Get(repLampPos)).BlockKey.Should().Be(BuiltInBlocks.LitRedstoneLamp);
 
-        // 2. RedstoneComparator: reads rear Composter fullness (level=6 -> rear signal > 0), toggles compare <-> subtract!
+        // 2. RedstoneComparator: reads rear Composter fullness (level=7 -> rear signal > 5), toggles compare <-> subtract!
         var compRear = new BlockPos(5, 64, 1);
         var compPos = new BlockPos(5, 64, 0);
         var compSideWire = new BlockPos(4, 64, 0);
         var compOutWire = new BlockPos(5, 64, -1);
 
         Set(compRear, blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.Composter), "level", "7"));
-        Set(compPos, blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.RedstoneComparator), "facing", "south"));
+        Set(compPos, blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.RedstoneComparator), "facing", "north"));
         Set(compOutWire, blocks.GetDefaultState(BuiltInBlocks.RedstoneWire));
 
         redstone.NotifyBlockChanged(compPos);
-        redstone.Step(0.12f, [], Get, Set, [], []);
+        redstone.Step(0.08f, [], Get, Set, [], []);
         redstone.Step(0.12f, [], Get, Set, [], []);
         var baseOutPower = int.Parse(blocks.GetStateMetadata(Get(compOutWire)).Properties["power"], CultureInfo.InvariantCulture);
         baseOutPower.Should().BeGreaterThan(5, "Comparator outputs rear Composter fullness signal");
 
         // Toggle Comparator to subtract mode via right-click interaction and apply a side wire signal
         redstone.TryInteractComponent(compPos, Get, Set).Should().BeTrue();
-        blocks.GetStateMetadata(Get(compPos)).Properties["mode"].Should().Be("subtract");
+        blocks.GetStateMetadata(Get(compPos)).Properties["subtract"].Should().Be("true");
 
         Set(new BlockPos(3, 64, 0), blocks.GetDefaultState(BuiltInBlocks.Lever));
         _ = redstone.TryInteractComponent(new BlockPos(3, 64, 0), Get, Set);
         Set(compSideWire, blocks.GetDefaultState(BuiltInBlocks.RedstoneWire));
         redstone.NotifyBlockChanged(new BlockPos(3, 64, 0));
         redstone.NotifyBlockChanged(compPos);
-        redstone.Step(0.12f, [], Get, Set, [], []);
+        redstone.Step(0.08f, [], Get, Set, [], []);
         redstone.Step(0.12f, [], Get, Set, [], []);
         var subtractedPower = int.Parse(blocks.GetStateMetadata(Get(compOutWire)).Properties["power"], CultureInfo.InvariantCulture);
         subtractedPower.Should().BeLessThan(baseOutPower, "subtract mode reduces rear signal by side wire power");
@@ -402,12 +403,15 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
         SilkOpenGlOverlayRenderer.AppendWorldClouds(cloudVerts, new Vec3d(0, 70, 0), WorldTimeCycle.NoonTicks, 12.0f);
         cloudVerts.Count.Should().BeGreaterThan(600, "3D volumetric clouds emit top, bottom, and all 4 side faces");
 
-        // 5. Remote Player Head Pitch: looking DOWN (PitchDegrees = -45) vs UP (+45) tilts 3D head mesh vertically!
+        // 5. Remote Player Head Pitch: because pivot is at the neck base (Y=1.50), looking DOWN (-45) tilts the forehead forward (-Z),
+        //    whereas looking UP (+45) tilts the crown backward (+Z)!
         var downPeerVerts = new List<OverlayVertex>();
         var upPeerVerts = new List<OverlayVertex>();
         WorldMob3DMesher.AppendRemotePlayers(downPeerVerts, Vec3d.Zero, [new RemotePlayerAvatar(1, "A", new Vec3d(0, 0, -4), 0.0f, -45.0f, 0, 0, 20.0f)]);
         WorldMob3DMesher.AppendRemotePlayers(upPeerVerts, Vec3d.Zero, [new RemotePlayerAvatar(1, "A", new Vec3d(0, 0, -4), 0.0f, +45.0f, 0, 0, 20.0f)]);
-        downPeerVerts.Max(v => v.Position.Y).Should().NotBe(upPeerVerts.Max(v => v.Position.Y));
+        var downMinHeadZ = downPeerVerts.Where(v => v.Position.Y > 1.55f).Min(v => v.Position.Z);
+        var upMinHeadZ = upPeerVerts.Where(v => v.Position.Y > 1.55f).Min(v => v.Position.Z);
+        downMinHeadZ.Should().BeLessThan(upMinHeadZ - 0.25f, "looking down (-45) tilts the forehead forward into -Z while looking up (+45) tilts it back");
     }
 
     [Fact]

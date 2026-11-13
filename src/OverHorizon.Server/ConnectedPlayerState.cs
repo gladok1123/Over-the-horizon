@@ -39,7 +39,7 @@ internal sealed class ConnectedPlayerState(
 
     public int NextTeleportId { get; set; } = 1;
 
-    public GameMode GameMode { get; set; } = GameMode.Creative;
+    public GameMode GameMode { get; set; } = GameMode.Survival;
 
     public ushort MainHandItemId { get; set; }
 
