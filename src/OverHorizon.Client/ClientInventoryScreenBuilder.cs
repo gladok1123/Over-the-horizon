@@ -1,6 +1,7 @@
 using System.Numerics;
 using OverHorizon.Core.Items;
 using OverHorizon.Core.Registry;
+using OverHorizon.Gameplay;
 using OverHorizon.Gameplay.Crafting;
 using OverHorizon.Gameplay.Inventory;
 using OverHorizon.Gameplay.Smelting;
@@ -180,7 +181,7 @@ internal static class ClientInventoryScreenBuilder
             string[] armorNames = ["Helmet Slot", "Chestplate Slot", "Leggings Slot", "Boots Slot"];
             for (var a = 0; a < 4; a++)
             {
-                var slotIdx = PlayerInventory.ArmorSlotOffset + a;
+                var slotIdx = PlayerInventory.ArmorSlotStart + a;
                 AddStackCell(cells, inv.GetSlot(slotIdx), slotIdx, winX + (8.0f * s), winY + ((8.0f + (a * 18.0f)) * s), slotSize, mousePos, items, player.Hotbar, armorNames[a]);
             }
 

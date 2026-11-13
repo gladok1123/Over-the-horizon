@@ -6,6 +6,7 @@ using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
 using OverHorizon.Gameplay;
+using OverHorizon.Gameplay.Crafting;
 using OverHorizon.Gameplay.Mobs;
 using OverHorizon.Networking.Packets;
 using OverHorizon.Networking.Packets.Serverbound;
@@ -94,7 +95,7 @@ public sealed class ClientSessionRunner : IAsyncDisposable
         _player.Hotbar.BindAtlas(_atlas);
         _player.Camera.SetAspectRatio(1280, 720);
 
-        _menu = new ClientMenuController(options, initialMode, registries.Items, registries.Recipes);
+        _menu = new ClientMenuController(options, initialMode, registries.Items, BuiltInRecipes.CreateFrozen(registries.Items));
         _menuActions = new ClientMenuSessionActions(_menu, _chatHistory, _localWorld, _logger);
         _inputBinder = new ClientInputBinder(
             _player, _menu, _audio, _logger, () => _latestDebugText, () => _renderer is SilkOpenGlRenderSubsystem s ? s.WindowPixelSize : new Vector2(1280, 720));

@@ -173,9 +173,9 @@ internal sealed class ClientContainerSlotController
         {
             var st = inv.GetSlot(cellId);
             Func<ItemStack, bool>? filter = null;
-            if (cellId is >= PlayerInventory.ArmorSlotOffset and < (PlayerInventory.ArmorSlotOffset + 4))
+            if (cellId is >= PlayerInventory.ArmorSlotStart and < (PlayerInventory.ArmorSlotStart + 4))
             {
-                var reqSub = cellId - PlayerInventory.ArmorSlotOffset;
+                var reqSub = cellId - PlayerInventory.ArmorSlotStart;
                 filter = stack => MatchesArmorSubSlot(_items.GetById(stack.ItemId).Key.Path, reqSub);
             }
 

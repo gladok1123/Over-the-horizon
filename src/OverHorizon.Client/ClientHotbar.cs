@@ -254,7 +254,7 @@ public sealed class ClientHotbar
             var pts = 0;
             for (var a = 0; a < PlayerInventory.ArmorSlotCount; a++)
             {
-                var st = SurvivalInventory.GetSlot(PlayerInventory.ArmorSlotOffset + a);
+                var st = SurvivalInventory.GetSlot(PlayerInventory.ArmorSlotStart + a);
                 if (!st.IsEmpty) pts += _items.GetById(st.ItemId).ArmorDefense;
             }
 

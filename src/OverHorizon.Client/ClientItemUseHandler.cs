@@ -171,7 +171,7 @@ internal sealed class ClientItemUseHandler
         if (heldItemId == 0) return false;
 
         useCooldown = 0.22;
-        var armorSlotIdx = PlayerInventory.ArmorSlotOffset + sub;
+        var armorSlotIdx = PlayerInventory.ArmorSlotStart + sub;
         var inv = player.Hotbar.SurvivalInventory;
         var previousArmor = inv.GetSlot(armorSlotIdx);
         inv.SetSlot(armorSlotIdx, new ItemStack(heldItemId, 1));
