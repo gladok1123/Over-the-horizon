@@ -191,16 +191,16 @@ internal static class ShapedBlockMesher
     private static void EmitDoubleSidedQuad(
         List<ChunkVertex> verts,
         List<uint> indices,
-        Vector3 p0,
-        Vector3 p1,
-        Vector3 p2,
-        Vector3 p3,
+        Vector3 c0,
+        Vector3 c1,
+        Vector3 c2,
+        Vector3 c3,
         ushort tile,
         float shade,
         float packedLight)
     {
-        EmitQuad(verts, indices, p0, p1, p2, p3, new Vector2(0.01f, 0.99f), new Vector2(0.99f, 0.99f), new Vector2(0.99f, 0.01f), new Vector2(0.01f, 0.01f), tile, shade, packedLight);
-        EmitQuad(verts, indices, p1, p0, p3, p2, new Vector2(0.01f, 0.99f), new Vector2(0.99f, 0.99f), new Vector2(0.99f, 0.01f), new Vector2(0.01f, 0.01f), tile, shade, packedLight);
+        EmitQuad(verts, indices, c0, c1, c2, c3, new Vector2(0.01f, 0.99f), new Vector2(0.99f, 0.99f), new Vector2(0.99f, 0.01f), new Vector2(0.01f, 0.01f), tile, shade, packedLight);
+        EmitQuad(verts, indices, c1, c0, c3, c2, new Vector2(0.01f, 0.99f), new Vector2(0.99f, 0.99f), new Vector2(0.99f, 0.01f), new Vector2(0.01f, 0.01f), tile, shade, packedLight);
     }
 
     private static void EmitSubBox(

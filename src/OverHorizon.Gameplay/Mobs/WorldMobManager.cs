@@ -289,7 +289,7 @@ public sealed class WorldMobManager
             }
             else
             {
-                mob.YawDegrees = (NextRandom() % 360U);
+                mob.YawDegrees = NextRandom() % 360U;
                 mob.DesiredSpeed = walkSpeed;
             }
         }

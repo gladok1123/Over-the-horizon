@@ -283,7 +283,7 @@ public sealed class ClientPlayerController
             wishZ /= wishLen;
         }
 
-        var canSprint = input.Sprint && (!_inFluid) && (Mode == GameMode.Creative || Hunger > 6);
+        var canSprint = input.Sprint && !_inFluid && (Mode == GameMode.Creative || Hunger > 6);
         var groundOrSwimSpeed = _inFluid ? SwimHorizontalSpeedBlocksPerSec : WalkSpeedBlocksPerSec;
         var baseSpeed = IsFlying ? CreativeFlySpeedBlocksPerSec : groundOrSwimSpeed;
         var sprintBoost = IsFlying ? 1.85 : SprintMultiplier;
