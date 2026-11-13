@@ -296,23 +296,19 @@ internal static partial class ShapedBlockMesher
             return;
         }
 
-        {
-            var x0 = edge == "west" ? 0.0f : 1.0f - t;
-            var x1 = edge == "west" ? t : 1.0f;
-            var a = o + new Vector3(x0, 0.0f, 0.0f);
-            var b = o + new Vector3(x1, 1.0f, 1.0f);
-            var eastU0 = edge == "west" ? uLatch : uHinge;
-            var eastU1 = edge == "west" ? uHinge : uLatch;
+        var x0 = edge == "west" ? 0.0f : 1.0f - t;
+        var x1 = edge == "west" ? t : 1.0f;
+        var minW = o + new Vector3(x0, 0.0f, 0.0f);
+        var maxW = o + new Vector3(x1, 1.0f, 1.0f);
+        var eastU0 = edge == "west" ? uLatch : uHinge;
+        var eastU1 = edge == "west" ? uHinge : uLatch;
 
-            // Broad faces (+X East and -X West)
-            EmitQuad(verts, indices, new Vector3(b.X, a.Y, b.Z), new Vector3(b.X, a.Y, a.Z), new Vector3(b.X, b.Y, a.Z), new Vector3(b.X, b.Y, b.Z), new Vector2(eastU0, 1.0f), new Vector2(eastU1, 1.0f), new Vector2(eastU1, 0.0f), new Vector2(eastU0, 0.0f), tile, 0.78f, packedLight);
-            EmitQuad(verts, indices, new Vector3(a.X, a.Y, a.Z), new Vector3(a.X, a.Y, b.Z), new Vector3(a.X, b.Y, b.Z), new Vector3(a.X, b.Y, a.Z), new Vector2(eastU1, 1.0f), new Vector2(eastU0, 1.0f), new Vector2(eastU0, 0.0f), new Vector2(eastU1, 0.0f), tile, 0.78f, packedLight);
-            // Thin 3/16 side/top/bottom rims
-            EmitQuad(verts, indices, new Vector3(a.X, a.Y, b.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(a.X, b.Y, b.Z), new Vector2(0.0f, 1.0f), new Vector2(t, 1.0f), new Vector2(t, 0.0f), new Vector2(0.0f, 0.0f), tile, 0.86f, packedLight);
-            EmitQuad(verts, indices, new Vector3(b.X, a.Y, a.Z), new Vector3(a.X, a.Y, a.Z), new Vector3(a.X, b.Y, a.Z), new Vector3(b.X, b.Y, a.Z), new Vector2(0.0f, 1.0f), new Vector2(t, 1.0f), new Vector2(t, 0.0f), new Vector2(0.0f, 0.0f), tile, 0.86f, packedLight);
-            EmitQuad(verts, indices, new Vector3(a.X, b.Y, a.Z), new Vector3(a.X, b.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(b.X, b.Y, a.Z), new Vector2(0.0f, 0.0f), new Vector2(0.0f, 1.0f), new Vector2(t, 1.0f), new Vector2(t, 0.0f), tile, 0.98f, packedLight);
-            EmitQuad(verts, indices, new Vector3(a.X, a.Y, a.Z), new Vector3(b.X, a.Y, a.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(a.X, a.Y, b.Z), new Vector2(1.0f - t, 0.0f), new Vector2(1.0f, 0.0f), new Vector2(1.0f, 1.0f), new Vector2(1.0f - t, 1.0f), tile, 0.62f, packedLight);
-        }
+        EmitQuad(verts, indices, new Vector3(maxW.X, minW.Y, maxW.Z), new Vector3(maxW.X, minW.Y, minW.Z), new Vector3(maxW.X, maxW.Y, minW.Z), new Vector3(maxW.X, maxW.Y, maxW.Z), new Vector2(eastU0, 1.0f), new Vector2(eastU1, 1.0f), new Vector2(eastU1, 0.0f), new Vector2(eastU0, 0.0f), tile, 0.78f, packedLight);
+        EmitQuad(verts, indices, new Vector3(minW.X, minW.Y, minW.Z), new Vector3(minW.X, minW.Y, maxW.Z), new Vector3(minW.X, maxW.Y, maxW.Z), new Vector3(minW.X, maxW.Y, minW.Z), new Vector2(eastU1, 1.0f), new Vector2(eastU0, 1.0f), new Vector2(eastU0, 0.0f), new Vector2(eastU1, 0.0f), tile, 0.78f, packedLight);
+        EmitQuad(verts, indices, new Vector3(minW.X, minW.Y, maxW.Z), new Vector3(maxW.X, minW.Y, maxW.Z), new Vector3(maxW.X, maxW.Y, maxW.Z), new Vector3(minW.X, maxW.Y, maxW.Z), new Vector2(0.0f, 1.0f), new Vector2(t, 1.0f), new Vector2(t, 0.0f), new Vector2(0.0f, 0.0f), tile, 0.86f, packedLight);
+        EmitQuad(verts, indices, new Vector3(maxW.X, minW.Y, minW.Z), new Vector3(minW.X, minW.Y, minW.Z), new Vector3(minW.X, maxW.Y, minW.Z), new Vector3(maxW.X, maxW.Y, minW.Z), new Vector2(0.0f, 1.0f), new Vector2(t, 1.0f), new Vector2(t, 0.0f), new Vector2(0.0f, 0.0f), tile, 0.86f, packedLight);
+        EmitQuad(verts, indices, new Vector3(minW.X, maxW.Y, minW.Z), new Vector3(minW.X, maxW.Y, maxW.Z), new Vector3(maxW.X, maxW.Y, maxW.Z), new Vector3(maxW.X, maxW.Y, minW.Z), new Vector2(0.0f, 0.0f), new Vector2(0.0f, 1.0f), new Vector2(t, 1.0f), new Vector2(t, 0.0f), tile, 0.98f, packedLight);
+        EmitQuad(verts, indices, new Vector3(minW.X, minW.Y, minW.Z), new Vector3(maxW.X, minW.Y, minW.Z), new Vector3(maxW.X, minW.Y, maxW.Z), new Vector3(minW.X, minW.Y, maxW.Z), new Vector2(1.0f - t, 0.0f), new Vector2(1.0f, 0.0f), new Vector2(1.0f, 1.0f), new Vector2(1.0f - t, 1.0f), tile, 0.62f, packedLight);
     }
 
     private static void EmitAmethystCluster(

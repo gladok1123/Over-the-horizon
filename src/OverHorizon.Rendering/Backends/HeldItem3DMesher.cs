@@ -296,12 +296,12 @@ public static partial class HeldItem3DMesher
 
     private static void EmitDoubleSidedUvQuad(List<OverlayVertex> dst, Matrix4x4 m, Vector3 a, Vector3 b, Vector3 c, Vector3 d, float u0, float v0, float u1, float v1, Vector4 col)
     {
-        var p0 = Vector3.Transform(a, m);
-        var p1 = Vector3.Transform(b, m);
-        var p2 = Vector3.Transform(c, m);
-        var p3 = Vector3.Transform(d, m);
-        EmitTexturedQuad(dst, p0, p1, p2, p3, new Vector2(u0, v1), new Vector2(u1, v1), new Vector2(u1, v0), new Vector2(u0, v0), col);
-        EmitTexturedQuad(dst, p1, p0, p3, p2, new Vector2(u1, v1), new Vector2(u0, v1), new Vector2(u0, v0), new Vector2(u1, v0), col);
+        var q0 = Vector3.Transform(a, m);
+        var q1 = Vector3.Transform(b, m);
+        var q2 = Vector3.Transform(c, m);
+        var q3 = Vector3.Transform(d, m);
+        EmitTexturedQuad(dst, q0, q1, q2, q3, new Vector2(u0, v1), new Vector2(u1, v1), new Vector2(u1, v0), new Vector2(u0, v0), col);
+        EmitTexturedQuad(dst, q1, q0, q3, q2, new Vector2(u1, v1), new Vector2(u0, v1), new Vector2(u0, v0), new Vector2(u1, v0), col);
     }
 
     private static void AppendTextured3DBlock(

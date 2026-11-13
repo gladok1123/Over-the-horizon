@@ -52,6 +52,27 @@ public sealed class BlockCollisionShapeTable
         return false;
     }
 
+    /// <summary>
+    /// Resolves the exact world-space collision <see cref="BoundingBox"/> for <paramref name="meta"/> at <paramref name="pos"/>.
+    /// </summary>
+    /// <param name="meta">Block state metadata.</param>
+    /// <param name="pos">World voxel coordinate.</param>
+    /// <param name="box">Resolved world-space AABB when returning <see langword="true"/>.</param>
+    /// <returns><see langword="true"/> when <paramref name="meta"/> has a solid collision shape.</returns>
+    public static bool TryGetCollisionBox(BlockStateMetadata meta, BlockPos pos, out BoundingBox box)
+    {
+        ArgumentNullException.ThrowIfNull(meta);
+        var local = ComputeShape(meta);
+        if (local.HasCollision)
+        {
+            box = local.ToWorldBox(pos);
+            return true;
+        }
+
+        box = default;
+        return false;
+    }
+
     private static LocalCollisionBox ComputeShape(BlockStateMetadata meta)
     {
         if (!meta.IsSolid)
