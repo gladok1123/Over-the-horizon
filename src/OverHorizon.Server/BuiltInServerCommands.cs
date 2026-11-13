@@ -32,17 +32,6 @@ public static class BuiltInServerCommands
         ArgumentNullException.ThrowIfNull(broadcasterResolver);
 
         dispatcher.Register(new CommandRegistration(
-            Name: "help",
-            Description: "Lists available slash-commands.",
-            Usage: "/help",
-            RequiredPermission: PermissionLevel.Everyone,
-            Executor: (ctx, _) =>
-            {
-                ctx.Sender.Reply("Commands: /time set <day|noon|sunset|night|midnight|ticks>, /time add <ticks>, /seed, /tp <x> <y> <z>, /setblock <x> <y> <z> <block>, /op <user>");
-                return ValueTask.FromResult(true);
-            }));
-
-        dispatcher.Register(new CommandRegistration(
             Name: "time",
             Description: "Queries or sets the server day/night time.",
             Usage: "/time <set|add|query> [day|noon|sunset|night|midnight|ticks]",

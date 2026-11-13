@@ -172,7 +172,7 @@ public sealed class ClientPlayerController
     }
 
     /// <summary>Triggers the first-person block/sword/empty-hand swing animation.</summary>
-    public void TriggerHandSwing() => _handSwingTimer = HandSwingDurationSeconds;
+    public void TriggerHandSwing() => _handSwingTimer = HandSwingDurationSeconds * 0.995f;
 
     /// <summary>Swaps the currently selected main-hand slot with the offhand slot (<c>F</c> key).</summary>
     public bool SwapOffhand()

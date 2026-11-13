@@ -75,15 +75,15 @@ public sealed class V6MechanicsRedstoneWorldsAndUiTests
 
         EvalAt(leverPos);
         EvalAt(supportPos);
-        blocks.GetStateMetadata(Get(lampPos)).Properties["lit"].Should().Be("false");
+        blocks.GetStateMetadata(Get(lampPos)).BlockKey.Should().Be(BuiltInBlocks.RedstoneLamp);
         blocks.GetStateMetadata(Get(torchPos)).BlockKey.Should().Be(BuiltInBlocks.RedstoneTorch);
 
-        // Flip Lever ON -> Wire power > 0, RedstoneLamp lights up!
+        // Flip Lever ON -> Wire power > 0, RedstoneLamp lights up (BuiltInBlocks.LitRedstoneLamp)!
         _ = redstone.TryInteractComponent(leverPos, Get, Set);
         redstone.EvaluateImmediate(Get, Set, [], []);
         int.Parse(blocks.GetStateMetadata(Get(wirePos)).Properties["power"], System.Globalization.CultureInfo.InvariantCulture)
             .Should().BeGreaterThan(0);
-        blocks.GetStateMetadata(Get(lampPos)).Properties["lit"].Should().Be("true");
+        blocks.GetStateMetadata(Get(lampPos)).BlockKey.Should().Be(BuiltInBlocks.LitRedstoneLamp);
 
         // Directly power Stone support with RedstoneBlock underneath -> RedstoneTorch turns OFF (inverter)!
         Set(new BlockPos(1, 63, 1), blocks.GetDefaultState(BuiltInBlocks.RedstoneBlock));
