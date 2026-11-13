@@ -180,7 +180,7 @@ public sealed class ParticleSystem
         }
     }
 
-    private void Emit(in ActiveParticle p)
+    private void Emit(ActiveParticle p)
     {
         if (_count >= MaxCapacity)
         {

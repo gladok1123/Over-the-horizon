@@ -1,5 +1,6 @@
 using System.Numerics;
 using Microsoft.Extensions.Logging;
+using OverHorizon.Core;
 using OverHorizon.Core.Math;
 using OverHorizon.Rendering.Camera;
 using OverHorizon.Rendering.Hud;

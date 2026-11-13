@@ -131,6 +131,14 @@ internal static partial class ShapedBlockMesher
         }
     }
 
+    private static bool IsRedstoneNode(OverHorizon.Core.Registry.ResourceKey k) =>
+        k == BuiltInBlocks.RedstoneWire || k == BuiltInBlocks.RedstoneBlock || k == BuiltInBlocks.RedstoneTorch ||
+        k == BuiltInBlocks.RedstoneTorchOff || k == BuiltInBlocks.Lever || k == BuiltInBlocks.StoneButton ||
+        k == BuiltInBlocks.StonePressurePlate || k == BuiltInBlocks.RedstoneRepeater || k == BuiltInBlocks.RedstoneComparator ||
+        k == BuiltInBlocks.Piston || k == BuiltInBlocks.StickyPiston || k == BuiltInBlocks.RedstoneLamp ||
+        k == BuiltInBlocks.LitRedstoneLamp || k == BuiltInBlocks.Tnt || k == BuiltInBlocks.PoweredRail ||
+        k == BuiltInBlocks.OakTrapdoor;
+
     private static void EmitTiltedPost(
         List<ChunkVertex> verts,
         List<uint> indices,

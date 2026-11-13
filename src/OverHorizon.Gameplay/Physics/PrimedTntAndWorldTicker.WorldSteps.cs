@@ -239,9 +239,9 @@ public sealed partial class PrimedTntAndWorldTicker
             // Controlled bounded spread: only young fire (age <= 7) has a small chance to hop 1 cell with child age >= 9!
             if (age <= 7 && (NextRandom() % 5U) == 0U && _activeFires.Count < 24)
             {
-                var offX = ((int)(NextRandom() % 3U)) - 1;
-                var offY = ((int)(NextRandom() % 2U));
-                var offZ = ((int)(NextRandom() % 3U)) - 1;
+                var offX = (int)(NextRandom() % 3U) - 1;
+                var offY = (int)(NextRandom() % 2U);
+                var offZ = (int)(NextRandom() % 3U) - 1;
                 var target = new BlockPos(pos.X + offX, pos.Y + offY, pos.Z + offZ);
                 if (target != pos && target.Y >= EngineConstants.WorldMinY + 1 && target.Y < EngineConstants.WorldMaxY - 1 &&
                     getBlock(target).IsAir && HasAdjacentFlammable(target, getBlock) &&
@@ -274,9 +274,10 @@ public sealed partial class PrimedTntAndWorldTicker
 
     private bool HasAdjacentFlammable(BlockPos pos, Func<BlockPos, BlockState> getBlock)
     {
-        foreach (var dir in DirectionExtensions.All)
+        var dirs = DirectionExtensions.All;
+        for (var i = 0; i < dirs.Length; i++)
         {
-            if (IsFlammableBlock(_blocks.GetStateMetadata(getBlock(pos.Offset(dir))).BlockKey))
+            if (IsFlammableBlock(_blocks.GetStateMetadata(getBlock(pos.Offset(dirs[i]))).BlockKey))
             {
                 return true;
             }

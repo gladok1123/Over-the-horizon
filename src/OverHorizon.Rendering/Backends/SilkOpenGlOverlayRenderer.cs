@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using OverHorizon.Core;
 using OverHorizon.Core.Math;
 using OverHorizon.Rendering.Camera;
 using OverHorizon.Rendering.Hud;
