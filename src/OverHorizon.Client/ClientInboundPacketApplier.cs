@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Logging;
 using OverHorizon.Audio;
 using OverHorizon.Core.Blocks;
+using OverHorizon.Core.Items;
 using OverHorizon.Core.Math;
-using OverHorizon.Gameplay;
+using OverHorizon.Core.Registry;
+using OverHorizon.Gameplay.Inventory;
 using OverHorizon.Networking.Packets;
 using OverHorizon.Networking.Packets.Clientbound;
 using OverHorizon.Rendering;
@@ -11,8 +13,9 @@ using OverHorizon.World.Serialization;
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Applies inbound authoritative server packets (including batched <see cref="MultiBlockUpdatePacket"/> and
-/// <see cref="WorldTimeUpdatePacket"/>) to the client world cache, player pose, PvP combat state, and chat log.
+/// Applies inbound authoritative server packets (including <see cref="RemotePlayerEquipmentPacket"/>,
+/// <see cref="WorldEntitiesSnapshotPacket"/>, and <see cref="InventoryGrantAndEventPacket"/>)
+/// to the client world cache, player pose, unified inventory, 3D particles/audio, and chat log.
 /// </summary>
 internal static class ClientInboundPacketApplier
 {
@@ -22,8 +25,9 @@ internal static class ClientInboundPacketApplier
         ClientRemotePlayerTracker remotePlayers,
         ClientPlayerController player,
         ClientWorldCache worldCache,
-        WorldTimeCycle worldTimeCycle,
+        ClientWorldSyncAndMobBridge worldBridge,
         IBlockRegistry blocks,
+        IRegistry<ItemDefinition> items,
         IAudioSubsystem audio,
         IRenderSubsystem renderer,
         ClientChatHistory chatHistory,
@@ -61,9 +65,18 @@ internal static class ClientInboundPacketApplier
                 }
                 else if (remotePlayers.TryApplyCombatFeedback(combatPkt.TargetEntityId, combatPkt.NewHealth, combatPkt.TargetDied, out var peerPos))
                 {
+                    worldBridge.Particles.EmitCombatHit(peerPos, isCritical: false);
                     audio.PlayPositional(SoundCue.PlayerHit, peerPos + new Vec3d(0.0, 1.0, 0.0), gain: 0.85f * player.MasterVolume);
                 }
 
+                break;
+
+            case WorldEntitiesSnapshotPacket entPkt:
+                worldBridge.ApplyMultiplayerEntitiesSnapshot(entPkt, localEntityId, player);
+                break;
+
+            case InventoryGrantAndEventPacket evtPkt:
+                ApplyInventoryOrWorldEvent(evtPkt, player, worldBridge, items, audio);
                 break;
 
             case ChunkDataPacket chunkPkt:
@@ -73,13 +86,24 @@ internal static class ClientInboundPacketApplier
                 break;
 
             case BlockUpdatePacket blockPkt:
+                var prevState = worldCache.GetBlockState(blockPkt.Position);
                 var newState = new BlockState(blockPkt.BlockStateId);
-                if (worldCache.GetBlockState(blockPkt.Position) != newState &&
-                    worldCache.ApplyBlockUpdate(blockPkt.Position, newState))
+                if (prevState != newState && worldCache.ApplyBlockUpdate(blockPkt.Position, newState))
                 {
                     worldCache.RemeshAroundBlockImmediate(blockPkt.Position, renderer);
                     var soundPos = new Vec3d(blockPkt.Position.X + 0.5, blockPkt.Position.Y + 0.5, blockPkt.Position.Z + 0.5);
-                    audio.PlayPositional(newState.IsAir ? SoundCue.BlockBreak : SoundCue.BlockPlace, soundPos, gain: 0.7f * player.MasterVolume);
+                    if (newState.IsAir)
+                    {
+                        var brokenKey = blocks.GetStateMetadata(prevState).BlockKey;
+                        worldBridge.EmitBlockBreakParticles(blockPkt.Position, brokenKey);
+                        var breakCue = brokenKey == BuiltInBlocks.Fire ? SoundCue.FireExtinguishFizz : BlockSoundProfile.ResolveBreakCue(brokenKey);
+                        audio.PlayPositional(breakCue, soundPos, gain: 0.72f * player.MasterVolume, pitch: BlockSoundProfile.ResolveBreakPitch(brokenKey));
+                    }
+                    else
+                    {
+                        var placedKey = blocks.GetStateMetadata(newState).BlockKey;
+                        audio.PlayPositional(BlockSoundProfile.ResolvePlaceCue(placedKey), soundPos, gain: 0.72f * player.MasterVolume, pitch: BlockSoundProfile.ResolvePlacePitch(placedKey));
+                    }
                 }
 
                 break;
@@ -89,7 +113,7 @@ internal static class ClientInboundPacketApplier
                 {
                     var (pos, stateId) = multiPkt.Updates[i];
                     var st = new BlockState(stateId);
-                    if (worldCache.GetBlockState(pos) != st && worldCache.ApplyBlockUpdate(pos, st) && multiPkt.Updates.Count <= 16)
+                    if (worldCache.GetBlockState(pos) != st && worldCache.ApplyBlockUpdate(pos, st) && multiPkt.Updates.Count <= 24)
                     {
                         worldCache.RemeshAroundBlockImmediate(pos, renderer);
                     }
@@ -98,12 +122,57 @@ internal static class ClientInboundPacketApplier
                 break;
 
             case WorldTimeUpdatePacket timePkt:
-                worldTimeCycle.SetTime(timePkt.WorldTimeTicks);
+                worldBridge.TimeCycle.SetTime(timePkt.WorldTimeTicks);
                 break;
 
             case SystemChatPacket chatPkt:
                 ClientLog.SystemChatReceived(logger, chatPkt.Message);
                 chatHistory.AddMessage(chatPkt.Message);
+                break;
+        }
+    }
+
+    private static void ApplyInventoryOrWorldEvent(
+        InventoryGrantAndEventPacket pkt,
+        ClientPlayerController player,
+        ClientWorldSyncAndMobBridge worldBridge,
+        IRegistry<ItemDefinition> items,
+        IAudioSubsystem audio)
+    {
+        switch (pkt.EventKind)
+        {
+            case 0: // ItemGrant (picked up 3D DroppedItem on server!)
+                if (pkt.ItemId > 0 && pkt.Count > 0)
+                {
+                    _ = player.Hotbar.SurvivalInventory.AddItem(new ItemStack(pkt.ItemId, pkt.Count), items);
+                    player.Hotbar.RefreshSlotVisuals(player.Mode);
+                    audio.PlayPositional(SoundCue.ItemPop, player.Camera.Position, gain: 0.58f * player.MasterVolume, pitch: 1.06f);
+                }
+
+                break;
+
+            case 1: // Explosion
+                worldBridge.Particles.EmitExplosion(pkt.WorldPosition);
+                audio.PlayPositional(SoundCue.Explosion, pkt.WorldPosition, gain: 1.0f * player.MasterVolume);
+                break;
+
+            case 2: // ShieldBlock
+                audio.PlayPositional(SoundCue.ShieldBlock, pkt.WorldPosition, gain: 0.90f * player.MasterVolume);
+                break;
+
+            case 3: // FuseHiss (Creeper or TNT)
+                var fuseCue = pkt.Count == 1 ? SoundCue.CreeperFuseHiss : SoundCue.TntFuse;
+                audio.PlayPositional(fuseCue, pkt.WorldPosition, gain: 0.92f * player.MasterVolume);
+                worldBridge.Particles.EmitFlameAndSmoke(pkt.WorldPosition + new Vec3d(0.0, 1.1, 0.0));
+                break;
+
+            case 4: // ArrowHit
+                audio.PlayPositional(SoundCue.ArrowHit, pkt.WorldPosition, gain: 0.80f * player.MasterVolume);
+                break;
+
+            case 5: // RidingCartSync
+                if (pkt.Count < 0) player.DismountMinecart();
+                else player.MountMinecart(pkt.Count);
                 break;
         }
     }

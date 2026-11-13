@@ -35,7 +35,7 @@ public static class UiGeometryBuilder
             return;
         }
 
-        if (state.Mode is UiOverlayMode.WorldSelectMenu or UiOverlayMode.CreateWorldMenu)
+        if (state.Mode is UiOverlayMode.WorldSelectMenu or UiOverlayMode.CreateWorldMenu or UiOverlayMode.MultiplayerConnect)
         {
             UiTitleAndCreativeScreenBuilder.BuildDirtMenuBackdrop(vertices, width, height);
             BuildModalMenuLabelsAndButtons(vertices, width, height, state);
@@ -43,6 +43,7 @@ public static class UiGeometryBuilder
         }
 
         UiSurvivalHudBuilder.BuildUnderwaterAndHurtScreenTint(vertices, width, height, state);
+        UiSurvivalHudBuilder.BuildStatusEffectBadges(vertices, width, state);
         BuildProjectedNametags(vertices, camera, width, height, state.RemotePlayers);
         BuildInGameHud(vertices, width, height, state);
         if (state.Mode != UiOverlayMode.InGame)
@@ -362,6 +363,13 @@ public static class UiGeometryBuilder
             }
 
             var scale = b.Height <= 34.0f ? 1.45f : 1.80f;
+            var maxTextW = MathF.Max(24.0f, b.Width - 16.0f);
+            var rawTextW = MeasureText(b.Label, scale);
+            if (rawTextW > maxTextW)
+            {
+                scale = Math.Clamp(scale * (maxTextW / rawTextW), 0.95f, scale);
+            }
+
             var textCol = (b.IsHovered || b.IsFocused) ? new Vector4(1.0f, 1.0f, 0.62f, 1.0f) : new Vector4(0.95f, 0.96f, 0.98f, 1.0f);
             DrawCenteredText(v, b.Label, b.X + (b.Width * 0.5f), b.Y + ((b.Height - (8.0f * scale)) * 0.5f), scale, textCol, shadow: true);
         }

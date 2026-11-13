@@ -93,6 +93,21 @@ public sealed class ActiveMob
     /// <summary>Gets or sets accumulated downward fall distance in blocks while airborne.</summary>
     public double FallDistance { get; set; }
 
+    /// <summary>Gets or sets remaining knockback momentum timer in seconds so AI steering does not cancel knockback arcs.</summary>
+    public float KnockbackTimer { get; set; }
+
+    /// <summary>Gets or sets whether this Creeper has already triggered its initial fuse hiss sound for the current swell.</summary>
+    public bool CreeperFuseHissTriggered { get; set; }
+
+    /// <summary>Gets or sets remaining seconds before A* pathfinding re-evaluates a route to the target.</summary>
+    public float PathRecomputeTimer { get; set; }
+
+    /// <summary>Gets or sets the active A* voxel path waypoints toward the target.</summary>
+    public IReadOnlyList<BlockPos>? PathWaypoints { get; set; }
+
+    /// <summary>Gets or sets the current index along <see cref="PathWaypoints"/>.</summary>
+    public int PathWaypointIndex { get; set; }
+
     /// <summary>Gets whether this mob is currently engulfed in flames.</summary>
     public bool IsOnFire => BurnTimer > 0.01f;
 

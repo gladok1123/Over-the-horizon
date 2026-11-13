@@ -1,15 +1,18 @@
 using OverHorizon.Audio;
+using OverHorizon.Core;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
 using OverHorizon.Gameplay;
+using OverHorizon.Gameplay.Effects;
 using OverHorizon.Gameplay.Mobs;
-using OverHorizon.Rendering.Hud;
+using OverHorizon.Gameplay.Survival;
 using OverHorizon.World.Lighting;
 
 namespace OverHorizon.Client;
 
 /// <summary>
-/// World tick orchestration &amp; render-visual builders for Mobs, Minecarts, Ballistic Arrows, and Primed TNT.
+/// Singleplayer simulation step for Redstone, Primed TNT &amp; Fuse Hiss, Smooth Falling Blocks, 3D Dropped Items,
+/// A* Mobs, Shield Blocking, Minecarts, Ballistic Arrows, Fire Crackle, and 3D Particle Effects.
 /// </summary>
 internal sealed partial class ClientWorldSyncAndMobBridge
 {
@@ -24,26 +27,80 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         _redstoneSoundScratch.Clear();
         _detonatedScratch.Clear();
         _creeperDetonations.Clear();
+        _creeperFuseStarts.Clear();
+        _shieldBlockPositions.Clear();
         _mobFallScratch.Clear();
         _arrowDropScratch.Clear();
         _arrowHitSoundScratch.Clear();
+        _brokenFragileScratch.Clear();
+        _extinguishedFireScratch.Clear();
 
-        // 1. Step Redstone (buttons, pressure plates, repeaters, pistons, powered rails, TNT ignition)
+        // Survival Death Drops: scatter all inventory items as 3D DroppedItems at death spot!
+        if (player.IsDead && !player.DeathDropsExtracted)
+        {
+            player.DeathDropsExtracted = true;
+            var deathStacks = player.Hotbar.ExtractAndClearInventoryForDeathDrop();
+            for (var i = 0; i < deathStacks.Count; i++)
+            {
+                _ = DroppedItems.SpawnScatterDrop(player.FeetPosition, deathStacks[i], pickupDelaySeconds: 1.0f);
+            }
+        }
+
+        // 1. Step Redstone (wire, repeaters, comparators, buttons, pressure plates, pistons, trapdoors, powered rails, TNT)
         var mobCount = _mobManager.Mobs.Count;
         var cartCount = Minecarts.Minecarts.Count;
         var totalFeet = 1 + mobCount + cartCount;
         Span<Vec3d> entityFeet = totalFeet <= 48 ? stackalloc Vec3d[totalFeet] : new Vec3d[totalFeet];
-        entityFeet[0] = player.FeetPosition;
+        entityFeet[0] = player.Mode == GameMode.Spectator ? new Vec3d(0, -9999, 0) : player.FeetPosition;
         for (var i = 0; i < mobCount; i++) entityFeet[1 + i] = _mobManager.Mobs[i].FeetPosition;
         for (var i = 0; i < cartCount; i++) entityFeet[1 + mobCount + i] = Minecarts.Minecarts[i].FeetPosition;
 
         Redstone.Step(dt, entityFeet, _localWorld.GetBlockState, RecordWorldSet, _ignitedTntScratch, _redstoneSoundScratch);
 
-        // 2. Step Primed TNT (batch crater updates!), Gravity Blocks, Smooth 4-Block Water Flow, and Grass Spread
+        // 2. Step Primed TNT, Smooth 60 FPS Falling Sand/Gravel, Controlled Fire, and Batched Water
         WorldTicker.Step(
-            dt, _worldCache, player.FeetPosition, _localWorld.GetBlockState, _worldCache.GetLight, RecordWorldSet, _detonatedScratch, RecordWorldBatchSet);
+            dt,
+            _worldCache,
+            player.FeetPosition,
+            _localWorld.GetBlockState,
+            _worldCache.GetLight,
+            RecordWorldSet,
+            _detonatedScratch,
+            RecordWorldBatchSet,
+            _brokenFragileScratch,
+            _extinguishedFireScratch);
 
-        // 3. Step Minecarts along straight, curved, sloped, and Redstone-energized Powered Rails
+        for (var i = 0; i < _brokenFragileScratch.Count; i++)
+        {
+            var (bPos, bState) = _brokenFragileScratch[i];
+            var bKey = _blocks.GetStateMetadata(bState).BlockKey;
+            var drop = BlockDropResolver.ResolveDrop(bKey, heldTool: null, _items, _dropSeq++);
+            if (!drop.IsEmpty) _ = DroppedItems.SpawnBlockDrop(bPos, drop);
+        }
+
+        for (var i = 0; i < _extinguishedFireScratch.Count; i++)
+        {
+            var fPos = _extinguishedFireScratch[i];
+            var fc = new Vec3d(fPos.X + 0.5, fPos.Y + 0.25, fPos.Z + 0.5);
+            _audio.PlayPositional(SoundCue.FireExtinguishFizz, fc, gain: 0.55f * player.MasterVolume);
+            Particles.EmitFlameAndSmoke(fc, smokeOnly: true);
+        }
+
+        // 3. Step 3D Dropped Items (gravity, bounce, stack merge, magnetic pickup, and ItemPop audio!)
+        var pickedUp = DroppedItems.Step(
+            dt,
+            _worldCache,
+            _items,
+            player.IsDead ? null : player.Hotbar.SurvivalInventory,
+            player.FeetPosition,
+            player.Mode);
+        if (pickedUp > 0)
+        {
+            player.Hotbar.RefreshSlotVisuals(player.Mode);
+            _audio.PlayPositional(SoundCue.ItemPop, player.Camera.Position, gain: 0.55f * player.MasterVolume, pitch: 1.05f);
+        }
+
+        // 4. Step Minecarts
         if (player.RidingMinecartId < 0 && Minecarts.RiddenMinecart is not null)
         {
             _ = Minecarts.DismountPlayer(out _);
@@ -65,7 +122,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
 
         StepMinecartAudio(player, dt);
 
-        // 4. Step Peaceful & Hostile Mobs (with mob fall damage, Chicken slow glide, and Skeleton ranged Bow arrows!)
+        // 5. Step A* Mobs (with Creeper Fuse Hiss, Shield deflection, and Skeleton ranged Bow arrows!)
         var mobDamage = _mobManager.Step(
             _worldCache,
             ProbeMobSpawnCell,
@@ -80,7 +137,18 @@ internal sealed partial class ClientWorldSyncAndMobBridge
                 _ = Arrows.SpawnSkeletonArrow(origin, vel);
                 _audio.PlayPositional(SoundCue.BowShoot, origin, gain: 0.78f * player.MasterVolume, pitch: 0.94f);
             },
-            mobLandingHurtEvents: _mobFallScratch);
+            mobLandingHurtEvents: _mobFallScratch,
+            creeperFuseStartedPositions: _creeperFuseStarts,
+            isPlayerBlockingShield: player.IsBlockingShield,
+            playerLookForward: player.Camera.HorizontalForward,
+            shieldBlockedPositions: _shieldBlockPositions,
+            isFireBlock: bp => _blocks.GetStateMetadata(_localWorld.GetBlockState(bp)).BlockKey == BuiltInBlocks.Fire);
+
+        for (var i = 0; i < _creeperFuseStarts.Count; i++)
+        {
+            _audio.PlayPositional(SoundCue.CreeperFuseHiss, _creeperFuseStarts[i], gain: 0.95f * player.MasterVolume, pitch: 1.0f);
+            Particles.EmitFlameAndSmoke(_creeperFuseStarts[i] + new Vec3d(0, 1.35, 0), smokeOnly: true);
+        }
 
         if (mobDamage > 0.0f) _ = player.ApplyDamage(mobDamage, _audio);
         for (var i = 0; i < _mobFallScratch.Count; i++)
@@ -90,12 +158,25 @@ internal sealed partial class ClientWorldSyncAndMobBridge
             _audio.PlayPositional(ClientSurvivalCombatController.ResolveMobHurtOrDeathCue(ev.Type, ev.Died), ev.Position, gain: 0.75f * player.MasterVolume);
         }
 
-        // 5. Step 3D Ballistic Arrows (voxel sticking, mob hits + loot, player hits, and ground arrow recovery!)
+        // 6. Step 3D Ballistic Arrows (with Shield deflection & 3D loot drops!)
         var arrowDmgToPlayer = Arrows.Step(
-            dt, _worldCache, _localWorld.GetBlockState, _mobManager, _items, player.FeetPosition, player.Mode, _arrowDropScratch, _arrowHitSoundScratch);
-        if (arrowDmgToPlayer > 0.0f)
+            dt,
+            _worldCache,
+            _localWorld.GetBlockState,
+            _mobManager,
+            _items,
+            player.FeetPosition,
+            player.Mode,
+            _arrowDropScratch,
+            _arrowHitSoundScratch,
+            player.IsBlockingShield,
+            player.Camera.HorizontalForward,
+            _shieldBlockPositions);
+        if (arrowDmgToPlayer > 0.0f) _ = player.ApplyDamage(arrowDmgToPlayer, _audio);
+
+        for (var i = 0; i < _shieldBlockPositions.Count; i++)
         {
-            _ = player.ApplyDamage(arrowDmgToPlayer, _audio);
+            _audio.PlayPositional(SoundCue.ShieldBlock, player.Camera.Position, gain: 0.88f * player.MasterVolume);
         }
 
         for (var i = 0; i < _arrowHitSoundScratch.Count; i++)
@@ -103,7 +184,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
             _audio.PlayPositional(SoundCue.ArrowHit, _arrowHitSoundScratch[i], gain: 0.75f * player.MasterVolume);
         }
 
-        if (_arrowDropScratch.Count > 0 && player.Mode == GameMode.Survival)
+        if (_arrowDropScratch.Count > 0 && player.Mode != GameMode.Spectator)
         {
             for (var i = 0; i < _arrowDropScratch.Count; i++)
             {
@@ -117,7 +198,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
             _audio.PlayPositional(SoundCue.ItemPop, player.Camera.Position, gain: 0.48f * player.MasterVolume);
         }
 
-        // 6. Creeper & TNT Explosion Blasts
+        // 7. Creeper & TNT Explosion Blasts + Shield Blast Mitigation + Explosion Particles!
         for (var c = 0; c < _creeperDetonations.Count; c++)
         {
             _ = WorldTicker.DetonateRaycastExplosion(_creeperDetonations[c], 3.0f, _localWorld.GetBlockState, RecordWorldSet, RecordWorldBatchSet);
@@ -128,6 +209,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         {
             var boomCenter = _detonatedScratch[e];
             _audio.PlayPositional(SoundCue.Explosion, boomCenter, gain: 1.0f * player.MasterVolume);
+            Particles.EmitExplosion(boomCenter);
             _ = _mobManager.ApplyExplosionBlast(boomCenter);
 
             var dist = player.FeetPosition.DistanceTo(boomCenter);
@@ -135,99 +217,110 @@ internal sealed partial class ClientWorldSyncAndMobBridge
             {
                 var exp = (float)Math.Clamp(1.0 - (dist / 8.0), 0.0, 1.0);
                 var dmg = ((exp * exp) + exp) * 14.0f;
-                _ = player.ApplyDamage(dmg, _audio);
+                if (player.TryDeflectWithShield(boomCenter, _audio))
+                {
+                    dmg *= 0.15f;
+                }
+
+                if (dmg >= 0.5f) _ = player.ApplyDamage(dmg, _audio);
             }
         }
 
         ProcessRedstoneOutputsAndRemesh();
         StepAmbientMobAudio(player, dt);
+        StepWorldParticlesAndFuseAudio(player, dt);
     }
 
-    public IReadOnlyList<WorldMobVisual> BuildMobVisuals(ClientPlayerController player)
+    public void StepWorldParticlesAndFuseAudio(ClientPlayerController player, float dt)
     {
-        _mobVisualScratch.Clear();
-        var mobs = _mobManager.Mobs;
-        var heldTorch = player.Hotbar.CombinedHeldLightEmission;
-        var skyMul = TimeCycle.SkyBrightness;
-        for (var i = 0; i < mobs.Count; i++)
+        _mpDropSpinClock += dt;
+        Particles.Step(dt, _worldCache);
+
+        _particleTickTimer += dt;
+        if (_particleTickTimer >= 0.09)
         {
-            var m = mobs[i];
-            var (sky, blk) = _worldCache.GetLight(m.FeetPosition.ToBlockPos());
-            var effSky = (byte)Math.Clamp((int)MathF.Round(sky * skyMul), 0, 15);
-            var distToPlayer = (float)m.FeetPosition.DistanceTo(player.Camera.Position);
-            var torchAtMob = heldTorch > distToPlayer ? (byte)Math.Clamp((int)MathF.Round(heldTorch - distToPlayer), 0, 15) : (byte)0;
-            var bright = LightingEngine.LightLevelToBrightness(LightingEngine.ComputeEffectiveLightLevel(effSky, blk, torchAtMob));
-            _mobVisualScratch.Add(new WorldMobVisual(m.FeetPosition, m.YawDegrees, m.WalkPhase, (byte)m.Type, m.HurtFlashTimer, m.CreeperFuseTimer, m.IsSheared, bright, m.IsOnFire));
+            _particleTickTimer = 0.0;
+
+            // Sprint ground dust
+            if (player.IsSprinting && player.OnGround && !player.InFluid)
+            {
+                var under = new BlockPos((int)Math.Floor(player.FeetPosition.X), (int)Math.Floor(player.FeetPosition.Y - 0.2), (int)Math.Floor(player.FeetPosition.Z));
+                var uState = _worldCache.GetBlockState(under);
+                if (!uState.IsAir)
+                {
+                    var uKey = _blocks.GetStateMetadata(uState).BlockKey;
+                    Particles.EmitBlockBreak(under, _atlas.GetTileIndex(uKey, Direction.Up), ClientHotbar.ResolveFallbackColor(uKey), baseCount: 2);
+                }
+            }
+
+            // Primed TNT & Creeper active fuse smoke
+            var tnts = WorldTicker.PrimedTnts;
+            for (var i = 0; i < tnts.Count; i++)
+            {
+                Particles.EmitFlameAndSmoke(tnts[i].FeetPosition + new Vec3d(0.0, 0.98, 0.0));
+            }
+
+            var mobs = _mobManager.Mobs;
+            for (var i = 0; i < mobs.Count; i++)
+            {
+                if (mobs[i].CreeperFuseTimer > 0.01f)
+                {
+                    Particles.EmitFlameAndSmoke(mobs[i].FeetPosition + new Vec3d(0.0, 1.45, 0.0), smokeOnly: true);
+                }
+            }
+
+            // Void motes near/below Bedrock
+            if (player.FeetPosition.Y < EngineConstants.WorldMinY + 6.0)
+            {
+                Particles.EmitBurst(player.FeetPosition + new Vec3d(0.0, 1.0, 0.0), ParticleKind.VoidMote, 3);
+            }
         }
 
-        return _mobVisualScratch;
-    }
-
-    public IReadOnlyList<PrimedTntVisual> BuildPrimedTntVisuals(ClientPlayerController player)
-    {
-        _ = player;
-        _tntVisualScratch.Clear();
-        var tnts = WorldTicker.PrimedTnts;
-        var skyMul = TimeCycle.SkyBrightness;
-        for (var i = 0; i < tnts.Count; i++)
+        // Periodic PrimedTnt burning fuse hiss & Fire crackle!
+        if (WorldTicker.PrimedTnts.Count > 0)
         {
-            var t = tnts[i];
-            var (sky, blk) = _worldCache.GetLight(t.FeetPosition.ToBlockPos());
-            var effSky = (byte)Math.Clamp((int)MathF.Round(sky * skyMul), 0, 15);
-            _tntVisualScratch.Add(new PrimedTntVisual(t.FeetPosition, t.IsFlashingWhite, LightingEngine.LightLevelToBrightness(Math.Max(effSky, blk))));
+            _tntFuseAudioTimer += dt;
+            if (_tntFuseAudioTimer >= 0.65)
+            {
+                _tntFuseAudioTimer = 0.0;
+                _audio.PlayPositional(SoundCue.TntFuse, WorldTicker.PrimedTnts[0].FeetPosition, gain: 0.62f * player.MasterVolume, pitch: 1.08f);
+            }
         }
 
-        return _tntVisualScratch;
-    }
-
-    public IReadOnlyList<MinecartVisual> BuildMinecartVisuals()
-    {
-        _minecartVisualScratch.Clear();
-        var carts = Minecarts.Minecarts;
-        var skyMul = TimeCycle.SkyBrightness;
-        for (var i = 0; i < carts.Count; i++)
+        if (WorldTicker.ActiveFirePositions.Count > 0)
         {
-            var c = carts[i];
-            var (sky, blk) = _worldCache.GetLight(c.FeetPosition.ToBlockPos());
-            var effSky = (byte)Math.Clamp((int)MathF.Round(sky * skyMul), 0, 15);
-            var bright = LightingEngine.LightLevelToBrightness(Math.Max(effSky, blk));
-            _minecartVisualScratch.Add(new MinecartVisual(c.Id, c.FeetPosition, c.YawDegrees, c.PitchDegrees, c.HurtWobbleTimer, bright));
+            _fireCrackleTimer += dt;
+            if (_fireCrackleTimer >= 0.55)
+            {
+                _fireCrackleTimer = 0.0;
+                foreach (var fp in WorldTicker.ActiveFirePositions)
+                {
+                    var fc = new Vec3d(fp.X + 0.5, fp.Y + 0.25, fp.Z + 0.5);
+                    if (fc.DistanceTo(player.Camera.Position) <= 18.0)
+                    {
+                        Particles.EmitFlameAndSmoke(fc);
+                        _audio.PlayPositional(SoundCue.FireCrackle, fc, gain: 0.42f * player.MasterVolume);
+                        break;
+                    }
+                }
+            }
         }
-
-        return _minecartVisualScratch;
-    }
-
-    public IReadOnlyList<ArrowProjectileVisual> BuildArrowVisuals()
-    {
-        _arrowVisualScratch.Clear();
-        var arrows = Arrows.Arrows;
-        var skyMul = TimeCycle.SkyBrightness;
-        for (var i = 0; i < arrows.Count; i++)
-        {
-            var a = arrows[i];
-            var (sky, blk) = _worldCache.GetLight(a.Position.ToBlockPos());
-            var effSky = (byte)Math.Clamp((int)MathF.Round(sky * skyMul), 0, 15);
-            var bright = LightingEngine.LightLevelToBrightness(Math.Max(effSky, blk));
-            _arrowVisualScratch.Add(new ArrowProjectileVisual(a.Id, a.Position, a.YawDegrees, a.PitchDegrees, a.ShakeTimer, bright, a.IsCritical));
-        }
-
-        return _arrowVisualScratch;
     }
 
     private void StepMinecartAudio(ClientPlayerController player, float dt)
     {
         _minecartRollAudioTimer += dt;
-        if (_minecartRollAudioTimer < 0.42 || Minecarts.Minecarts.Count == 0) return;
+        if (_minecartRollAudioTimer < 0.48) return;
         _minecartRollAudioTimer = 0.0;
-
-        for (var i = 0; i < Minecarts.Minecarts.Count; i++)
+        var carts = Minecarts.Minecarts;
+        for (var i = 0; i < carts.Count; i++)
         {
-            var c = Minecarts.Minecarts[i];
-            var speed = c.Velocity.Length;
-            if (c.IsOnRail && speed > 0.35 && c.FeetPosition.DistanceTo(player.Camera.Position) < 22.0)
+            var spd = carts[i].HorizontalSpeed;
+            if (spd > 0.35 && carts[i].FeetPosition.DistanceTo(player.Camera.Position) < 22.0)
             {
-                var pitch = (float)Math.Clamp(0.82 + (speed * 0.045), 0.80, 1.25);
-                _audio.PlayPositional(SoundCue.MinecartRoll, c.FeetPosition, gain: 0.36f * player.MasterVolume, pitch: pitch);
+                var gain = Math.Clamp((float)(spd / 8.0) * 0.48f, 0.12f, 0.52f) * player.MasterVolume;
+                var pitch = Math.Clamp(0.82f + ((float)spd * 0.04f), 0.80f, 1.25f);
+                _audio.PlayPositional(SoundCue.MinecartRoll, carts[i].FeetPosition, gain, pitch);
                 break;
             }
         }
@@ -239,37 +332,36 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         if (_ambientMobSoundTimer < 4.2 || _mobManager.Mobs.Count == 0) return;
         _ambientMobSoundTimer = 0.0;
 
-        var idx = (int)((uint)Environment.TickCount % (uint)_mobManager.Mobs.Count);
-        var m = _mobManager.Mobs[idx];
-        if (m.FeetPosition.DistanceTo(player.Camera.Position) > 24.0) return;
+        var idx = Math.Abs((int)(TimeCycle.TotalTicks % _mobManager.Mobs.Count));
+        var mob = _mobManager.Mobs[idx];
+        if (mob.FeetPosition.DistanceTo(player.Camera.Position) > 26.0) return;
 
-        var cue = m.Type switch
+        var cue = mob.Type switch
         {
             MobType.Pig => SoundCue.MobPigSay,
-            MobType.Cow => SoundCue.MobCowSay,
             MobType.Sheep => SoundCue.MobSheepSay,
+            MobType.Cow => SoundCue.MobCowSay,
             MobType.Chicken => SoundCue.MobChickenSay,
             MobType.Zombie => SoundCue.MobZombieSay,
-            MobType.Skeleton => SoundCue.MobSkeletonSay,
+            MobType.Skeleton => SoundCue.MobSkeletonStep,
             MobType.Spider => SoundCue.MobSpiderSay,
-            _ => SoundCue.MobCreeperHiss,
+            _ => SoundCue.None,
         };
-        _audio.PlayPositional(cue, m.FeetPosition, gain: 0.65f * player.MasterVolume);
+        if (cue != SoundCue.None)
+        {
+            _audio.PlayPositional(cue, mob.FeetPosition, gain: 0.62f * player.MasterVolume);
+        }
     }
 
-    private (byte SkyLight, byte BlockLight, bool IsGrassTop, bool IsSolidGround, bool IsClearSpace) ProbeMobSpawnCell(BlockPos feetBlock)
+    private (byte SkyLight, byte BlockLight, bool IsGrassTop, bool IsSolidGround, bool IsClearSpace) ProbeMobSpawnCell(BlockPos feetPos)
     {
-        if (!_worldCache.IsColumnLoaded(feetBlock)) return (15, 0, false, false, false);
-
-        var below = new BlockPos(feetBlock.X, feetBlock.Y - 1, feetBlock.Z);
-        var head = new BlockPos(feetBlock.X, feetBlock.Y + 1, feetBlock.Z);
-        var belowKey = _blocks.GetStateMetadata(_worldCache.GetBlockState(below)).BlockKey;
-        var feetDef = _blocks.GetRequired(_blocks.GetStateMetadata(_worldCache.GetBlockState(feetBlock)).BlockKey);
-        var headDef = _blocks.GetRequired(_blocks.GetStateMetadata(_worldCache.GetBlockState(head)).BlockKey);
-        var (sky, blk) = _worldCache.GetLight(feetBlock);
-
-        var isSolidBelow = _blocks.GetRequired(belowKey).IsSolid;
-        var isClear = !feetDef.IsSolid && !feetDef.IsFluid && !headDef.IsSolid && !headDef.IsFluid;
-        return (sky, blk, belowKey == BuiltInBlocks.GrassBlock, isSolidBelow, isClear);
+        var belowState = _worldCache.GetBlockState(new BlockPos(feetPos.X, feetPos.Y - 1, feetPos.Z));
+        var belowKey = _blocks.GetStateMetadata(belowState).BlockKey;
+        var belowDef = _blocks.GetRequired(belowKey);
+        var f0 = _blocks.GetRequired(_blocks.GetStateMetadata(_worldCache.GetBlockState(feetPos)).BlockKey);
+        var f1 = _blocks.GetRequired(_blocks.GetStateMetadata(_worldCache.GetBlockState(new BlockPos(feetPos.X, feetPos.Y + 1, feetPos.Z))).BlockKey);
+        var (sky, blk) = _worldCache.GetLight(feetPos);
+        var clear = !f0.IsSolid && !f0.IsFluid && !f1.IsSolid && !f1.IsFluid;
+        return (sky, blk, belowKey == BuiltInBlocks.GrassBlock, belowDef.IsSolid, clear);
     }
 }

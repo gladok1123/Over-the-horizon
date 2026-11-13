@@ -277,4 +277,77 @@ public static partial class BuiltInItems
 
     /// <summary>Key for <c>overhorizon:arrow</c> (ammunition for <see cref="Bow"/>).</summary>
     public static readonly ResourceKey Arrow = ResourceKey.OverHorizon("arrow");
+
+    /// <summary>Key for <c>overhorizon:quartz</c> (crystalline Quartz used in Redstone Comparators).</summary>
+    public static readonly ResourceKey Quartz = ResourceKey.OverHorizon("quartz");
+
+    /// <summary>Key for <c>overhorizon:bone_meal</c> (organic fertilizer produced from Bones or a Composter).</summary>
+    public static readonly ResourceKey BoneMeal = ResourceKey.OverHorizon("bone_meal");
+
+    /// <summary>Key for <c>overhorizon:swiftness_potion</c> (grants Speed I movement boost).</summary>
+    public static readonly ResourceKey SwiftnessPotion = ResourceKey.OverHorizon("swiftness_potion");
+
+    /// <summary>Key for <c>overhorizon:healing_potion</c> (grants Instant Health + Regeneration).</summary>
+    public static readonly ResourceKey HealingPotion = ResourceKey.OverHorizon("healing_potion");
+
+    /// <summary>Key for <c>overhorizon:night_vision_potion</c> (grants cave Night Vision).</summary>
+    public static readonly ResourceKey NightVisionPotion = ResourceKey.OverHorizon("night_vision_potion");
+
+    /// <summary>Key for <c>overhorizon:fire_resistance_potion</c> (grants Fire Resistance immunity).</summary>
+    public static readonly ResourceKey FireResistancePotion = ResourceKey.OverHorizon("fire_resistance_potion");
+
+    /// <summary>Key for <c>overhorizon:pig_spawn_egg</c>.</summary>
+    public static readonly ResourceKey PigSpawnEgg = ResourceKey.OverHorizon("pig_spawn_egg");
+
+    /// <summary>Key for <c>overhorizon:cow_spawn_egg</c>.</summary>
+    public static readonly ResourceKey CowSpawnEgg = ResourceKey.OverHorizon("cow_spawn_egg");
+
+    /// <summary>Key for <c>overhorizon:sheep_spawn_egg</c>.</summary>
+    public static readonly ResourceKey SheepSpawnEgg = ResourceKey.OverHorizon("sheep_spawn_egg");
+
+    /// <summary>Key for <c>overhorizon:chicken_spawn_egg</c>.</summary>
+    public static readonly ResourceKey ChickenSpawnEgg = ResourceKey.OverHorizon("chicken_spawn_egg");
+
+    /// <summary>Key for <c>overhorizon:zombie_spawn_egg</c>.</summary>
+    public static readonly ResourceKey ZombieSpawnEgg = ResourceKey.OverHorizon("zombie_spawn_egg");
+
+    /// <summary>Key for <c>overhorizon:skeleton_spawn_egg</c>.</summary>
+    public static readonly ResourceKey SkeletonSpawnEgg = ResourceKey.OverHorizon("skeleton_spawn_egg");
+
+    /// <summary>Key for <c>overhorizon:creeper_spawn_egg</c>.</summary>
+    public static readonly ResourceKey CreeperSpawnEgg = ResourceKey.OverHorizon("creeper_spawn_egg");
+
+    /// <summary>Key for <c>overhorizon:spider_spawn_egg</c>.</summary>
+    public static readonly ResourceKey SpiderSpawnEgg = ResourceKey.OverHorizon("spider_spawn_egg");
+
+    /// <summary>Attempts to map a Spawn Egg item key to its zero-based mob archetype index (<c>0..7</c>).</summary>
+    /// <param name="key">Candidate item resource key.</param>
+    /// <param name="mobTypeByte">Resolved mob archetype index when returning <see langword="true"/>.</param>
+    public static bool TryGetSpawnEggMobType(ResourceKey key, out byte mobTypeByte)
+    {
+        if (key == PigSpawnEgg) { mobTypeByte = 0; return true; }
+        if (key == CowSpawnEgg) { mobTypeByte = 1; return true; }
+        if (key == SheepSpawnEgg) { mobTypeByte = 2; return true; }
+        if (key == ChickenSpawnEgg) { mobTypeByte = 3; return true; }
+        if (key == ZombieSpawnEgg) { mobTypeByte = 4; return true; }
+        if (key == SkeletonSpawnEgg) { mobTypeByte = 5; return true; }
+        if (key == CreeperSpawnEgg) { mobTypeByte = 6; return true; }
+        if (key == SpiderSpawnEgg) { mobTypeByte = 7; return true; }
+        mobTypeByte = 0;
+        return false;
+    }
+
+    /// <summary>Maps a zero-based mob archetype index (<c>0..7</c>) back to its Spawn Egg item key.</summary>
+    /// <param name="mobTypeByte">Zero-based mob archetype index.</param>
+    public static ResourceKey GetSpawnEggForMobType(byte mobTypeByte) => mobTypeByte switch
+    {
+        0 => PigSpawnEgg,
+        1 => CowSpawnEgg,
+        2 => SheepSpawnEgg,
+        3 => ChickenSpawnEgg,
+        4 => ZombieSpawnEgg,
+        5 => SkeletonSpawnEgg,
+        6 => CreeperSpawnEgg,
+        _ => SpiderSpawnEgg,
+    };
 }

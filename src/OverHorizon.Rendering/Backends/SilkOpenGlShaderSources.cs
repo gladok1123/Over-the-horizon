@@ -2,8 +2,8 @@ namespace OverHorizon.Rendering.Backends;
 
 /// <summary>
 /// Embedded GLSL 330 core vertex and fragment shaders for greedy-meshed voxel terrain rendering
-/// with separate <c>0..15</c> sky &amp; block illumination, dynamic held-torch <c>0..15</c> lighting,
-/// smooth AO, underwater absorption, and horizon fog.
+/// with exact binary-fraction <c>16x16</c> texel-center snapping (preventing tile-bleed cave flicker),
+/// separate <c>0..15</c> sky &amp; block illumination, dynamic held-torch lighting, smooth AO, and fog.
 /// </summary>
 public static class SilkOpenGlShaderSources
 {
@@ -42,7 +42,7 @@ public static class SilkOpenGlShaderSources
         }
         """;
 
-    /// <summary>GLSL 330 core chunk fragment shader with <c>0..15</c> static + dynamic held-torch light and fog.</summary>
+    /// <summary>GLSL 330 core chunk fragment shader with exact texel-center atlas sampling and dynamic lighting.</summary>
     public const string ChunkFragmentShader = """
         #version 330 core
         in vec2 vUv;
@@ -69,8 +69,11 @@ public static class SilkOpenGlShaderSources
             int tileCol = tileIdx & 15;
             int tileRow = tileIdx >> 4;
 
-            vec2 localUv = clamp(fract(vUv), vec2(0.002), vec2(0.998));
-            vec2 atlasUv = (vec2(float(tileCol), float(tileRow)) + localUv) / 16.0;
+            // Prevent subpixel overshoot below 0.0 or at exact integer upper quad boundaries (e.g. 16.0 -> fract=0)
+            vec2 clampedUv = max(vUv, vec2(0.0002));
+            vec2 nudgedUv = clampedUv - vec2(0.00025) * step(vec2(0.5), clampedUv);
+            vec2 localTexel = clamp(floor(fract(nudgedUv) * 16.0), vec2(0.0), vec2(15.0));
+            vec2 atlasUv = (vec2(float(tileCol * 16), float(tileRow * 16)) + localTexel + vec2(0.5)) / 256.0;
 
             vec4 texel = texture(uAtlas, atlasUv);
             if (texel.a < 0.08)

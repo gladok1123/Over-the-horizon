@@ -89,9 +89,34 @@ public static class GuiTextureAtlasGenerator
         TryOverlaySheet(rgba, pack, "container/creative_inventory/tabs", CreativeTabsOriginX, CreativeTabsOriginY, 256, 256);
         TryOverlaySheet(rgba, pack, "title/minecraft", TitleLogoOriginX, TitleLogoOriginY, 256, 256);
         TryOverlaySheet(rgba, pack, "title/edition", TitleEditionOriginX, TitleEditionOriginY, 128, 32);
-        TryOverlaySheet(rgba, pack, "options_background", OptionsBgOriginX, OptionsBgOriginY, 32, 32);
+        TryOverlayTiledSheet(rgba, pack, "options_background", OptionsBgOriginX, OptionsBgOriginY, 32, 32);
         TryOverlaySheet(rgba, pack, "title/background/panorama_0", TitlePanoramaOriginX, TitlePanoramaOriginY, 256, 256);
         return rgba;
+    }
+
+    private static void TryOverlayTiledSheet(byte[] dst, ResourcePackLoader pack, string key, int ox, int oy, int fillW, int fillH)
+    {
+        if (!pack.TryGetGuiPng(key, out var png) ||
+            !PngImageDecoder.TryDecodeRgba(png, out var w, out var h, out var sheetRgba) ||
+            w <= 0 || h <= 0)
+        {
+            return;
+        }
+
+        for (var y = 0; y < fillH; y++)
+        {
+            var sy = y % h;
+            for (var x = 0; x < fillW; x++)
+            {
+                var sx = x % w;
+                var s = ((sy * w) + sx) * 4;
+                var d = (((oy + y) * AtlasWidth) + (ox + x)) * 4;
+                dst[d + 0] = sheetRgba[s + 0];
+                dst[d + 1] = sheetRgba[s + 1];
+                dst[d + 2] = sheetRgba[s + 2];
+                dst[d + 3] = sheetRgba[s + 3];
+            }
+        }
     }
 
     private static void TryOverlaySheet(byte[] dst, ResourcePackLoader pack, string key, int ox, int oy, int maxW, int maxH)

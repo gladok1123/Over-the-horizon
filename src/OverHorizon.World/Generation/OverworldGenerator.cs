@@ -27,6 +27,7 @@ public sealed class OverworldGenerator : IWorldGenerator
     private readonly PerlinNoise _caveNoiseB;
     private readonly OreVeinPopulator _orePopulator;
     private readonly MineshaftStructureGenerator _mineshaftGenerator;
+    private readonly WorldStructurePopulator _structurePopulator;
     private readonly TreeFeaturePopulator _treePopulator;
 
     private readonly BlockState _bedrock;
@@ -62,6 +63,7 @@ public sealed class OverworldGenerator : IWorldGenerator
         var blocks = registries.Blocks;
         _orePopulator = new OreVeinPopulator(worldSeed, blocks);
         _mineshaftGenerator = new MineshaftStructureGenerator(worldSeed, blocks);
+        _structurePopulator = new WorldStructurePopulator(worldSeed, blocks);
         _treePopulator = new TreeFeaturePopulator(worldSeed, blocks);
 
         _bedrock = blocks.GetDefaultState(BuiltInBlocks.Bedrock);
@@ -121,6 +123,7 @@ public sealed class OverworldGenerator : IWorldGenerator
         ApplySurfaceStrata(chunk, chunkWorldX, chunkWorldZ, columnBiomes);
         _orePopulator.PopulateChunk(chunk);
         _mineshaftGenerator.PopulateChunk(chunk, SampleRawSurfaceHeight);
+        _structurePopulator.PopulateChunk(chunk, SampleSurfaceHeightAndBiome, _mineshaftGenerator.IsVerticalAccessShaftColumn);
         _treePopulator.PopulateChunk(chunk, SampleTreeGround);
 
         chunk.RecomputeHeightmaps(_registries.Blocks);
@@ -131,6 +134,12 @@ public sealed class OverworldGenerator : IWorldGenerator
     private int SampleRawSurfaceHeight(int worldX, int worldZ) =>
         ComputeColumnBaseHeight(worldX, worldZ, out _);
 
+    private (int Height, ResourceKey Biome) SampleSurfaceHeightAndBiome(int worldX, int worldZ)
+    {
+        var h = ComputeColumnBaseHeight(worldX, worldZ, out var biomeId);
+        return (h, _biomeSampler.GetBiome(biomeId).Key);
+    }
+
     private (bool Valid, int GroundY, ResourceKey BiomeKey) SampleTreeGround(int worldX, int worldZ)
     {
         var baseH = ComputeColumnBaseHeight(worldX, worldZ, out var biomeId);
@@ -140,7 +149,8 @@ public sealed class OverworldGenerator : IWorldGenerator
             return (false, baseH, biomeKey);
         }
 
-        if (_mineshaftGenerator.IsVerticalAccessShaftColumn(worldX, worldZ))
+        if (_mineshaftGenerator.IsVerticalAccessShaftColumn(worldX, worldZ) ||
+            _structurePopulator.IsSurfaceStructureFootprint(worldX, worldZ, SampleSurfaceHeightAndBiome))
         {
             return (false, baseH, biomeKey);
         }

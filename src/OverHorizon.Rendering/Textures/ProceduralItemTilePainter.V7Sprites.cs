@@ -122,24 +122,34 @@ internal static partial class ProceduralItemTilePainter
 
     public static void PaintBowAndArrowTiles(byte[] atlas, ushort bowBaseTile, ushort arrowTile, ushort minecartTile)
     {
+        // Match exact 23w13a bow.png diagonal orientation: wooden arc along top-left, string along bottom-right, arrow tip at top-left (1,1)!
         for (var stage = 0; stage < 4; stage++)
         {
             var t = stage == 0 ? bowBaseTile : (ushort)(ProceduralItemTileManifest.TileBowPulling0 + stage - 1);
             ClearTile(atlas, t);
             var pull = stage * 2;
-            for (var i = 2; i <= 13; i++)
+            for (var i = 3; i <= 13; i++)
             {
-                var bx = 13 - Math.Abs(i - 7);
-                SetPx(atlas, t, bx, i, 142, 98, 52);
-                SetPx(atlas, t, Math.Max(1, bx - 1), i, 112, 76, 38);
-                var sx = Math.Max(1, 5 - (pull * (6 - Math.Abs(i - 7)) / 6));
-                SetPx(atlas, t, sx, i, 224, 228, 234);
+                var strX = i + (stage > 0 && i is >= 5 and <= 11 ? pull / 2 : 0);
+                var strY = (16 - i) + (stage > 0 && i is >= 5 and <= 11 ? pull / 2 : 0);
+                if (strX <= 15 && strY <= 15) SetPx(atlas, t, strX, strY, 224, 228, 234);
+            }
+
+            for (var i = 0; i <= 10; i++)
+            {
+                var wx = 2 + (i * 9 / 10);
+                var wy = 11 - (i * 9 / 10);
+                var curve = 2 - (Math.Abs(i - 5) * 2 / 5);
+                SetPx(atlas, t, Math.Max(1, wx - curve), Math.Max(1, wy - curve), 148, 102, 54);
+                SetPx(atlas, t, Math.Max(1, wx - curve + 1), Math.Max(1, wy - curve), 116, 78, 40);
             }
 
             if (stage > 0)
             {
-                for (var x = 3; x <= 12; x++) SetPx(atlas, t, x, 8, 158, 114, 62);
-                SetPx(atlas, t, 13, 8, 198, 204, 212);
+                for (var k = 2; k <= 10 + (pull / 2); k++) SetPx(atlas, t, k, k, 162, 118, 64);
+                SetPx(atlas, t, 1, 1, 206, 212, 220);
+                SetPx(atlas, t, 2, 1, 192, 198, 208);
+                SetPx(atlas, t, 1, 2, 192, 198, 208);
             }
         }
 

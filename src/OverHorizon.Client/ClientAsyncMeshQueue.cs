@@ -11,25 +11,27 @@ namespace OverHorizon.Client;
 
 /// <summary>
 /// Offloads multi-core parallel greedy + shaped chunk meshing onto background worker threads
-/// and budgets incremental GPU section VAO/VBO uploads per render frame without whole-column wipes.
+/// and budgets incremental GPU section VAO/VBO uploads per render frame with monotonic generation guards
+/// so stale background meshes can never overwrite newer synchronous block-edit meshes.
 /// </summary>
 internal sealed class ClientAsyncMeshQueue : IAsyncDisposable
 {
     private const int MaxBatchDequeue = 20;
-    private const int MaxGpuColumnUploadsPerFrame = 10;
+    private const int MaxGpuColumnUploadsPerFrame = 12;
 
     private readonly IBlockRegistry _blocks;
     private readonly TextureAtlasData _atlas;
-    private readonly Channel<IReadOnlyList<ChunkNeighborhood>> _jobs = Channel.CreateBounded<IReadOnlyList<ChunkNeighborhood>>(
-        new BoundedChannelOptions(16)
-        {
-            SingleReader = true,
-            SingleWriter = true,
-            FullMode = BoundedChannelFullMode.Wait,
-        });
+    private readonly Channel<IReadOnlyList<(ChunkNeighborhood Neighborhood, uint Generation)>> _jobs =
+        Channel.CreateBounded<IReadOnlyList<(ChunkNeighborhood, uint)>>(
+            new BoundedChannelOptions(16)
+            {
+                SingleReader = true,
+                SingleWriter = true,
+                FullMode = BoundedChannelFullMode.Wait,
+            });
 
-    private readonly Channel<(ChunkPos Position, IReadOnlyList<SectionMeshData> Sections)> _completed =
-        Channel.CreateUnbounded<(ChunkPos, IReadOnlyList<SectionMeshData>)>();
+    private readonly Channel<(ChunkPos Position, uint Generation, IReadOnlyList<SectionMeshData> Sections)> _completed =
+        Channel.CreateUnbounded<(ChunkPos, uint, IReadOnlyList<SectionMeshData>)>();
 
     private Task? _workerTask;
     private int _inFlightBatches;
@@ -56,9 +58,18 @@ internal sealed class ClientAsyncMeshQueue : IAsyncDisposable
         if (Volatile.Read(ref _inFlightBatches) < 4)
         {
             var dirty = worldCache.DequeueDirtyNeighborhoods(MaxBatchDequeue, playerChunk);
-            if (dirty.Count > 0 && _jobs.Writer.TryWrite(dirty))
+            if (dirty.Count > 0)
             {
-                _ = Interlocked.Increment(ref _inFlightBatches);
+                var tagged = new (ChunkNeighborhood, uint)[dirty.Count];
+                for (var i = 0; i < dirty.Count; i++)
+                {
+                    tagged[i] = (dirty[i], worldCache.GetColumnGeneration(dirty[i].Center.Position));
+                }
+
+                if (_jobs.Writer.TryWrite(tagged))
+                {
+                    _ = Interlocked.Increment(ref _inFlightBatches);
+                }
             }
         }
 
@@ -67,6 +78,12 @@ internal sealed class ClientAsyncMeshQueue : IAsyncDisposable
         while (uploadedColumns < MaxGpuColumnUploadsPerFrame && _completed.Reader.TryRead(out var item))
         {
             if (!worldCache.IsColumnLoaded(new BlockPos(item.Position.X << 4, 0, item.Position.Z << 4)))
+            {
+                continue;
+            }
+
+            // Skip stale background meshes superseded by a newer synchronous block-edit or chunk update!
+            if (item.Generation < worldCache.GetColumnGeneration(item.Position))
             {
                 continue;
             }
@@ -126,9 +143,9 @@ internal sealed class ClientAsyncMeshQueue : IAsyncDisposable
                 {
                     Parallel.For(0, batch.Count, new ParallelOptions { CancellationToken = ct }, i =>
                     {
-                        var nb = batch[i];
+                        var (nb, gen) = batch[i];
                         var sections = ParallelChunkMesher.MeshColumn(in nb, _blocks, _atlas);
-                        _ = _completed.Writer.TryWrite((nb.Center.Position, sections));
+                        _ = _completed.Writer.TryWrite((nb.Center.Position, gen, sections));
                     });
                 }
                 finally

@@ -42,7 +42,11 @@ internal static class ClientSlashCommandExecutor
         switch (cmd)
         {
             case "help" or "?":
-                chatHistory.AddMessage("[System] Commands: /time set <day|noon|sunset|night|midnight|ticks>, /time add <ticks>, /gamemode <s|c>, /tp <x> <y> <z>, /give <item> [count], /summon <mob|tnt>, /clear, /kill, /seed");
+                chatHistory.AddMessage("[System] Commands: /time set <day|noon|sunset|night>, /gamemode <s|c|sp>, /effect <swiftness|regen|strength|night|clear>, /tp <x> <y> <z>, /give <item> [count], /summon <mob|tnt>, /clear, /kill, /seed");
+                return true;
+
+            case "effect":
+                ExecuteEffectCommand(parts, player, chatHistory);
                 return true;
 
             case "time":
@@ -126,16 +130,43 @@ internal static class ClientSlashCommandExecutor
 
     private static void ExecuteGamemodeCommand(string[] parts, ClientPlayerController player, ClientChatHistory chatHistory)
     {
-        var next = player.Mode == GameMode.Creative ? GameMode.Survival : GameMode.Creative;
+        var next = player.Mode switch
+        {
+            GameMode.Creative => GameMode.Survival,
+            GameMode.Survival => GameMode.Spectator,
+            _ => GameMode.Creative,
+        };
         if (parts.Length >= 2)
         {
             var arg = parts[1].ToLowerInvariant();
             if (arg is "survival" or "s" or "0") next = GameMode.Survival;
             else if (arg is "creative" or "c" or "1") next = GameMode.Creative;
+            else if (arg is "spectator" or "sp" or "3") next = GameMode.Spectator;
         }
 
         player.SetGameMode(next);
         chatHistory.AddMessage($"[System] Set own game mode to {next} Mode.");
+    }
+
+    private static void ExecuteEffectCommand(string[] parts, ClientPlayerController player, ClientChatHistory chatHistory)
+    {
+        if (parts.Length < 2 || string.Equals(parts[1], "clear", StringComparison.OrdinalIgnoreCase))
+        {
+            player.StatusEffects.Clear();
+            chatHistory.AddMessage("[System] Cleared status effects.");
+            return;
+        }
+
+        var eff = parts[1].ToLowerInvariant() switch
+        {
+            "swiftness" or "speed" => OverHorizon.Gameplay.Effects.StatusEffectType.Swiftness,
+            "regen" or "regeneration" => OverHorizon.Gameplay.Effects.StatusEffectType.Regeneration,
+            "strength" => OverHorizon.Gameplay.Effects.StatusEffectType.Strength,
+            "night" or "night_vision" => OverHorizon.Gameplay.Effects.StatusEffectType.NightVision,
+            _ => OverHorizon.Gameplay.Effects.StatusEffectType.Absorption,
+        };
+        player.StatusEffects.ApplyEffect(eff, 90.0f);
+        chatHistory.AddMessage($"[System] Granted {eff} for 90s.");
     }
 
     private static void ExecuteTeleportCommand(string[] parts, ClientPlayerController player, ClientChatHistory chatHistory)

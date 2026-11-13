@@ -228,9 +228,33 @@ public sealed class JavaProtocolClient : IAsyncDisposable
         }
 
         _state = ConnectionState.Closed;
-        await _writer.CompleteAsync().ConfigureAwait(false);
-        await _reader.CompleteAsync().ConfigureAwait(false);
+        try
+        {
+            _ownedTcpClient?.Client?.Shutdown(System.Net.Sockets.SocketShutdown.Both);
+        }
+        catch
+        {
+            // Socket may already be closed or loopback pipe-only.
+        }
+
         _ownedTcpClient?.Dispose();
+        try
+        {
+            await _writer.CompleteAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // Ignore pipe completion race during disconnect.
+        }
+
+        try
+        {
+            await _reader.CompleteAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // Ignore pipe completion race while background receiver unwinds.
+        }
     }
 
     private async ValueTask SendPacketInternalAsync(IServerboundPacket packet, CancellationToken ct)

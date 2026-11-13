@@ -181,5 +181,55 @@ public sealed partial class ClientHotbar
         (BuiltInItems.Minecart, "Minecart", ItemCategory.Redstone, new Vector3(0.76f, 0.78f, 0.82f)),
         (BuiltInItems.Bow, "Bow", ItemCategory.CombatAndTools, new Vector3(0.62f, 0.44f, 0.24f)),
         (BuiltInItems.Arrow, "Arrow", ItemCategory.CombatAndTools, new Vector3(0.82f, 0.82f, 0.85f)),
+
+        // v0.8.0-alpha Comparator, Composter, Trapdoor, Bedrock, Spawner, Geode/Dungeon Blocks, Potions & Spawn Eggs (152+)
+        (BuiltInBlocks.RedstoneComparator, "Redstone Comparator", ItemCategory.Redstone, new Vector3(0.76f, 0.70f, 0.70f)),
+        (BuiltInBlocks.Composter, "Composter", ItemCategory.FunctionalBlocks, new Vector3(0.62f, 0.45f, 0.26f)),
+        (BuiltInBlocks.OakTrapdoor, "Oak Trapdoor", ItemCategory.Redstone, new Vector3(0.70f, 0.54f, 0.32f)),
+        (BuiltInBlocks.Bedrock, "Bedrock", ItemCategory.BuildingBlocks, new Vector3(0.28f, 0.28f, 0.30f)),
+        (BuiltInBlocks.MonsterSpawner, "Monster Spawner", ItemCategory.FunctionalBlocks, new Vector3(0.24f, 0.32f, 0.40f)),
+        (BuiltInBlocks.AmethystBlock, "Block of Amethyst", ItemCategory.NaturalBlocks, new Vector3(0.62f, 0.40f, 0.86f)),
+        (BuiltInBlocks.MossyStoneBricks, "Mossy Stone Bricks", ItemCategory.BuildingBlocks, new Vector3(0.42f, 0.54f, 0.40f)),
+        (BuiltInBlocks.ChiseledSandstone, "Chiseled Sandstone", ItemCategory.BuildingBlocks, new Vector3(0.86f, 0.80f, 0.58f)),
+        (BuiltInItems.Quartz, "Nether Quartz", ItemCategory.FoodAndMaterials, new Vector3(0.94f, 0.92f, 0.88f)),
+        (BuiltInItems.BoneMeal, "Bone Meal", ItemCategory.FoodAndMaterials, new Vector3(0.96f, 0.96f, 0.93f)),
+        (BuiltInItems.PotionOfSwiftness, "Potion of Swiftness", ItemCategory.FoodAndMaterials, new Vector3(0.48f, 0.72f, 0.94f)),
+        (BuiltInItems.PotionOfRegeneration, "Potion of Regeneration", ItemCategory.FoodAndMaterials, new Vector3(0.90f, 0.38f, 0.74f)),
+        (BuiltInItems.PotionOfStrength, "Potion of Strength", ItemCategory.FoodAndMaterials, new Vector3(0.74f, 0.18f, 0.18f)),
+        (BuiltInItems.PotionOfNightVision, "Potion of Night Vision", ItemCategory.FoodAndMaterials, new Vector3(0.26f, 0.32f, 0.90f)),
+        (BuiltInItems.PigSpawnEgg, "Pig Spawn Egg", ItemCategory.FoodAndMaterials, new Vector3(0.94f, 0.65f, 0.64f)),
+        (BuiltInItems.SheepSpawnEgg, "Sheep Spawn Egg", ItemCategory.FoodAndMaterials, new Vector3(0.92f, 0.90f, 0.90f)),
+        (BuiltInItems.CowSpawnEgg, "Cow Spawn Egg", ItemCategory.FoodAndMaterials, new Vector3(0.42f, 0.34f, 0.25f)),
+        (BuiltInItems.ChickenSpawnEgg, "Chicken Spawn Egg", ItemCategory.FoodAndMaterials, new Vector3(0.92f, 0.36f, 0.36f)),
+        (BuiltInItems.ZombieSpawnEgg, "Zombie Spawn Egg", ItemCategory.CombatAndTools, new Vector3(0.18f, 0.68f, 0.62f)),
+        (BuiltInItems.SkeletonSpawnEgg, "Skeleton Spawn Egg", ItemCategory.CombatAndTools, new Vector3(0.76f, 0.76f, 0.76f)),
+        (BuiltInItems.SpiderSpawnEgg, "Spider Spawn Egg", ItemCategory.CombatAndTools, new Vector3(0.32f, 0.24f, 0.22f)),
+        (BuiltInItems.CreeperSpawnEgg, "Creeper Spawn Egg", ItemCategory.CombatAndTools, new Vector3(0.12f, 0.72f, 0.12f)),
     ];
+
+    /// <summary>Builds a concise gameplay stats line for hover tooltips.</summary>
+    public string BuildTooltipDetail(ResourceKey key)
+    {
+        if (!_items.TryGet(key, out var def)) return string.Empty;
+        if (key == BuiltInItems.Shield) return "Right-Click to Block melee, Arrows & Explosions! (Mainhand or Offhand F)";
+        if (def.ArmorDefense > 0) return $"+{def.ArmorDefense} Armor Defense (Equip in Armor Slot or Right-Click)";
+        if (def.ToolType == ToolKind.Sword) return $"+{def.AttackDamage:F0} Melee Damage (Jump Crit: {def.AttackDamage * 1.5f:F1})";
+        if (def.ToolType != ToolKind.None) return $"{def.ToolType} Tier {def.ToolTier} (Speed x{def.MiningSpeedMultiplier:F1}, +{def.AttackDamage:F1} Dmg)";
+        if (def.HeldLightEmission > 0) return $"Emits Light Level {def.HeldLightEmission} (Dynamic Held + Offhand Illumination!)";
+
+        return def.UseAction switch
+        {
+            ItemUseAction.EatFood => $"Food: +{def.FoodNutrition} Hunger, +{def.FoodSaturation:F1} Sat",
+            ItemUseAction.DrinkPotion => "Right-Click: Drink Potion for timed Status Effect!",
+            ItemUseAction.SpawnMob => "Right-Click on Block: Spawn 3D Mob (Singleplayer & Multiplayer!)",
+            ItemUseAction.ApplyBoneMeal => "Right-Click Dirt to regrow Grass or use in Crafting!",
+            ItemUseAction.WaterBucket => "Right-Click: Pour flowing Water source",
+            ItemUseAction.EmptyBucket => "Right-Click: Scoop Water source",
+            ItemUseAction.IgniteTnt => "Right-Click: Spark Fire or ignite physics TNT",
+            ItemUseAction.DrawBow => "Hold Right-Click to draw & release 3D ballistic Arrows!",
+            ItemUseAction.PlaceMinecart => "Right-Click on Rail / Powered Rail to place & ride!",
+            ItemUseAction.PlaceBlock => "Placeable Voxel Block (Right-Click / Middle-Click Pick)",
+            _ => key == BuiltInItems.Arrow ? "Ammunition for Bow (consumed in Survival)" : "Crafting & Smelting Material",
+        };
+    }
 }

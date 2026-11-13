@@ -34,4 +34,16 @@ public enum ItemUseAction : byte
 
     /// <summary>Draws a <c>Bow</c> while right-mouse is held and releases a ballistic 3D <c>Arrow</c>.</summary>
     DrawBow = 9,
+
+    /// <summary>Spawns the corresponding 3D mob on the targeted block face (<c>*_spawn_egg</c>).</summary>
+    SpawnMob = 10,
+
+    /// <summary>Raises a <c>Shield</c> while right-mouse is held to block frontal melee, arrows, and blasts.</summary>
+    RaiseShield = 11,
+
+    /// <summary>Drinks a status-effect potion to grant temporary buffs or instant healing.</summary>
+    DrinkPotion = 12,
+
+    /// <summary>Applies <c>Bone Meal</c> to fertilize soil/grass or advance a <c>Composter</c>.</summary>
+    ApplyBoneMeal = 13,
 }

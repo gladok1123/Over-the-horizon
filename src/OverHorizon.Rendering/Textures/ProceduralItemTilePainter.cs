@@ -310,6 +310,82 @@ internal static partial class ProceduralItemTilePainter
         SetPx(atlas, tile, 13, 12, 132, 96, 54);
     }
 
+    public static void PaintComparatorItem(byte[] atlas, ushort tile)
+    {
+        ClearTile(atlas, tile);
+        for (var y = 10; y <= 13; y++)
+        {
+            for (var x = 2; x <= 13; x++) SetPx(atlas, tile, x, y, 164, 158, 158);
+        }
+
+        for (var y = 5; y <= 9; y++)
+        {
+            SetPx(atlas, tile, 4, y, 138, 102, 58);
+            SetPx(atlas, tile, 11, y, 138, 102, 58);
+            SetPx(atlas, tile, 7, y - 1, 138, 102, 58);
+        }
+
+        SetPx(atlas, tile, 4, 4, 242, 48, 38);
+        SetPx(atlas, tile, 11, 4, 242, 48, 38);
+        SetPx(atlas, tile, 7, 3, 250, 72, 48);
+    }
+
+    public static void PaintPotionBottle(byte[] atlas, ushort tile, byte lr, byte lg, byte lb)
+    {
+        ClearTile(atlas, tile);
+        SetPx(atlas, tile, 7, 2, 182, 136, 84);
+        SetPx(atlas, tile, 8, 2, 182, 136, 84);
+        for (var x = 6; x <= 9; x++) SetPx(atlas, tile, x, 3, 206, 224, 238);
+        SetPx(atlas, tile, 7, 4, 190, 214, 232);
+        SetPx(atlas, tile, 8, 4, 190, 214, 232);
+        for (var y = 5; y <= 13; y++)
+        {
+            var half = y is 5 or 13 ? 2 : 3;
+            for (var x = 7 - half; x <= 8 + half; x++)
+            {
+                var rim = x == 7 - half || x == 8 + half || y == 5 || y == 13;
+                if (rim) SetPx(atlas, tile, x, y, 186, 212, 232);
+                else if (y >= 7) SetPx(atlas, tile, x, y, lr, lg, lb);
+                else SetPx(atlas, tile, x, y, 224, 238, 248);
+            }
+        }
+    }
+
+    public static void PaintSpawnEgg(byte[] atlas, ushort tile, byte r1, byte g1, byte b1, byte r2, byte g2, byte b2)
+    {
+        ClearTile(atlas, tile);
+        for (var y = 2; y <= 13; y++)
+        {
+            var ny = (y - 8.2f) / 6.0f;
+            var halfW = (int)MathF.Round((y < 8 ? 4.2f : 5.1f) * MathF.Sqrt(Math.Max(0.0f, 1.0f - (ny * ny))));
+            for (var x = 8 - halfW; x <= 7 + halfW; x++)
+            {
+                var border = x == 8 - halfW || x == 7 + halfW || y == 2 || y == 13;
+                var spot = ((x * 5 + y * 3) % 7) == 0 || (x is 6 or 10 && y is 6 or 9);
+                if (border) SetPx(atlas, tile, x, y, (byte)(r1 * 0.65f), (byte)(g1 * 0.65f), (byte)(b1 * 0.65f));
+                else if (spot) SetPx(atlas, tile, x, y, r2, g2, b2);
+                else SetPx(atlas, tile, x, y, r1, g1, b1);
+            }
+        }
+    }
+
+    public static void PaintTrapdoorOrSpawnerTile(byte[] atlas, ushort tile, bool isSpawner)
+    {
+        ClearTile(atlas, tile);
+        byte r = isSpawner ? (byte)46 : (byte)158;
+        byte g = isSpawner ? (byte)58 : (byte)118;
+        byte b = isSpawner ? (byte)74 : (byte)68;
+        for (var y = 0; y < 16; y++)
+        {
+            for (var x = 0; x < 16; x++)
+            {
+                var frame = x < 2 || x >= 14 || y < 2 || y >= 14 || x is 7 or 8 || y is 7 or 8;
+                if (frame) SetPx(atlas, tile, x, y, r, g, b);
+                else if (isSpawner && x is 5 or 10 && y is 5 or 10) SetPx(atlas, tile, x, y, 232, 92, 32);
+            }
+        }
+    }
+
     public static void PaintRedstoneDustCross(byte[] atlas, ushort tile, bool lineOnly)
     {
         ClearTile(atlas, tile);

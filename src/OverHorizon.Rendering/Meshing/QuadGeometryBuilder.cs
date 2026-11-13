@@ -28,12 +28,13 @@ internal static class QuadGeometryBuilder
         };
 
     public static (Vector3 P0, Vector3 P1, Vector3 P2, Vector3 P3, Vector2 Uv0, Vector2 Uv1, Vector2 Uv2, Vector2 Uv3)
-        BuildQuadCorners(Direction face, int slice, int u, int v, int w, int h)
+        BuildQuadCorners(Direction face, int slice, int u, int v, int w, int h, bool expandTangents = false)
     {
-        float u0 = u;
-        float u1 = u + w;
-        float v0 = v;
-        float v1 = v + h;
+        var pad = expandTangents ? 0.0004f : 0.0f;
+        float u0 = u - pad;
+        float u1 = u + w + pad;
+        float v0 = v - pad;
+        float v1 = v + h + pad;
         float fw = w;
         float fh = h;
 

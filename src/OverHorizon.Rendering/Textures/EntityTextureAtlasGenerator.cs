@@ -77,6 +77,9 @@ public static class EntityTextureAtlasGenerator
     /// <summary>Cell index for 3D <c>entity/projectiles/arrow</c> (<c>32x32</c>).</summary>
     public const int CellArrow = 19;
 
+    /// <summary>Cell index for 3D <c>entity/shield_base_nopattern</c> (<c>64x64</c>).</summary>
+    public const int CellShield = 20;
+
     /// <summary>Creates the default <c>512x256</c> <see cref="TextureAtlasData"/> entity skin sheet.</summary>
     public static TextureAtlasData CreateDefault(string? externalAssetsPath = null) =>
         new(
@@ -127,6 +130,7 @@ public static class EntityTextureAtlasGenerator
 
         TryBlitEntitySkin(atlas, pack, CellMinecart, "minecart");
         TryBlitArrowSkin(atlas, pack, CellArrow, "projectiles/arrow");
+        TryBlitEntitySkin(atlas, pack, CellShield, "shield_base_nopattern");
 
         return atlas;
     }
@@ -301,6 +305,15 @@ public static class EntityTextureAtlasGenerator
         FillCellRect(atlas, CellArrow, 0, 1, 14, 3, 158, 114, 62);
         FillCellRect(atlas, CellArrow, 13, 0, 3, 5, 204, 210, 218);
         FillCellRect(atlas, CellArrow, 0, 0, 3, 5, 242, 244, 248);
+
+        // Shield plate [0..25, 0..23] + handle [26..37, 0..11] in 64x64 layout
+        FillCellRect(atlas, CellShield, 0, 0, 26, 24, 156, 116, 68);
+        FillCellRect(atlas, CellShield, 1, 1, 12, 1, 188, 194, 202);
+        FillCellRect(atlas, CellShield, 1, 22, 12, 1, 188, 194, 202);
+        FillCellRect(atlas, CellShield, 1, 1, 1, 22, 188, 194, 202);
+        FillCellRect(atlas, CellShield, 12, 1, 1, 22, 188, 194, 202);
+        FillCellRect(atlas, CellShield, 5, 10, 4, 4, 198, 204, 212);
+        FillCellRect(atlas, CellShield, 26, 0, 12, 12, 118, 86, 48);
     }
 
     private static void PaintProceduralArmorPair(byte[] atlas, int cellL1, int cellL2, byte r, byte g, byte b)

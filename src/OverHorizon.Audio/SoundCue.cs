@@ -169,4 +169,49 @@ public enum SoundCue : byte
 
     /// <summary>Minecart rolling on rails (<c>minecart/base.ogg</c>).</summary>
     MinecartRoll = 54,
+
+    /// <summary>Player jump takeoff (<c>step/cloth4.ogg</c> / takeoff thump).</summary>
+    PlayerJump = 55,
+
+    /// <summary>Soft landing after jumping or short drop (<c>step/stone4.ogg</c>).</summary>
+    LandSoft = 56,
+
+    /// <summary>Shield blocking melee, arrow, or blast (<c>item/shield/block1.ogg</c>).</summary>
+    ShieldBlock = 57,
+
+    /// <summary>Breaking wooden planks, logs, crafting tables, or chests (<c>dig/wood1.ogg</c>).</summary>
+    WoodBreak = 58,
+
+    /// <summary>Placing wooden blocks (<c>dig/wood2.ogg</c>).</summary>
+    WoodPlace = 59,
+
+    /// <summary>Breaking grass, dirt, leaves, or farmland (<c>dig/grass1.ogg</c>).</summary>
+    GrassBreak = 60,
+
+    /// <summary>Placing grass, dirt, or leaves (<c>dig/grass2.ogg</c>).</summary>
+    GrassPlace = 61,
+
+    /// <summary>Breaking sand or gravel (<c>dig/sand1.ogg</c>).</summary>
+    SandBreak = 62,
+
+    /// <summary>Placing sand or gravel (<c>dig/sand2.ogg</c>).</summary>
+    SandPlace = 63,
+
+    /// <summary>Breaking metallic blocks, rails, spawners, or ores (<c>block/lantern/break1.ogg</c>).</summary>
+    MetalBreak = 64,
+
+    /// <summary>Placing metallic blocks, rails, or lanterns (<c>block/lantern/place1.ogg</c>).</summary>
+    MetalPlace = 65,
+
+    /// <summary>Placing or breaking wool or bed (<c>dig/cloth1.ogg</c>).</summary>
+    ClothPlace = 66,
+
+    /// <summary>Placing stone, brick, cobblestone, or deepslate (<c>dig/stone2.ogg</c>).</summary>
+    StonePlace = 67,
+
+    /// <summary>Drinking a potion (<c>random/drink.ogg</c>).</summary>
+    PotionDrink = 68,
+
+    /// <summary>Composter filling or popping Bone Meal (<c>block/composter/ready1.ogg</c>).</summary>
+    ComposterReady = 69,
 }

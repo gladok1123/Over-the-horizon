@@ -42,6 +42,25 @@ public sealed class ArrowProjectileManager
     /// <summary>Clears all active arrows (used on world transitions).</summary>
     public void Clear() => _arrows.Clear();
 
+    /// <summary>Replaces client-side mirrored arrows from an authoritative multiplayer server snapshot.</summary>
+    public void ReplaceFromServerSnapshots(
+        ReadOnlySpan<(int Id, Vec3d Pos, float Yaw, float Pitch, float Shake, byte Flags)> snapshots)
+    {
+        _arrows.Clear();
+        for (var i = 0; i < snapshots.Length; i++)
+        {
+            var s = snapshots[i];
+            var a = new ArrowEntity(s.Id, s.Pos, Vec3d.Zero, baseDamage: 4.0f, isCritical: (s.Flags & 2) != 0, firedByPlayer: true, canBePickedUp: false)
+            {
+                YawDegrees = s.Yaw,
+                PitchDegrees = s.Pitch,
+                ShakeTimer = s.Shake,
+                IsStuckInBlock = (s.Flags & 1) != 0,
+            };
+            _arrows.Add(a);
+        }
+    }
+
     /// <summary>Computes vanilla nonlinear bow charge (<c>0.0..1.0</c>) from draw duration in seconds.</summary>
     public static float ComputeChargeNormalized(float drawSeconds)
     {
@@ -77,7 +96,10 @@ public sealed class ArrowProjectileManager
         Vec3d playerFeetPos,
         GameMode playerMode,
         List<ItemStack> collectedDropsAndPickups,
-        List<Vec3d> arrowImpactSoundPositions)
+        List<Vec3d> arrowImpactSoundPositions,
+        bool isPlayerBlockingShield = false,
+        System.Numerics.Vector3 playerLookForward = default,
+        List<Vec3d>? shieldDeflectedPositions = null)
     {
         ArgumentNullException.ThrowIfNull(collisionWorld);
         ArgumentNullException.ThrowIfNull(getBlock);
@@ -143,10 +165,19 @@ public sealed class ArrowProjectileManager
                 continue;
             }
 
-            // 2. Check player hit (Skeleton arrows or self-arcing arrows after 0.35s in Survival)
+            // 2. Check player hit (Skeleton arrows or self-arcing arrows after 0.45s in Survival)
             if (playerMode == GameMode.Survival && (!arrow.FiredByPlayer || arrow.AgeSeconds >= 0.45f) &&
                 SegmentIntersectsBox(start, end, playerBox.Inflate(0.12, 0.08, 0.12)))
             {
+                if (WorldMobManager.IsFrontalShieldBlock(isPlayerBlockingShield, playerLookForward, playerFeetPos, start))
+                {
+                    shieldDeflectedPositions?.Add(end);
+                    arrow.Velocity = new Vec3d(-arrow.Velocity.X * 0.35, 2.2, -arrow.Velocity.Z * 0.35);
+                    arrow.FiredByPlayer = true;
+                    arrow.SyncAnglesFromVelocity();
+                    continue;
+                }
+
                 damageToPlayer += arrow.BaseDamage;
                 arrowImpactSoundPositions.Add(end);
                 _arrows.RemoveAt(i);

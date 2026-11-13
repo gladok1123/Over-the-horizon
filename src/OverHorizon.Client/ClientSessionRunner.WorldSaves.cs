@@ -13,8 +13,8 @@ using OverHorizon.World.Storage;
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Saved world switching, <c>./saves/</c> persistence, off-thread chunk ticket streaming, and per-frame world/network loop
-/// for <see cref="ClientSessionRunner"/>.
+/// Saved world switching, "Open to LAN", clean network/world shutdown, synchronous block-edit remeshing,
+/// and per-frame world/network loop for <see cref="ClientSessionRunner"/>.
 /// </summary>
 public sealed partial class ClientSessionRunner
 {
@@ -44,9 +44,9 @@ public sealed partial class ClientSessionRunner
             startPos = new Vec3d(0.5, resolvedSpawnY, 0.5);
         }
 
-        // Marshal ALL OpenGL chunk VAO/VBO disposal & live world swap onto the GLFW main thread (prevents GlfwException: NoContext!)
         await EnqueueOnMainThreadAsync(() =>
         {
+            _meshQueue.DrainPending();
             _worldCache.ClearAll(_renderer);
             _ownedSavedWorld = freshWorld;
             _activeWorldMeta = meta;
@@ -54,6 +54,12 @@ public sealed partial class ClientSessionRunner
             _localSpawnY = resolvedSpawnY;
             _worldBridge.SetActiveLocalWorld(freshWorld, meta.WorldTimeTicks);
             _player.DismountMinecart();
+            if (!meta.HasSavedPose)
+            {
+                if (meta.DefaultGameMode == GameMode.Survival) _player.Hotbar.PopulateStarterSurvivalGear();
+                else _player.Hotbar.SeedInitialCreativeHotbar();
+            }
+
             _player.SetGameMode(meta.DefaultGameMode);
             _player.ApplyAuthoritativePose(startPos, 0.0f, 0.0f);
             if (WorldSaveManager.GetRespawnVec(meta) is { } bedSpawn)
@@ -65,7 +71,57 @@ public sealed partial class ClientSessionRunner
             _worldBridge.SeedInitialStarterMobs();
             _menu.StatusMessage = string.Empty;
             _menu.Mode = UiOverlayMode.InGame;
-            _chatHistory.AddMessage($"Loaded '{meta.WorldName}' (Seed: {meta.Seed}). E: Inv | F: Offhand | /: Cmds.");
+            _chatHistory.AddMessage($"Loaded '{meta.WorldName}' (Seed: {meta.Seed}). MMB: Pick | Q: Drop | F: Offhand | F4: Mode.");
+        }).ConfigureAwait(false);
+    }
+
+    private async Task OpenActiveWorldToLanAsync(LocalServerLauncher launcher, CancellationToken ct)
+    {
+        if (_transport.IsConnected) return;
+        _menu.StatusMessage = "Saving world and opening LAN server on TCP 25565...";
+
+        if (_backgroundWorldStreamTask is not null) await _backgroundWorldStreamTask.ConfigureAwait(false);
+        await PersistActiveWorldIfAnyAsync().ConfigureAwait(false);
+
+        var savedFeet = _player.FeetPosition;
+        var savedYaw = _player.Camera.YawDegrees;
+        var savedPitch = _player.Camera.PitchDegrees;
+        var worldDir = _activeWorldMeta?.DirectoryPath ?? Path.Combine(Directory.GetCurrentDirectory(), "saves", "lan_world");
+        var worldSeed = _activeWorldMeta?.Seed ?? _currentSeed;
+
+        var oldSavedWorld = _ownedSavedWorld;
+        _ownedSavedWorld = null;
+        if (oldSavedWorld is not null)
+        {
+            await oldSavedWorld.DisposeAsync().ConfigureAwait(false);
+        }
+
+        var started = await launcher.EnsureLocalServerRunningAsync(
+            25565, ct, customWorldDir: worldDir, seed: worldSeed, viewDistance: Math.Clamp(_menu.ActiveViewDistance, 4, 12)).ConfigureAwait(false);
+        if (!started)
+        {
+            _menu.StatusMessage = "Could not launch OverHorizon.Server for LAN.";
+            return;
+        }
+
+        var user = string.IsNullOrWhiteSpace(_menu.UsernameInput) ? "Explorer" : _menu.UsernameInput;
+        var freshTransport = new ClientMultiplayerTransport();
+        var login = await freshTransport.ConnectAndLoginAsync("127.0.0.1", 25565, user, ct).ConfigureAwait(false);
+        ClientLog.MultiplayerConnected(_logger, "127.0.0.1", 25565, login.Username, login.AssignedEntityId);
+
+        await EnqueueOnMainThreadAsync(() =>
+        {
+            _meshQueue.DrainPending();
+            _worldCache.ClearAll(_renderer);
+            _remotePlayers.Clear();
+            _worldBridge.ClearMultiplayerEntitySnapshots();
+            _transport = freshTransport;
+            _receivedInitialSpawnSync = true;
+            _player.ApplyAuthoritativePose(savedFeet, savedYaw, savedPitch, updateSpawn: false);
+            _transport.EnqueueOutbound(new MovePlayerPacket(savedFeet, savedYaw, savedPitch, _player.OnGround));
+            _menu.StatusMessage = string.Empty;
+            _menu.Mode = UiOverlayMode.InGame;
+            _chatHistory.AddMessage("[LAN] Local game hosted on 0.0.0.0:25565! Friends can join via Multiplayer.");
         }).ConfigureAwait(false);
     }
 
@@ -74,10 +130,20 @@ public sealed partial class ClientSessionRunner
         if (_transport.IsConnected)
         {
             var oldTransport = _transport;
+            _transport = new ClientMultiplayerTransport();
             await oldTransport.DisposeAsync().ConfigureAwait(false);
+            _menuActions.StopHostedServerIfAny();
+
             await EnqueueOnMainThreadAsync(() =>
             {
-                _transport = new ClientMultiplayerTransport();
+                _activeWorldMeta = null;
+                _receivedInitialSpawnSync = false;
+                _remotePlayers.Clear();
+                _player.DismountMinecart();
+                _meshQueue.DrainPending();
+                _worldCache.ClearAll(_renderer);
+                _worldBridge.SetActiveLocalWorld(_panoramaWorld, WorldTimeCycle.DayTicks);
+                _worldBridge.SyncLocalSnapshots(new ChunkPos(0, 0), 4, fullImmediateRadius: 2);
                 _menu.RefreshSavedWorlds();
                 _menu.Mode = UiOverlayMode.TitleMenu;
             }).ConfigureAwait(false);
@@ -100,6 +166,7 @@ public sealed partial class ClientSessionRunner
             _activeWorldMeta = null;
             _currentSeed = DefaultPanoramaSeed;
             _player.DismountMinecart();
+            _meshQueue.DrainPending();
             _worldCache.ClearAll(_renderer);
             _worldBridge.SetActiveLocalWorld(_panoramaWorld, WorldTimeCycle.DayTicks);
             _worldBridge.SyncLocalSnapshots(new ChunkPos(0, 0), 4, fullImmediateRadius: 2);
@@ -152,45 +219,46 @@ public sealed partial class ClientSessionRunner
         }
         else
         {
-            var dropInv = _player.Mode == GameMode.Survival ? _player.Hotbar.SurvivalInventory : null;
-            if (!_worldBridge.ApplyLocalBlockChangeWithCascade(targetPos, newState, dropInv))
+            if (!_worldBridge.ApplyLocalBlockChangeWithCascade(targetPos, newState, spawnDetachedItemDrops: _player.Mode == GameMode.Survival))
             {
                 return false;
             }
-
-            if (dropInv is not null) _player.Hotbar.RefreshSlotVisuals(_player.Mode);
         }
 
         var center = new Vec3d(targetPos.X + 0.5, targetPos.Y + 0.5, targetPos.Z + 0.5);
-        SoundCue cue;
         if (!newState.IsAir)
         {
-            cue = SoundCue.BlockPlace;
-        }
-        else if (oldKey == BuiltInBlocks.Glass || oldKey == BuiltInBlocks.Glowstone)
-        {
-            cue = SoundCue.GlassBreak;
+            var placedKey = _blocks.GetStateMetadata(newState).BlockKey;
+            _audio.PlayPositional(BlockSoundProfile.ResolvePlaceCue(placedKey), center, gain: 0.72f * _player.MasterVolume, pitch: BlockSoundProfile.ResolvePlacePitch(placedKey));
         }
         else
         {
-            cue = SoundCue.BlockBreak;
+            _worldBridge.EmitBlockBreakParticles(targetPos, oldKey);
+            var breakCue = oldKey == BuiltInBlocks.Fire ? SoundCue.FireExtinguishFizz : BlockSoundProfile.ResolveBreakCue(oldKey);
+            _audio.PlayPositional(breakCue, center, gain: 0.74f * _player.MasterVolume, pitch: BlockSoundProfile.ResolveBreakPitch(oldKey));
         }
 
-        _audio.PlayPositional(cue, center, gain: 0.7f * _player.MasterVolume);
         _player.RefreshRaycastTarget(_worldCache);
         return true;
     }
 
     private void UpdateInteractiveFrame(SilkOpenGlRenderSubsystem silkRenderer, double dt, CancellationToken sessionToken)
     {
-        while (_mainThreadQueue.TryDequeue(out var mainWork))
+        while (_mainThreadQueue.TryDequeue(out var mainWork)) mainWork();
+
+        _menu.IsMultiplayerConnected = _transport.IsConnected;
+        _menu.IsLanOpen = _menuActions.IsLanOpen;
+        _worldBridge.Particles.DensityMode = _menu.ParticlesMode;
+        if (_menu.XRayDirtyRemeshRequested)
         {
-            mainWork();
+            _menu.XRayDirtyRemeshRequested = false;
+            _worldCache.MarkAllLoadedChunksDirty();
         }
 
         _inputBinder.EnsureBoundAndSyncCursor(silkRenderer.InputContext);
         _menuActions.DispatchPendingActions(
-            _inputBinder, silkRenderer, SendChatOrCommand, LoadSavedWorldAsync, SaveAndReturnToTitleAsync, () => _transport, t => _transport = t, EnqueueOnMainThreadAsync, sessionToken);
+            _inputBinder, silkRenderer, SendChatOrCommand, LoadSavedWorldAsync, SaveAndReturnToTitleAsync, OpenActiveWorldToLanAsync,
+            () => _transport, t => _transport = t, EnqueueOnMainThreadAsync, sessionToken);
         DrainInboundPackets();
 
         _menu.AdvanceAnimations(dt, _player);
@@ -205,7 +273,6 @@ public sealed partial class ClientSessionRunner
             return;
         }
 
-        // Offload heavy chunk generation & column lighting onto the .NET ThreadPool — ZERO OpenGL render thread stalls!
         if (!_transport.IsConnected && (_backgroundWorldStreamTask is null || _backgroundWorldStreamTask.IsCompleted))
         {
             var radius = Math.Clamp(_menu.ActiveViewDistance, 1, 64);
@@ -219,8 +286,10 @@ public sealed partial class ClientSessionRunner
         }
 
         var (move, descend) = _inputBinder.PollMovement(silkRenderer.InputContext);
+        var prevRidingCart = _player.RidingMinecartId;
         _player.StepMovement(_worldCache, _blocks, _audio, move, dt, descend);
         _remotePlayers.StepInterpolation(dt);
+
         if (!_transport.IsConnected)
         {
             _worldBridge.StepWorldSimulationAndMobs(_player, (float)dt, move.Forward);
@@ -228,43 +297,65 @@ public sealed partial class ClientSessionRunner
         else
         {
             _worldBridge.TimeCycle.AdvanceSeconds(dt);
+            _worldBridge.StepWorldParticlesAndFuseAudio(_player, (float)dt);
+            if (prevRidingCart >= 0 && _player.RidingMinecartId < 0)
+            {
+                _transport.EnqueueOutbound(new PlayerWorldInteractionPacket(PlayerWorldInteractionKind.MountOrDismountMinecart, _player.FeetPosition, Vec3d.Zero, 0, 0));
+            }
+            else if (_player.RidingMinecartId >= 0 && MathF.Abs(move.Forward) > 0.05f)
+            {
+                var hFwd = _player.Camera.HorizontalForward;
+                _transport.EnqueueOutbound(new PlayerWorldInteractionPacket(
+                    PlayerWorldInteractionKind.SteerMinecart, _player.FeetPosition, new Vec3d(hFwd.X, 0, hFwd.Z), 0, move.Forward > 0 ? 1 : -1));
+            }
         }
 
-        var (leftClicked, rightClicked) = _inputBinder.ConsumeActionRequests();
+        var (leftClicked, rightClicked, middlePicked, dropCount) = _inputBinder.ConsumeActionRequests();
         var leftHeld = _inputBinder.IsLeftMouseHeld(silkRenderer.InputContext);
         var rightHeld = _inputBinder.IsRightMouseHeld(silkRenderer.InputContext);
 
         if (_menu.IsGameplayActive)
         {
-            _survivalCombat.StepBowChargeAndRelease(dt, rightHeld, _player, _worldBridge);
+            if (middlePicked) _ = TryPickTargetedBlock();
+            if (dropCount > 0) _ = TryDropSelectedItem(dropCount);
+
+            _survivalCombat.StepBowAndShield(dt, rightHeld, _player, _worldBridge, _transport);
             var swungMelee = leftClicked && _survivalCombat.TryExecuteMeleeAttack(_player, _mobManager, _remotePlayers, _transport, _worldBridge);
-            if (!swungMelee) _survivalCombat.StepMining(dt, leftClicked, leftHeld, _player, _worldCache, ApplyWorldBlockChange);
+            if (!swungMelee) _survivalCombat.StepMining(dt, leftClicked, leftHeld, _player, _worldCache, _worldBridge, _transport.IsConnected, ApplyWorldBlockChange);
             if (rightClicked && !_player.Hotbar.SelectedIsBow) _ = TryPlaceSelectedBlock();
         }
         else
         {
-            _survivalCombat.StepBowChargeAndRelease(dt, rightMouseHeld: false, _player, _worldBridge);
+            _survivalCombat.StepBowAndShield(dt, rightMouseHeld: false, _player, _worldBridge, _transport);
             _player.MiningProgress = 0.0f;
         }
 
-        EnqueueOutboundMovementIfChanged(dt);
+        EnqueueOutboundMovementAndEquipment(dt);
         _meshQueue.DispatchAndUpload(_worldCache, silkRenderer, playerChunk);
     }
 
-    private FrameOverlayState BuildOverlayState(Vector2 viewport) =>
-        _menu.BuildOverlayState(
+    private FrameOverlayState BuildOverlayState(Vector2 viewport)
+    {
+        var isMp = _transport.IsConnected;
+        var skyMul = _worldBridge.TimeCycle.SkyBrightness;
+        return _menu.BuildOverlayState(
             viewport,
             _player,
             _worldCache,
-            _remotePlayers.BuildSnapshot(),
-            _worldBridge.BuildMobVisuals(_player),
-            _worldBridge.BuildPrimedTntVisuals(_player),
+            _remotePlayers.BuildSnapshot(_worldCache, skyMul, _player.Camera.Position, _player.Hotbar.CombinedHeldLightEmission, _registries.Items, _atlas),
+            _worldBridge.BuildMobVisuals(_player, isMp),
+            _worldBridge.BuildPrimedTntVisuals(_player, isMp),
             _worldBridge.TimeCycle.TotalTicks,
-            _worldBridge.TimeCycle.SkyBrightness,
+            skyMul,
             _chatHistory,
             _latestDebugText,
-            _worldBridge.BuildMinecartVisuals(),
-            _worldBridge.BuildArrowVisuals());
+            _worldBridge.BuildMinecartVisuals(isMp),
+            _worldBridge.BuildArrowVisuals(isMp),
+            _worldBridge.BuildDroppedItemVisuals(_player),
+            _worldBridge.BuildFallingBlockVisuals(_player, isMp),
+            _worldBridge.BuildParticleVisuals(),
+            _worldBridge.BuildHudStatusEffects(_player));
+    }
 
     private async ValueTask StepFrameAsync(double deltaSeconds, (float Forward, float Strafe, bool Jump, bool Sprint) movement, CancellationToken ct)
     {
@@ -275,7 +366,7 @@ public sealed partial class ClientSessionRunner
         _player.StepMovement(_worldCache, _blocks, _audio, movement, deltaSeconds);
         if (!_transport.IsConnected) _worldBridge.StepWorldSimulationAndMobs(_player, (float)deltaSeconds);
         _remotePlayers.StepInterpolation(deltaSeconds);
-        EnqueueOutboundMovementIfChanged(deltaSeconds);
+        EnqueueOutboundMovementAndEquipment(deltaSeconds);
         _ = await _worldCache.RebuildDirtyMeshesAsync(_renderer, maxColumns: _options.Headless ? 2 : 16, ct).ConfigureAwait(false);
     }
 
@@ -294,12 +385,12 @@ public sealed partial class ClientSessionRunner
         while (_transport.TryReadInbound(out var packet))
         {
             ClientInboundPacketApplier.Apply(
-                packet, _transport.AssignedEntityId, _remotePlayers, _player, _worldCache, _worldBridge.TimeCycle, _blocks, _audio, _renderer,
+                packet, _transport.AssignedEntityId, _remotePlayers, _player, _worldCache, _worldBridge, _blocks, _registries.Items, _audio, _renderer,
                 _chatHistory, _logger, _menu.ActiveViewDistance, ref _receivedInitialSpawnSync, ref _lastSentFeetPosition);
         }
     }
 
-    private void EnqueueOutboundMovementIfChanged(double dt)
+    private void EnqueueOutboundMovementAndEquipment(double dt)
     {
         if (!_transport.IsConnected)
         {
@@ -308,16 +399,44 @@ public sealed partial class ClientSessionRunner
         }
 
         _moveSendTimer += dt;
-        if (_moveSendTimer < 0.05) return;
-        _moveSendTimer = 0.0;
+        if (_moveSendTimer >= 0.05)
+        {
+            _moveSendTimer = 0.0;
+            var posDeltaSq = (_player.FeetPosition - _lastSentFeetPosition).LengthSquared;
+            var rotChanged = MathF.Abs(_player.Camera.YawDegrees - _lastSentYaw) > 0.35f || MathF.Abs(_player.Camera.PitchDegrees - _lastSentPitch) > 0.35f;
+            if (posDeltaSq > 0.0004 || rotChanged)
+            {
+                _lastSentFeetPosition = _player.FeetPosition;
+                _lastSentYaw = _player.Camera.YawDegrees;
+                _lastSentPitch = _player.Camera.PitchDegrees;
+                _transport.EnqueueOutbound(new MovePlayerPacket(_player.FeetPosition, _lastSentYaw, _lastSentPitch, _player.OnGround));
+            }
+        }
 
-        var posDeltaSq = (_player.FeetPosition - _lastSentFeetPosition).LengthSquared;
-        var rotChanged = MathF.Abs(_player.Camera.YawDegrees - _lastSentYaw) > 0.35f || MathF.Abs(_player.Camera.PitchDegrees - _lastSentPitch) > 0.35f;
-        if (posDeltaSq <= 0.0004 && !rotChanged) return;
+        _equipSendTimer += dt;
+        var swingChanged = _player.SwingCounter != _lastSentSwingCounter;
+        var cartChanged = _player.RidingMinecartId != _lastSyncedRidingCartId;
+        if (_equipSendTimer >= 0.10 || swingChanged || cartChanged)
+        {
+            _equipSendTimer = 0.0;
+            _lastSentSwingCounter = _player.SwingCounter;
+            _lastSyncedRidingCartId = _player.RidingMinecartId;
 
-        _lastSentFeetPosition = _player.FeetPosition;
-        _lastSentYaw = _player.Camera.YawDegrees;
-        _lastSentPitch = _player.Camera.PitchDegrees;
-        _transport.EnqueueOutbound(new MovePlayerPacket(_player.FeetPosition, _lastSentYaw, _lastSentPitch, _player.OnGround));
+            var armor = _player.Hotbar.BuildLocalArmorVisual();
+            var packedLower = (byte)((armor.HelmetTier & 0x0F) | ((armor.ChestplateTier & 0x0F) << 4));
+            var packedUpper = (byte)((armor.LeggingsTier & 0x0F) | ((armor.BootsTier & 0x0F) << 4));
+            byte flags = 0;
+            if (_player.IsBlockingShield) flags |= 1;
+            if (_player.BowChargeNormalized > 0.01f) flags |= 2;
+            if (_player.IsSprinting) flags |= 4;
+            if (_player.LastSwingWasOffhand) flags |= 8;
+            if (_player.IsSneaking) flags |= 16;
+
+            var mainId = _player.Hotbar.SelectedItem?.NumericId ?? 0;
+            var offId = _player.Hotbar.OffhandItem?.NumericId ?? 0;
+            var bowByte = (byte)Math.Clamp((int)MathF.Round(_player.BowChargeNormalized * 255.0f), 0, 255);
+            _transport.EnqueueOutbound(new PlayerEquipmentAndModePacket(
+                (byte)_player.Mode, mainId, offId, packedLower, packedUpper, flags, bowByte, _player.SwingCounter));
+        }
     }
 }

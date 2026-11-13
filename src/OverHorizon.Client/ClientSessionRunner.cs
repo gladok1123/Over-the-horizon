@@ -6,23 +6,25 @@ using OverHorizon.Core.Biomes;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
+using OverHorizon.Gameplay;
 using OverHorizon.Gameplay.Crafting;
+using OverHorizon.Gameplay.Inventory;
 using OverHorizon.Gameplay.Mobs;
 using OverHorizon.Networking.Packets.Serverbound;
 using OverHorizon.Rendering;
 using OverHorizon.Rendering.Backends;
 using OverHorizon.Rendering.Hud;
+using OverHorizon.Rendering.Meshing;
 using OverHorizon.Rendering.Textures;
 using OverHorizon.World;
-using OverHorizon.World.ChunkManagement;
 using OverHorizon.World.Storage;
 
 namespace OverHorizon.Client;
 
 /// <summary>
 /// Drives the voxel client runtime across Title Screen ("C# EDITION"), World Selection &amp; Creation (<c>./saves/</c>),
-/// Redstone &amp; Pistons, Flint &amp; Steel + Physics TNT, Offhand, Day/Sunset/Night cycle, Console Commands,
-/// ThreadPool-offloaded chunk streaming, and Multiplayer PvP sessions.
+/// persistent <c>options.json</c>, Redstone &amp; Comparators &amp; Pistons, 3D Dropped Items, Shield Blocking,
+/// Spectator &amp; X-Ray modes, "Open to LAN", and Multiplayer sessions.
 /// </summary>
 public sealed partial class ClientSessionRunner : IAsyncDisposable
 {
@@ -59,10 +61,13 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
     private double _lastFps = 60.0;
     private double _localSpawnY = 76.0;
     private double _moveSendTimer;
+    private double _equipSendTimer;
     private bool _receivedInitialSpawnSync;
     private Vec3d _lastSentFeetPosition;
     private float _lastSentYaw;
     private float _lastSentPitch;
+    private byte _lastSentSwingCounter;
+    private int _lastSyncedRidingCartId = -1;
     private string _latestDebugText = string.Empty;
 
     /// <summary>Initializes a new instance of the <see cref="ClientSessionRunner"/> class.</summary>
@@ -106,12 +111,12 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
         _player.Hotbar.BindAtlas(_atlas);
         _player.Camera.SetAspectRatio(1280, 720);
 
-        _menu = new ClientMenuController(options, initialMode, registries.Items, BuiltInRecipes.CreateFrozen(registries.Items));
+        _menu = new ClientMenuController(options, initialMode, registries.Items, BuiltInRecipes.CreateFrozen(registries.Items), _player);
         _menuActions = new ClientMenuSessionActions(_menu, _chatHistory, _logger);
         _inputBinder = new ClientInputBinder(
             _player, _menu, _audio, _logger, () => _latestDebugText, () => _renderer is SilkOpenGlRenderSubsystem s ? s.WindowPixelSize : new Vector2(1280, 720));
         _remotePlayers = new ClientRemotePlayerTracker(_logger);
-        _worldBridge = new ClientWorldSyncAndMobBridge(_blocks, registries.Items, _panoramaWorld, _worldCache, _renderer, _audio, _mobManager);
+        _worldBridge = new ClientWorldSyncAndMobBridge(_blocks, registries.Items, _panoramaWorld, _worldCache, _renderer, _audio, _mobManager, _atlas);
         _survivalCombat = new ClientSurvivalCombatController(blocks, registries.Items, _audio);
         _meshQueue = new ClientAsyncMeshQueue(blocks, _atlas);
     }
@@ -160,27 +165,75 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
             _worldBridge.SeedInitialStarterMobs();
             if (_menu.Mode == UiOverlayMode.InGame)
             {
-                _chatHistory.AddMessage("Welcome to Over-the-Horizon v0.7.0-alpha! Type /help for commands.");
+                _chatHistory.AddMessage("Welcome to Over-the-Horizon v0.8.0-alpha! Type /help for commands.");
             }
         }
     }
 
-    /// <summary>Instantly breaks the currently targeted block in Creative/headless testing.</summary>
+    /// <summary>Instantly breaks the currently targeted block in Creative/headless testing (including Bedrock in Creative).</summary>
     public bool TryBreakTargetedBlock()
     {
         if (_player.CurrentTarget is not { } target) return false;
         var existing = _worldCache.GetBlockState(target.BlockPosition);
-        if (existing.IsAir || existing == _blocks.GetDefaultState(BuiltInBlocks.Bedrock)) return false;
+        if (existing.IsAir) return false;
+        if (_player.Mode == GameMode.Survival && existing == _blocks.GetDefaultState(BuiltInBlocks.Bedrock)) return false;
 
         _player.TriggerHandSwing();
         return ApplyWorldBlockChange(target.BlockPosition, target.HitFace, BlockState.Air);
+    }
+
+    /// <summary>Middle-Click Pick Block: selects or spawns the block targeted by the crosshair.</summary>
+    public bool TryPickTargetedBlock()
+    {
+        if (_player.CurrentTarget is not { } target) return false;
+        var state = _worldCache.GetBlockState(target.BlockPosition);
+        if (state.IsAir) return false;
+        var key = _blocks.GetStateMetadata(state).BlockKey;
+        if (key == BuiltInBlocks.PistonHead) key = BuiltInBlocks.Piston;
+        if (key == BuiltInBlocks.LitFurnace) key = BuiltInBlocks.Furnace;
+
+        var ok = _player.Hotbar.TryPickBlock(key, _player.Mode);
+        if (ok) _audio.PlayPositional(SoundCue.ItemPop, _player.Camera.Position, gain: 0.40f * _player.MasterVolume);
+        return ok;
+    }
+
+    /// <summary>Throws <paramref name="requestedCount"/> items from the active hotbar slot as a 3D <c>DroppedItemEntity</c> (<c>Q</c> / <c>Ctrl+Q</c>).</summary>
+    public bool TryDropSelectedItem(int requestedCount = 1)
+    {
+        if (_player.Mode == GameMode.Spectator || _player.IsDead) return false;
+        var slot = _player.Hotbar.SelectedSlot;
+        var cur = _player.Hotbar.SurvivalInventory.GetSlot(slot);
+        if (cur.IsEmpty) return false;
+
+        var dropAmount = Math.Clamp(requestedCount, 1, cur.Count);
+        var droppedStack = new ItemStack(cur.ItemId, dropAmount);
+        if (_player.Mode == GameMode.Survival || dropAmount >= cur.Count)
+        {
+            _player.Hotbar.SurvivalInventory.SetSlot(slot, cur.WithCount(cur.Count - dropAmount));
+            _player.Hotbar.RefreshSlotVisuals(_player.Mode);
+        }
+
+        var f = _player.Camera.Forward;
+        if (_transport.IsConnected)
+        {
+            _transport.EnqueueOutbound(new PlayerWorldInteractionPacket(
+                PlayerWorldInteractionKind.DropItem, _player.Camera.Position, new Vec3d(f.X, f.Y, f.Z), droppedStack.ItemId, droppedStack.Count));
+        }
+        else
+        {
+            _ = _worldBridge.DroppedItems.SpawnPlayerThrow(_player.Camera.Position, f, droppedStack);
+        }
+
+        _player.TriggerHandSwing();
+        _audio.PlayPositional(SoundCue.SwordSwing, _player.Camera.Position, gain: 0.35f * _player.MasterVolume, pitch: 1.15f);
+        return true;
     }
 
     /// <summary>Uses the selected item or places a block against the targeted face.</summary>
     public bool TryPlaceSelectedBlock()
     {
         var used = _survivalCombat.HandleRightClickUseOrPlace(
-            _player, _worldCache, _worldBridge, _mobManager, _chatHistory, ApplyWorldBlockChange, out var openContainer, out var containerPos);
+            _player, _worldCache, _worldBridge, _mobManager, _transport, _chatHistory, ApplyWorldBlockChange, out var openContainer, out var containerPos);
 
         if (openContainer is { } containerMode)
         {
@@ -198,7 +251,9 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
 
         if (_transport.IsConnected)
         {
-            if (trimmed.StartsWith("/gamemode", StringComparison.OrdinalIgnoreCase) || trimmed.StartsWith("/gm", StringComparison.OrdinalIgnoreCase))
+            if (trimmed.StartsWith("/gamemode", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("/gm", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("/effect", StringComparison.OrdinalIgnoreCase))
             {
                 _ = ClientSlashCommandExecutor.TryExecuteLocalCommand(trimmed, _player, _worldBridge, _mobManager, _registries, _audio, _chatHistory, _currentSeed);
                 return;
@@ -255,9 +310,11 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
                 var metrics = silkRenderer.RenderFrame(_player.Camera, _worldBridge.TimeCycle.SkyBrightness, BuildOverlayState(silkRenderer.WindowPixelSize));
                 RefreshDebugTelemetry(metrics, dt);
                 var flyTag = _player.IsFlying ? " [FLY]" : string.Empty;
+                var xrayTag = _menu.XRayEnabled ? " [X-RAY]" : string.Empty;
+                var lanTag = _menuActions.IsLanOpen ? " [LAN:25565]" : string.Empty;
                 silkRenderer.WindowTitle = _menu.Mode == UiOverlayMode.TitleMenu
-                    ? "Over-the-Horizon: C# EDITION (v0.7.0-alpha)"
-                    : $"Over-the-Horizon v0.7.0 | {_lastFps:F0} FPS | {_player.Mode}{flyTag} | RD:{_menu.ActiveViewDistance} | [{_player.Hotbar.SelectedSlot + 1}: {_player.Hotbar.SelectedBlockDisplayName}]";
+                    ? "Over-the-Horizon: C# EDITION (v0.8.0-alpha)"
+                    : $"Over-the-Horizon v0.8.0 | {_lastFps:F0} FPS | {_player.Mode}{flyTag}{xrayTag}{lanTag} | RD:{_menu.ActiveViewDistance} | [{_player.Hotbar.SelectedSlot + 1}: {_player.Hotbar.SelectedBlockDisplayName}]";
             },
             onResize: (w, h) => _player.Camera.SetAspectRatio(w, h),
             cancellationToken: cancellationToken);
@@ -270,10 +327,13 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
+        GreedySectionMesher.XRayEnabled = false;
         if (_sessionCts is not null) await _sessionCts.CancelAsync().ConfigureAwait(false);
         await _menuActions.AwaitPendingAsync().ConfigureAwait(false);
         await _meshQueue.DisposeAsync().ConfigureAwait(false);
         await _transport.DisposeAsync().ConfigureAwait(false);
+        _menuActions.StopHostedServerIfAny();
+
         if (_ownedSavedWorld is not null)
         {
             await _ownedSavedWorld.DisposeAsync().ConfigureAwait(false);

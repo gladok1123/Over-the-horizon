@@ -264,21 +264,17 @@ internal static class ClientInventoryScreenBuilder
         float height,
         Vector2 mousePos,
         ClientPlayerController player,
-        string serverEndpointInput,
-        string usernameInput,
-        int focusedInputField,
-        float fovDegrees,
-        int activeViewDistance,
+        ClientMenuController menu,
         IReadOnlyList<SavedWorldMetadata> savedWorlds,
         int selectedWorldIndex,
-        string newWorldName,
-        GameMode newWorldGameMode,
-        string newWorldSeed,
-        List<UiButtonItem> buttons)
+        List<UiButtonItem> buttons,
+        bool isMultiplayerConnected = false,
+        bool isLanOpen = false)
     {
         var cx = width * 0.5f;
         const float bw = 420.0f;
-        const float bh = 42.0f;
+        const float bh = 40.0f;
+        const float halfW = 204.0f;
         var bx = cx - (bw * 0.5f);
 
         void AddBtn(string id, string label, float x, float y, float w = bw, float h = bh, bool isInput = false, bool focused = false, bool isSlider = false, float sliderVal = 0.0f) =>
@@ -293,25 +289,25 @@ internal static class ClientInventoryScreenBuilder
             case UiOverlayMode.TitleMenu:
                 var ty = MathF.Max(205.0f, height * 0.38f);
                 AddBtn("open_world_select", "Singleplayer", bx, ty, bw);
-                AddBtn("open_multiplayer", "Multiplayer", bx, ty + 52.0f, bw);
-                AddBtn("open_options", "Options...", bx, ty + 112.0f, 204.0f);
-                AddBtn("quit_game", "Quit Game", bx + 216.0f, ty + 112.0f, 204.0f);
+                AddBtn("open_multiplayer", "Multiplayer", bx, ty + 50.0f, bw);
+                AddBtn("open_options", "Options...", bx, ty + 108.0f, halfW);
+                AddBtn("quit_game", "Quit Game", bx + 216.0f, ty + 108.0f, halfW);
                 break;
 
             case UiOverlayMode.WorldSelectMenu:
                 const float listW = 540.0f;
                 var lx = cx - (listW * 0.5f);
-                var ly = 96.0f;
+                var ly = 94.0f;
                 var maxRows = Math.Min(savedWorlds.Count, 5);
                 for (var i = 0; i < maxRows; i++)
                 {
                     var w = savedWorlds[i];
                     var prefix = i == selectedWorldIndex ? "> " : "  ";
                     var label = $"{prefix}{w.WorldName}  [{w.DefaultGameMode}]  Seed: {w.Seed.ToString(CultureInfo.InvariantCulture)}";
-                    AddBtn($"select_world_{i.ToString(CultureInfo.InvariantCulture)}", label, lx, ly + (i * 48.0f), listW, 42.0f, focused: i == selectedWorldIndex);
+                    AddBtn($"select_world_{i.ToString(CultureInfo.InvariantCulture)}", label, lx, ly + (i * 46.0f), listW, 40.0f, focused: i == selectedWorldIndex);
                 }
 
-                var botY = height - 80.0f;
+                var botY = height - 82.0f;
                 AddBtn("play_selected_world", savedWorlds.Count > 0 ? "Play Selected World" : "Create First World", lx, botY, 264.0f, 38.0f);
                 AddBtn("open_create_world", "Create New World", lx + 276.0f, botY, 264.0f, 38.0f);
                 AddBtn("delete_selected_world", "Delete Selected", lx, botY + 42.0f, 264.0f, 32.0f);
@@ -320,50 +316,65 @@ internal static class ClientInventoryScreenBuilder
 
             case UiOverlayMode.CreateWorldMenu:
                 var cy = MathF.Max(132.0f, height * 0.24f);
-                AddBtn("focus_world_name", "World Name: " + newWorldName, bx, cy, bw, bh, isInput: true, focused: focusedInputField == 0);
-                AddBtn("toggle_create_gamemode", $"Game Mode: {newWorldGameMode}", bx, cy + 58.0f, bw, bh);
-                var seedHint = string.IsNullOrEmpty(newWorldSeed) ? "(Random Seed)" : newWorldSeed;
-                AddBtn("focus_world_seed", "Seed: " + seedHint, bx, cy + 116.0f, bw, bh, isInput: true, focused: focusedInputField == 1);
-                AddBtn("confirm_create_world", "Create New World", bx, cy + 190.0f, 204.0f, bh);
-                AddBtn("open_world_select", "Cancel", bx + 216.0f, cy + 190.0f, 204.0f, bh);
+                AddBtn("focus_world_name", "World Name: " + menu.NewWorldName, bx, cy, bw, bh, isInput: true, focused: menu.FocusedInputField == 0);
+                AddBtn("toggle_create_gamemode", $"Game Mode: {menu.NewWorldGameMode}", bx, cy + 56.0f, bw, bh);
+                var seedHint = string.IsNullOrEmpty(menu.NewWorldSeed) ? "(Random Seed)" : menu.NewWorldSeed;
+                AddBtn("focus_world_seed", "Seed: " + seedHint, bx, cy + 112.0f, bw, bh, isInput: true, focused: menu.FocusedInputField == 1);
+                AddBtn("confirm_create_world", "Create New World", bx, cy + 184.0f, halfW, bh);
+                AddBtn("open_world_select", "Cancel", bx + 216.0f, cy + 184.0f, halfW, bh);
                 break;
 
             case UiOverlayMode.MultiplayerMenu:
                 var my = MathF.Max(148.0f, height * 0.26f);
-                AddBtn("focus_endpoint", "Server: " + serverEndpointInput, bx, my, bw, bh, isInput: true, focused: focusedInputField == 0);
-                AddBtn("focus_username", "Name:   " + usernameInput, bx, my + 54.0f, bw, bh, isInput: true, focused: focusedInputField == 1);
-                AddBtn("join_server", "Join Server", bx, my + 118.0f);
-                AddBtn("host_and_join", "Host Local Server (25565) & Play", bx, my + 172.0f);
-                AddBtn("back_to_title", "Cancel", bx, my + 232.0f);
+                AddBtn("focus_endpoint", "Server: " + menu.ServerEndpointInput, bx, my, bw, bh, isInput: true, focused: menu.FocusedInputField == 0);
+                AddBtn("focus_username", "Name:   " + menu.UsernameInput, bx, my + 52.0f, bw, bh, isInput: true, focused: menu.FocusedInputField == 1);
+                AddBtn("join_server", "Join Server", bx, my + 114.0f);
+                AddBtn("host_and_join", "Host Local Server (25565) & Play", bx, my + 164.0f);
+                AddBtn("back_to_title", "Cancel", bx, my + 220.0f);
                 break;
 
             case UiOverlayMode.OptionsMenu:
-                var oy = MathF.Max(136.0f, height * 0.22f);
-                var vdNorm = Math.Clamp((activeViewDistance - 2.0f) / 62.0f, 0.0f, 1.0f);
-                var fovNorm = Math.Clamp((fovDegrees - 70.0f) / 40.0f, 0.0f, 1.0f);
+                const float optColW = 256.0f;
+                var ox = cx - optColW - 8.0f;
+                var oxRight = cx + 8.0f;
+                var oy = MathF.Max(124.0f, height * 0.19f);
+                var vdNorm = Math.Clamp((menu.ActiveViewDistance - 2.0f) / 62.0f, 0.0f, 1.0f);
+                var fovNorm = Math.Clamp((menu.FovDegrees - 70.0f) / 40.0f, 0.0f, 1.0f);
                 var volNorm = Math.Clamp(player.MasterVolume, 0.0f, 1.0f);
                 var sensNorm = Math.Clamp((player.MouseSensitivity - 0.03f) / 0.22f, 0.0f, 1.0f);
-                AddBtn("toggle_gamemode", $"Game Mode: {player.Mode} (F4)", bx, oy);
-                AddBtn("slider_view_dist", $"Render Distance: {activeViewDistance} Chunks", bx, oy + 50.0f, bw, bh, isSlider: true, sliderVal: vdNorm);
-                AddBtn("slider_fov", $"FOV: {fovDegrees:F0} deg", bx, oy + 100.0f, bw, bh, isSlider: true, sliderVal: fovNorm);
-                AddBtn("slider_volume", $"Sound Volume: {(int)MathF.Round(player.MasterVolume * 100.0f)}%", bx, oy + 150.0f, bw, bh, isSlider: true, sliderVal: volNorm);
-                AddBtn("slider_sensitivity", $"Mouse Sensitivity: {(int)MathF.Round(player.MouseSensitivity * 1000.0f)}", bx, oy + 200.0f, bw, bh, isSlider: true, sliderVal: sensNorm);
-                AddBtn("options_done", "Done", bx, oy + 258.0f);
+                var partLabel = menu.ParticlesMode switch { 0 => "All", 1 => "Decreased", _ => "Minimal" };
+
+                AddBtn("slider_view_dist", $"Render Dist: {menu.ActiveViewDistance} Chunks", ox, oy, optColW, bh, isSlider: true, sliderVal: vdNorm);
+                AddBtn("slider_fov", $"FOV: {menu.FovDegrees:F0} deg", oxRight, oy, optColW, bh, isSlider: true, sliderVal: fovNorm);
+                AddBtn("slider_volume", $"Volume: {(int)MathF.Round(player.MasterVolume * 100.0f)}%", ox, oy + 48.0f, optColW, bh, isSlider: true, sliderVal: volNorm);
+                AddBtn("slider_sensitivity", $"Sensitivity: {(int)MathF.Round(player.MouseSensitivity * 1000.0f)}", oxRight, oy + 48.0f, optColW, bh, isSlider: true, sliderVal: sensNorm);
+                AddBtn("toggle_gamemode", $"Mode: {player.Mode} (F4)", ox, oy + 96.0f, optColW, bh);
+                AddBtn("toggle_xray", $"X-Ray: {(menu.XRayEnabled ? "ON" : "OFF")} (X)", oxRight, oy + 96.0f, optColW, bh);
+                AddBtn("toggle_clouds", $"3D Clouds: {(menu.CloudsEnabled ? "ON" : "OFF")}", ox, oy + 144.0f, optColW, bh);
+                AddBtn("toggle_particles", $"Particles: {partLabel}", oxRight, oy + 144.0f, optColW, bh);
+                AddBtn("toggle_vsync", $"VSync: {(menu.VSyncEnabled ? "ON" : "OFF")}", ox, oy + 192.0f, optColW, bh);
+                AddBtn("toggle_invert_y", $"Invert Mouse Y: {(player.InvertMouseY ? "ON" : "OFF")}", oxRight, oy + 192.0f, optColW, bh);
+                AddBtn("options_done", "Done (Esc)", cx - 160.0f, oy + 248.0f, 320.0f, bh);
                 break;
 
             case UiOverlayMode.PauseMenu:
-                var py = MathF.Max(165.0f, height * 0.26f);
+                var py = MathF.Max(155.0f, height * 0.24f);
                 AddBtn("resume", "Back to Game", bx, py);
-                AddBtn("toggle_gamemode", $"Switch Mode (Current: {player.Mode})", bx, py + 52.0f);
-                AddBtn("open_inventory", player.Mode == GameMode.Survival ? "Survival Inventory (E)" : "Creative Inventory (E)", bx, py + 104.0f);
-                AddBtn("open_options", "Options...", bx, py + 156.0f);
-                AddBtn("save_and_title", "Save & Quit to Title", bx, py + 212.0f);
+                AddBtn("toggle_gamemode", $"Mode: {player.Mode} (F4)", bx, py + 50.0f, halfW);
+                string lanLabel;
+                if (isLanOpen) lanLabel = "LAN Active (25565)";
+                else if (isMultiplayerConnected) lanLabel = "Connected (MP)";
+                else lanLabel = "Open to LAN";
+                AddBtn(isMultiplayerConnected ? "resume" : "open_to_lan", lanLabel, bx + 216.0f, py + 50.0f, halfW);
+                AddBtn("open_inventory", "Inventory (E)", bx, py + 100.0f, halfW);
+                AddBtn("open_options", "Options...", bx + 216.0f, py + 100.0f, halfW);
+                AddBtn("save_and_title", isMultiplayerConnected && !isLanOpen ? "Disconnect & Title" : "Save & Quit to Title", bx, py + 156.0f);
                 break;
 
             case UiOverlayMode.DeathScreen:
                 var dy = MathF.Max(260.0f, height * 0.48f);
                 AddBtn("respawn_player", "Respawn", bx, dy);
-                AddBtn("save_and_title", "Title Screen", bx, dy + 56.0f);
+                AddBtn("save_and_title", "Title Screen", bx, dy + 54.0f);
                 break;
         }
     }

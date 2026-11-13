@@ -18,12 +18,16 @@ public sealed partial class PrimedTntAndWorldTicker
 
     private readonly IBlockRegistry _blocks;
     private readonly List<PrimedTntEntity> _primedTnts = [];
+    private readonly List<FallingBlockEntity> _fallingBlocks = [];
     private readonly HashSet<BlockPos> _activeFluidFrontier = [];
     private readonly HashSet<BlockPos> _activeGravityBlocks = [];
+    private readonly HashSet<BlockPos> _activeFires = [];
     private int _nextTntId = 1;
+    private int _nextFallingId = 1;
     private uint _rng = 0xC4F19A37U;
     private double _fluidTimer;
     private double _gravityTimer;
+    private double _fireTimer;
     private double _grassTimer;
 
     /// <summary>Initializes a new instance of the <see cref="PrimedTntAndWorldTicker"/> class.</summary>
@@ -36,13 +40,24 @@ public sealed partial class PrimedTntAndWorldTicker
     /// <summary>Gets all currently active primed TNT entities.</summary>
     public IReadOnlyList<PrimedTntEntity> PrimedTnts => _primedTnts;
 
-    /// <summary>Clears all active TNT entities and queued world-tick frontiers (used on world transitions).</summary>
+    /// <summary>Gets all currently active smooth-falling Sand/Gravel entities.</summary>
+    public IReadOnlyList<FallingBlockEntity> FallingBlocks => _fallingBlocks;
+
+    /// <summary>Gets active burning Fire block positions for crackle audio and flame particles.</summary>
+    public IReadOnlyCollection<BlockPos> ActiveFirePositions => _activeFires;
+
+    /// <summary>Clears all active TNT entities, falling blocks, and queued world-tick frontiers (used on world transitions).</summary>
     public void Clear()
     {
         _primedTnts.Clear();
+        _fallingBlocks.Clear();
         _activeFluidFrontier.Clear();
         _activeGravityBlocks.Clear();
+        _activeFires.Clear();
     }
+
+    /// <summary>Registers an active <c>Fire</c> voxel at <paramref name="pos"/> so it ages, crackles, and spreads boundedly.</summary>
+    public void TrackFireBlock(BlockPos pos) => _ = _activeFires.Add(pos);
 
     /// <summary>Ignites and spawns a live physics-simulated <see cref="PrimedTntEntity"/> with an upward hop.</summary>
     public PrimedTntEntity SpawnPrimedTnt(BlockPos originBlock, float fuseSeconds = 4.0f)
@@ -59,21 +74,22 @@ public sealed partial class PrimedTntAndWorldTicker
         return entity;
     }
 
-    /// <summary>Notifies the ticker that <paramref name="pos"/> changed so water, gravity blocks, and attached neighbors react.</summary>
+    /// <summary>Notifies the ticker that <paramref name="pos"/> changed so water, gravity blocks, fire, and attached neighbors react.</summary>
     public void NotifyWorldBlockChanged(
         BlockPos pos,
         Func<BlockPos, BlockState> getBlock,
-        Action<BlockPos, BlockState> setBlock)
+        Action<BlockPos, BlockState> setBlock,
+        List<(BlockPos Pos, BlockState DetachedState)>? detachedBlocks = null)
     {
         ArgumentNullException.ThrowIfNull(getBlock);
         ArgumentNullException.ThrowIfNull(setBlock);
 
-        CascadeUnsupportedAttachments(pos, getBlock, setBlock);
+        CascadeUnsupportedAttachments(pos, getBlock, setBlock, detachedBlocks);
         EnqueueFrontierNeighbors(pos, getBlock);
     }
 
     /// <summary>
-    /// Advances primed TNT entities &amp; explosions, gravity-falling Sand/Gravel, flowing Water, and Grass spread/decay.
+    /// Advances primed TNT entities &amp; explosions, smooth 60+ FPS falling Sand/Gravel, bounded Fire, batched Water, and Grass spread.
     /// </summary>
     public void Step(
         double deltaSeconds,
@@ -83,7 +99,9 @@ public sealed partial class PrimedTntAndWorldTicker
         Func<BlockPos, (byte Sky, byte Block)> getLight,
         Action<BlockPos, BlockState> setBlock,
         List<Vec3d> detonatedCenters,
-        Action<IReadOnlyList<(BlockPos Pos, BlockState State)>>? setBlockBatch = null)
+        Action<IReadOnlyList<(BlockPos Pos, BlockState State)>>? setBlockBatch = null,
+        List<(BlockPos Pos, BlockState BrokenState)>? brokenFragileDrops = null,
+        List<BlockPos>? extinguishedFirePositions = null)
     {
         ArgumentNullException.ThrowIfNull(collisionWorld);
         ArgumentNullException.ThrowIfNull(getBlock);
@@ -93,26 +111,34 @@ public sealed partial class PrimedTntAndWorldTicker
 
         var dt = Math.Clamp(deltaSeconds, 0.001, 0.1);
         StepPrimedTnts(dt, collisionWorld, getBlock, setBlock, setBlockBatch, detonatedCenters);
+        StepFallingBlockEntities(dt, getBlock, setBlock, brokenFragileDrops);
 
         _gravityTimer += dt;
-        if (_gravityTimer >= 0.09 && _activeGravityBlocks.Count > 0)
+        if (_gravityTimer >= 0.06 && _activeGravityBlocks.Count > 0)
         {
             _gravityTimer = 0.0;
-            _ = StepGravityBlocks(getBlock, setBlock);
+            _ = DetachDestabilizedGravityBlocks(getBlock, setBlock);
         }
 
         _fluidTimer += dt;
-        if (_fluidTimer >= 0.20 && _activeFluidFrontier.Count > 0)
+        if (_fluidTimer >= 0.18 && _activeFluidFrontier.Count > 0)
         {
             _fluidTimer = 0.0;
-            _ = StepFluidFrontier(collisionWorld, getBlock, setBlock, setBlockBatch);
+            _ = StepFluidFrontier(collisionWorld, getBlock, setBlock, setBlockBatch, extinguishedFirePositions);
+        }
+
+        _fireTimer += dt;
+        if (_fireTimer >= 1.65 && _activeFires.Count > 0)
+        {
+            _fireTimer = 0.0;
+            StepBoundedFireFrontier(getBlock, setBlock, extinguishedFirePositions);
         }
 
         _grassTimer += dt;
-        if (_grassTimer >= 0.45)
+        if (_grassTimer >= 0.55)
         {
             _grassTimer = 0.0;
-            _ = StepGrassSpreadAndDecay(playerCenterPos, getBlock, getLight, setBlock, sampleCount: 18);
+            _ = StepGrassSpreadAndDecay(playerCenterPos, getBlock, getLight, setBlock, sampleCount: 16);
         }
     }
 

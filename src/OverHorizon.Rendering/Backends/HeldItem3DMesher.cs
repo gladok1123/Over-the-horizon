@@ -23,9 +23,22 @@ public static class HeldItem3DMesher
         var s = Math.Clamp(state.HandSwingProgress, 0.0f, 1.0f);
         var swingSin = MathF.Sin(s * MathF.PI);
         var swingSinSq = MathF.Sin(MathF.Sqrt(s) * MathF.PI);
+
+        var os = Math.Clamp(state.OffhandSwingProgress, 0.0f, 1.0f);
+        var offSwingSin = MathF.Sin(os * MathF.PI);
+        var offSwingSinSq = MathF.Sin(MathF.Sqrt(os) * MathF.PI);
+
+        var shieldRaise = state.IsBlockingShield ? Math.Clamp(state.ShieldRaiseNormalized, 0.25f, 1.0f) : Math.Clamp(state.ShieldRaiseNormalized, 0.0f, 1.0f);
+        var mainShieldRaise = state.HeldIsShield ? shieldRaise : 0.0f;
+        var offShieldRaise = (!state.HeldIsShield && state.OffhandIsShield) ? shieldRaise : 0.0f;
         var light = Math.Clamp(state.HeldLightBrightness, 0.055f, 1.0f);
 
-        // 1. Right Hand (Main Hand) — always renders item or empty Steve right arm, animated by HandSwingProgress!
+        // 1. Right Hand (Main Hand) — renders item or empty Steve right arm (unless Spectator)
+        if (state.IsSpectatorMode)
+        {
+            return;
+        }
+
         var activeSpriteTile = state.HeldItemSpriteTile;
         var bowCharge = state.HeldIsBow ? Math.Clamp(state.BowChargeNormalized, 0.0f, 1.0f) : 0.0f;
         if (state.HeldIsBow && bowCharge > 0.01f)
@@ -50,6 +63,7 @@ public static class HeldItem3DMesher
             isOffhand: false,
             isEmpty: state.HeldIsEmpty,
             isShield: state.HeldIsShield,
+            shieldRaise: mainShieldRaise,
             isTorchStyle: state.HeldIsTorchStyle,
             isBlock3D: state.HeldIsBlock3D,
             isToolOrWeapon: state.HeldIsToolOrWeapon,
@@ -66,7 +80,7 @@ public static class HeldItem3DMesher
             swingSinSq: swingSinSq,
             light: light);
 
-        // 2. Left Hand (Offhand) — renders in bottom-left whenever Offhand slot (40) holds an item!
+        // 2. Left Hand (Offhand) — renders in bottom-left and swings independently via OffhandSwingProgress!
         if (!state.OffhandIsEmpty)
         {
             AppendSingleHand(
@@ -75,6 +89,7 @@ public static class HeldItem3DMesher
                 isOffhand: true,
                 isEmpty: false,
                 isShield: state.OffhandIsShield,
+                shieldRaise: offShieldRaise,
                 isTorchStyle: state.OffhandIsTorchStyle,
                 isBlock3D: state.OffhandIsBlock3D,
                 isToolOrWeapon: state.OffhandIsToolOrWeapon,
@@ -87,8 +102,8 @@ public static class HeldItem3DMesher
                 spriteTile: state.OffhandItemSpriteTile,
                 bobX: -bobX * 0.85f,
                 bobY: bobY * 0.85f,
-                swingSin: 0.0f,
-                swingSinSq: 0.0f,
+                swingSin: offSwingSin,
+                swingSinSq: offSwingSinSq,
                 light: light);
         }
     }
@@ -99,6 +114,7 @@ public static class HeldItem3DMesher
         bool isOffhand,
         bool isEmpty,
         bool isShield,
+        float shieldRaise,
         bool isTorchStyle,
         bool isBlock3D,
         bool isToolOrWeapon,
@@ -125,7 +141,7 @@ public static class HeldItem3DMesher
 
         if (isShield)
         {
-            AppendHeldShield(dst, xSign, bobX, bobY, swingSin, swingSinSq, light);
+            AppendHeldShield(dst, xSign, shieldRaise, bobX, bobY, swingSin, swingSinSq, light);
             return;
         }
 
@@ -175,19 +191,20 @@ public static class HeldItem3DMesher
             tint);
     }
 
-    private static void AppendHeldShield(List<OverlayVertex> dst, float xSign, float bobX, float bobY, float swingSin, float swingSinSq, float light)
+    private static void AppendHeldShield(List<OverlayVertex> dst, float xSign, float raise, float bobX, float bobY, float swingSin, float swingSinSq, float light)
     {
-        var pivot = new Vector3((0.52f * xSign) + bobX - (swingSinSq * 0.16f * xSign), -0.44f - bobY + (swingSin * 0.08f), -0.78f - (swingSin * 0.12f));
-        var rot = Matrix4x4.CreateRotationY(-0.34f * xSign) *
-                  Matrix4x4.CreateRotationX(0.08f - (swingSinSq * 0.45f)) *
+        var bobScale = 1.0f - (raise * 0.72f);
+        var pivot = new Vector3(
+            ((0.54f - (raise * 0.30f)) * xSign) + (bobX * bobScale) - (swingSinSq * 0.14f * xSign),
+            -0.46f + (raise * 0.20f) - (bobY * bobScale) + (swingSin * 0.06f),
+            -0.78f + (raise * 0.12f) - (swingSin * 0.10f));
+        var rot = Matrix4x4.CreateRotationY((-0.42f + (raise * 0.36f)) * xSign) *
+                  Matrix4x4.CreateRotationX(0.08f - (raise * 0.06f) - (swingSinSq * 0.35f)) *
                   Matrix4x4.CreateTranslation(pivot);
 
-        var wood = new Vector4(0.64f * light, 0.47f * light, 0.27f * light, 1.0f);
-        var rim = new Vector4(0.72f * light, 0.75f * light, 0.79f * light, 1.0f);
-        EmitUntexturedBox(dst, new Vector3(-0.18f, -0.32f, -0.025f), new Vector3(0.36f, 0.64f, 0.05f), rot, wood);
-        EmitUntexturedBox(dst, new Vector3(-0.195f, 0.28f, -0.032f), new Vector3(0.39f, 0.05f, 0.064f), rot, rim);
-        EmitUntexturedBox(dst, new Vector3(-0.195f, -0.33f, -0.032f), new Vector3(0.39f, 0.05f, 0.064f), rot, rim);
-        EmitUntexturedBox(dst, new Vector3(-0.05f, -0.05f, 0.02f), new Vector3(0.10f, 0.10f, 0.03f), rot, rim);
+        var tint = new Vector4(light, light, light, 1.0f);
+        EntityBoxUvBuilder.EmitEntityBox(dst, EntityTextureAtlasGenerator.CellShield, 0, 0, 12, 22, 1, new Vector3(-0.20f, -0.35f, -0.025f), new Vector3(0.40f, 0.70f, 0.05f), rot, tint);
+        EntityBoxUvBuilder.EmitEntityBox(dst, EntityTextureAtlasGenerator.CellShield, 26, 0, 2, 6, 6, new Vector3(-0.04f, -0.10f, 0.025f), new Vector3(0.08f, 0.20f, 0.12f), rot, tint * new Vector4(0.86f, 0.86f, 0.86f, 1.0f));
     }
 
     private static void AppendHeldTorchOrLantern(List<OverlayVertex> dst, float xSign, int tile, float bobX, float bobY, float swingSin, float swingSinSq, float light)
@@ -260,14 +277,16 @@ public static class HeldItem3DMesher
         Matrix4x4 rot;
         if (isBow)
         {
-            var jitter = bowCharge >= 0.98f ? MathF.Sin(bobX * 140.0f) * 0.005f : 0.0f;
+            // RotationZ(+45 deg) * RotationY(-85 deg) maps top-left arrow tip (-1,+1) to forward (-Z),
+            // bottom-right string (+1,-1) to back (+Z), and bow limbs vertically (+Y / -Y)!
+            var jitter = bowCharge >= 0.98f ? MathF.Sin(bobX * 140.0f) * 0.004f : 0.0f;
             var pivot = new Vector3(
-                (0.46f - (bowCharge * 0.12f)) * xSign + (bobX * (1.0f - (bowCharge * 0.6f))) + jitter,
-                -0.36f + (bowCharge * 0.06f) - (bobY * (1.0f - (bowCharge * 0.6f))),
-                -0.72f + (bowCharge * 0.11f) - (swingSin * 0.16f));
-            rot = Matrix4x4.CreateRotationZ(-0.74f + (bowCharge * 0.08f)) *
-                  Matrix4x4.CreateRotationY((-1.32f + (bowCharge * 0.18f)) * xSign) *
-                  Matrix4x4.CreateRotationX(0.08f - (swingSinSq * 0.55f)) *
+                (0.46f - (bowCharge * 0.13f)) * xSign + (bobX * (1.0f - (bowCharge * 0.65f))) + jitter,
+                -0.34f + (bowCharge * 0.06f) - (bobY * (1.0f - (bowCharge * 0.65f))),
+                -0.72f + (bowCharge * 0.10f) - (swingSin * 0.16f));
+            rot = Matrix4x4.CreateRotationZ(0.7854f) *
+                  Matrix4x4.CreateRotationY((-1.48f + (bowCharge * 0.14f)) * xSign) *
+                  Matrix4x4.CreateRotationX(0.04f - (swingSinSq * 0.50f)) *
                   Matrix4x4.CreateTranslation(pivot);
         }
         else if (isToolOrWeapon)
@@ -406,16 +425,5 @@ public static class HeldItem3DMesher
         dst.Add(new OverlayVertex(Vector3.Transform(a, m), col));
         dst.Add(new OverlayVertex(Vector3.Transform(c, m), col));
         dst.Add(new OverlayVertex(Vector3.Transform(d, m), col));
-    }
-
-    private static void EmitUntexturedBox(List<OverlayVertex> dst, Vector3 min, Vector3 size, Matrix4x4 m, Vector4 col)
-    {
-        var max = min + size;
-        EmitUntexturedQuad(dst, m, new Vector3(min.X, max.Y, min.Z), new Vector3(min.X, max.Y, max.Z), new Vector3(max.X, max.Y, max.Z), new Vector3(max.X, max.Y, min.Z), col);
-        EmitUntexturedQuad(dst, m, new Vector3(min.X, min.Y, min.Z), new Vector3(max.X, min.Y, min.Z), new Vector3(max.X, min.Y, max.Z), new Vector3(min.X, min.Y, max.Z), col * new Vector4(0.6f, 0.6f, 0.6f, 1.0f));
-        EmitUntexturedQuad(dst, m, new Vector3(min.X, min.Y, max.Z), new Vector3(max.X, min.Y, max.Z), new Vector3(max.X, max.Y, max.Z), new Vector3(min.X, max.Y, max.Z), col * new Vector4(0.85f, 0.85f, 0.85f, 1.0f));
-        EmitUntexturedQuad(dst, m, new Vector3(max.X, min.Y, min.Z), new Vector3(min.X, min.Y, min.Z), new Vector3(min.X, max.Y, min.Z), new Vector3(max.X, max.Y, min.Z), col * new Vector4(0.80f, 0.80f, 0.80f, 1.0f));
-        EmitUntexturedQuad(dst, m, new Vector3(min.X, min.Y, min.Z), new Vector3(min.X, min.Y, max.Z), new Vector3(min.X, max.Y, max.Z), new Vector3(min.X, max.Y, min.Z), col * new Vector4(0.72f, 0.72f, 0.72f, 1.0f));
-        EmitUntexturedQuad(dst, m, new Vector3(max.X, min.Y, max.Z), new Vector3(max.X, min.Y, min.Z), new Vector3(max.X, max.Y, min.Z), new Vector3(max.X, max.Y, max.Z), col * new Vector4(0.72f, 0.72f, 0.72f, 1.0f));
     }
 }

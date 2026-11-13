@@ -27,16 +27,7 @@ internal static partial class ShapedBlockMesher
 
         if (key == BuiltInBlocks.RedstoneWire)
         {
-            var pow = meta.Properties.TryGetValue("power", out var pw) && int.TryParse(pw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var pn) ? pn : 0;
-            var shade = pow == 0 ? 0.34f : 0.56f + ((pow / 15.0f) * 0.44f);
-            var y = o.Y + 0.02f;
-            var cN = ConnectsRedstone(blocks, in nb, lx, wy, lz - 1);
-            var cS = ConnectsRedstone(blocks, in nb, lx, wy, lz + 1);
-            var cW = ConnectsRedstone(blocks, in nb, lx - 1, wy, lz);
-            var cE = ConnectsRedstone(blocks, in nb, lx + 1, wy, lz);
-            ushort tile = ProceduralAtlasGenerator.TileRedstoneWireDot;
-            if ((cN || cS) && !cW && !cE) tile = ProceduralAtlasGenerator.TileRedstoneWireLine;
-            EmitDoubleSidedQuad(verts, indices, new Vector3(o.X, y, o.Z), new Vector3(o.X, y, o.Z + 1.0f), new Vector3(o.X + 1.0f, y, o.Z + 1.0f), new Vector3(o.X + 1.0f, y, o.Z), tile, shade, packedLight);
+            EmitDynamicRedstoneWire(in nb, blocks, verts, indices, lx, wy, lz, o, meta, packedLight);
         }
         else if (key == BuiltInBlocks.Lever)
         {
@@ -81,13 +72,7 @@ internal static partial class ShapedBlockMesher
         }
         else if (key == BuiltInBlocks.RedstoneRepeater)
         {
-            var topTile = powered ? ProceduralAtlasGenerator.TileRepeaterOn : ProceduralAtlasGenerator.TileRepeaterOff;
-            var torchTile = powered ? ProceduralAtlasGenerator.TileRedstoneTorch : ProceduralAtlasGenerator.TileRedstoneTorchOff;
-            var delay = meta.Properties.TryGetValue("delay", out var ds) && int.TryParse(ds, NumberStyles.Integer, CultureInfo.InvariantCulture, out var dn) ? Math.Clamp(dn, 1, 4) : 1;
-            EmitSubBox(verts, indices, o, Vector3.Zero, new Vector3(1.0f, 0.125f, 1.0f), topTile, packedLight, Vector2.Zero, Vector2.One);
-            EmitSubBox(verts, indices, o, new Vector3(0.4375f, 0.125f, 0.1875f), new Vector3(0.5625f, 0.4375f, 0.3125f), torchTile, packedLight, new Vector2(0.4375f, 0.375f), new Vector2(0.5625f, 0.85f));
-            var rearZ = 0.35f + (delay * 0.12f);
-            EmitSubBox(verts, indices, o, new Vector3(0.4375f, 0.125f, rearZ), new Vector3(0.5625f, 0.4375f, rearZ + 0.125f), torchTile, packedLight, new Vector2(0.4375f, 0.375f), new Vector2(0.5625f, 0.85f));
+            EmitOrientedRepeater(verts, indices, o, meta, powered, packedLight);
         }
         else if (key == BuiltInBlocks.Piston || key == BuiltInBlocks.StickyPiston)
         {
@@ -157,8 +142,10 @@ internal static partial class ShapedBlockMesher
     private static bool IsRedstoneNode(OverHorizon.Core.Registry.ResourceKey k) =>
         k == BuiltInBlocks.RedstoneWire || k == BuiltInBlocks.RedstoneBlock || k == BuiltInBlocks.RedstoneTorch ||
         k == BuiltInBlocks.RedstoneTorchOff || k == BuiltInBlocks.Lever || k == BuiltInBlocks.StoneButton ||
-        k == BuiltInBlocks.StonePressurePlate || k == BuiltInBlocks.RedstoneRepeater || k == BuiltInBlocks.Piston ||
-        k == BuiltInBlocks.StickyPiston || k == BuiltInBlocks.RedstoneLamp || k == BuiltInBlocks.LitRedstoneLamp;
+        k == BuiltInBlocks.StonePressurePlate || k == BuiltInBlocks.RedstoneRepeater || k == BuiltInBlocks.RedstoneComparator ||
+        k == BuiltInBlocks.Piston || k == BuiltInBlocks.StickyPiston || k == BuiltInBlocks.RedstoneLamp ||
+        k == BuiltInBlocks.LitRedstoneLamp || k == BuiltInBlocks.Tnt || k == BuiltInBlocks.PoweredRail ||
+        k == BuiltInBlocks.OakTrapdoor;
 
     private static void EmitTiltedPost(
         List<ChunkVertex> verts,

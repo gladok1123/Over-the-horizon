@@ -245,6 +245,20 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         var clampedSky = Math.Clamp(skyBrightness, 0.08f, 1.0f);
         var underwater = overlay?.IsUnderwater == true;
         var skyColor = SilkOpenGlChunkPassDrawer.ComputeSkyAtmosphereColor(clampedSky, overlay?.WorldTimeTicks ?? 1000L, underwater);
+        if (!underwater && overlay is not null)
+        {
+            if (camera.Position.Y < EngineConstants.WorldMinY + 2.0)
+            {
+                var voidFactor = (float)Math.Clamp((EngineConstants.WorldMinY + 2.0 - camera.Position.Y) / 8.0, 0.35, 1.0);
+                skyColor = Vector3.Lerp(skyColor, new Vector3(0.010f, 0.010f, 0.016f), voidFactor);
+            }
+            else if (camera.Position.Y < 54.0 && overlay.CameraSkyLightNormalized < 0.15f)
+            {
+                var caveDark = (1.0f - (overlay.CameraSkyLightNormalized / 0.15f)) * (float)Math.Clamp((54.0 - camera.Position.Y) / 14.0, 0.0, 1.0);
+                skyColor = Vector3.Lerp(skyColor, new Vector3(0.018f, 0.018f, 0.024f), caveDark * 0.95f);
+            }
+        }
+
         var chunkFogDist = overlay is { ChunkFogDistance: > 16.0f } ? overlay.ChunkFogDistance : camera.FarPlane;
 
         gl.ClearColor(skyColor.X, skyColor.Y, skyColor.Z, 1.0f);
@@ -288,10 +302,7 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
     /// <inheritdoc />
     public void Dispose()
     {
-        if (_disposed)
-        {
-            return;
-        }
+        if (_disposed) return;
 
         ReleaseGpuResources();
         _stagedColumns.Clear();
@@ -307,10 +318,7 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         if (_stagedColumns.TryGetValue(chunkPos, out var colMap) && colMap.Remove(sectionPos.Y))
         {
             _stagedSectionCount--;
-            if (colMap.Count == 0)
-            {
-                _stagedColumns.Remove(chunkPos);
-            }
+            if (colMap.Count == 0) _stagedColumns.Remove(chunkPos);
         }
     }
 

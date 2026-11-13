@@ -9,9 +9,9 @@ using Silk.NET.Input;
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Binds Silk.NET keyboard &amp; mouse input for first-person gameplay, Offhand Swap (<c>F</c>),
-/// Creative Flight (<c>G</c> or double-tap <c>Space</c>), PvP &amp; 3D Mob melee, progressive Survival mining,
-/// World Select / Create World inputs, <c>195x136</c> Creative &amp; Survival containers, Chat/Commands (<c>T</c> / <c>/</c>), and <c>F3</c>.
+/// Binds Silk.NET keyboard &amp; mouse input for first-person gameplay, Middle-Click Pick Block,
+/// <c>Q</c> / <c>Ctrl+Q</c> 3D Item Drop, Offhand Swap (<c>F</c>), 3-way GameMode cycle (<c>F4</c>),
+/// X-Ray toggle (<c>X</c>), double-click World Select, Options <c>Esc</c> return, Containers, Chat, and <c>F3</c>.
 /// </summary>
 internal sealed class ClientInputBinder
 {
@@ -31,6 +31,8 @@ internal sealed class ClientInputBinder
     private bool _suppressNextKeyChar;
     private bool _pendingLeftClick;
     private bool _pendingRightClick;
+    private bool _pendingMiddlePick;
+    private int _pendingDropCount; // 0=none, 1=single, 64=full stack
     private bool _bound;
 
     public ClientInputBinder(
@@ -60,24 +62,17 @@ internal sealed class ClientInputBinder
         var fwd = (kb.IsKeyPressed(Key.W) ? 1.0f : 0.0f) - (kb.IsKeyPressed(Key.S) ? 1.0f : 0.0f);
         var strafe = (kb.IsKeyPressed(Key.D) ? 1.0f : 0.0f) - (kb.IsKeyPressed(Key.A) ? 1.0f : 0.0f);
         var jump = kb.IsKeyPressed(Key.Space);
-        var descend = kb.IsKeyPressed(Key.C) || ((_player.IsFlying || _player.RidingMinecartId >= 0) && kb.IsKeyPressed(Key.ShiftLeft));
-        var sprint = kb.IsKeyPressed(Key.ControlLeft) || (!_player.IsFlying && _player.RidingMinecartId < 0 && kb.IsKeyPressed(Key.ShiftLeft));
+        var descend = kb.IsKeyPressed(Key.C) || kb.IsKeyPressed(Key.ShiftLeft);
+        var sprint = kb.IsKeyPressed(Key.ControlLeft);
         return ((fwd, strafe, jump, sprint), descend);
     }
 
     public bool IsLeftMouseHeld(IInputContext? input)
     {
-        if (!_menu.IsGameplayActive || input is null)
-        {
-            return false;
-        }
-
+        if (!_menu.IsGameplayActive || input is null) return false;
         for (var i = 0; i < input.Mice.Count; i++)
         {
-            if (input.Mice[i].IsButtonPressed(MouseButton.Left))
-            {
-                return true;
-            }
+            if (input.Mice[i].IsButtonPressed(MouseButton.Left)) return true;
         }
 
         return false;
@@ -85,29 +80,26 @@ internal sealed class ClientInputBinder
 
     public bool IsRightMouseHeld(IInputContext? input)
     {
-        if (!_menu.IsGameplayActive || input is null)
-        {
-            return false;
-        }
-
+        if (!_menu.IsGameplayActive || input is null) return false;
         for (var i = 0; i < input.Mice.Count; i++)
         {
-            if (input.Mice[i].IsButtonPressed(MouseButton.Right))
-            {
-                return true;
-            }
+            if (input.Mice[i].IsButtonPressed(MouseButton.Right)) return true;
         }
 
         return false;
     }
 
-    public (bool LeftClickRequested, bool RightClickRequested) ConsumeActionRequests()
+    public (bool LeftClickRequested, bool RightClickRequested, bool MiddlePickRequested, int DropCountRequested) ConsumeActionRequests()
     {
         var lmb = _pendingLeftClick;
         var rmb = _pendingRightClick;
+        var mmb = _pendingMiddlePick;
+        var drop = _pendingDropCount;
         _pendingLeftClick = false;
         _pendingRightClick = false;
-        return (lmb, rmb);
+        _pendingMiddlePick = false;
+        _pendingDropCount = 0;
+        return (lmb, rmb, mmb, drop);
     }
 
     public bool TryDequeueUiAction(out string actionId)
@@ -192,11 +184,15 @@ internal sealed class ClientInputBinder
         if (key == Key.F4 && _menu.Mode is UiOverlayMode.InGame or UiOverlayMode.BlockInventory or UiOverlayMode.SurvivalInventory)
         {
             _menu.CloseContainerAndRefundCursor(_player);
-            var next = _player.Mode == GameMode.Creative ? GameMode.Survival : GameMode.Creative;
-            _player.SetGameMode(next);
+            var next = _player.CycleNextGameMode();
             if (_menu.Mode is UiOverlayMode.BlockInventory or UiOverlayMode.SurvivalInventory)
             {
-                _menu.Mode = next == GameMode.Survival ? UiOverlayMode.SurvivalInventory : UiOverlayMode.BlockInventory;
+                _menu.Mode = next switch
+                {
+                    GameMode.Spectator => UiOverlayMode.InGame,
+                    GameMode.Survival => UiOverlayMode.SurvivalInventory,
+                    _ => UiOverlayMode.BlockInventory,
+                };
             }
 
             _audio.PlayPositional(SoundCue.UiClick, _player.Camera.Position, gain: 0.35f * _player.MasterVolume);
@@ -244,7 +240,12 @@ internal sealed class ClientInputBinder
 
         if (key == Key.Escape)
         {
-            if (_menu.Mode is UiOverlayMode.BlockInventory or UiOverlayMode.SurvivalInventory or UiOverlayMode.CraftingTableScreen or UiOverlayMode.FurnaceScreen)
+            if (_menu.Mode == UiOverlayMode.OptionsMenu)
+            {
+                // Esc in Options saves options.json and returns to the exact menu it was opened from (PauseMenu or TitleMenu)!
+                _menu.CloseOptionsAndReturn(_player);
+            }
+            else if (_menu.Mode is UiOverlayMode.BlockInventory or UiOverlayMode.SurvivalInventory or UiOverlayMode.CraftingTableScreen or UiOverlayMode.FurnaceScreen)
             {
                 _menu.CloseContainerAndRefundCursor(_player);
                 _menu.Mode = UiOverlayMode.InGame;
@@ -255,7 +256,7 @@ internal sealed class ClientInputBinder
                 {
                     UiOverlayMode.InGame => UiOverlayMode.PauseMenu,
                     UiOverlayMode.PauseMenu or UiOverlayMode.ChatInput => UiOverlayMode.InGame,
-                    UiOverlayMode.MultiplayerMenu or UiOverlayMode.OptionsMenu or UiOverlayMode.WorldSelectMenu => UiOverlayMode.TitleMenu,
+                    UiOverlayMode.MultiplayerMenu or UiOverlayMode.WorldSelectMenu => UiOverlayMode.TitleMenu,
                     UiOverlayMode.CreateWorldMenu => UiOverlayMode.WorldSelectMenu,
                     _ => _menu.Mode,
                 };
@@ -293,8 +294,24 @@ internal sealed class ClientInputBinder
 
         if (!_menu.IsGameplayActive) return;
 
-        // Offhand Swap on F (works in both Survival and Creative!)
-        if (key == Key.F)
+        // Q / Ctrl+Q: Throw 3D Dropped Item into the world!
+        if (key == Key.Q && _player.Mode != GameMode.Spectator)
+        {
+            var fullStack = kb.IsKeyPressed(Key.ControlLeft) || kb.IsKeyPressed(Key.ControlRight);
+            _pendingDropCount = fullStack ? 64 : 1;
+            return;
+        }
+
+        // X: Quick-toggle X-Ray inspection mode!
+        if (key == Key.X)
+        {
+            _menu.ToggleXRayMode(_player);
+            _audio.PlayPositional(SoundCue.UiClick, _player.Camera.Position, gain: 0.30f * _player.MasterVolume);
+            return;
+        }
+
+        // Offhand Swap on F!
+        if (key == Key.F && _player.Mode != GameMode.Spectator)
         {
             _player.Hotbar.SwapMainHandAndOffhand();
             _player.Hotbar.RefreshSlotVisuals(_player.Mode);
@@ -321,7 +338,7 @@ internal sealed class ClientInputBinder
             return;
         }
 
-        if (key == Key.E)
+        if (key == Key.E && _player.Mode != GameMode.Spectator)
         {
             _suppressNextKeyChar = true;
             _menu.OpenOrCloseInventory(_player);
@@ -365,6 +382,7 @@ internal sealed class ClientInputBinder
 
         if (button == MouseButton.Left) _pendingLeftClick = true;
         else if (button == MouseButton.Right) _pendingRightClick = true;
+        else if (button == MouseButton.Middle) _pendingMiddlePick = true;
     }
 
     private void OnMouseUp(IMouse mouse, MouseButton button)
@@ -412,7 +430,7 @@ internal sealed class ClientInputBinder
 
         var sens = _player.MouseSensitivity;
         var dx = (position.X - _lastMousePos.X) * sens;
-        var dy = (_lastMousePos.Y - position.Y) * sens;
+        var dy = (_lastMousePos.Y - position.Y) * sens * (_player.InvertMouseY ? -1.0f : 1.0f);
         _lastMousePos = position;
         _player.Camera.Rotate(dx, dy);
     }

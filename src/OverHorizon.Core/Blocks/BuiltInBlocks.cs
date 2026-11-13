@@ -229,6 +229,27 @@ public static class BuiltInBlocks
     /// <summary>Key for <c>overhorizon:powered_rail</c> (Redstone-boosted or braking minecart track).</summary>
     public static readonly ResourceKey PoweredRail = ResourceKey.OverHorizon("powered_rail");
 
+    /// <summary>Key for <c>overhorizon:comparator</c> (analog Redstone Comparator with compare/subtract modes).</summary>
+    public static readonly ResourceKey RedstoneComparator = ResourceKey.OverHorizon("comparator");
+
+    /// <summary>Key for <c>overhorizon:composter</c> (organic Composter converting plants/food into Bone Meal).</summary>
+    public static readonly ResourceKey Composter = ResourceKey.OverHorizon("composter");
+
+    /// <summary>Key for <c>overhorizon:oak_trapdoor</c> (hinged wooden trapdoor activated by hand or Redstone).</summary>
+    public static readonly ResourceKey OakTrapdoor = ResourceKey.OverHorizon("oak_trapdoor");
+
+    /// <summary>Key for <c>overhorizon:spawner</c> (underground dungeon Monster Spawner cage).</summary>
+    public static readonly ResourceKey MonsterSpawner = ResourceKey.OverHorizon("spawner");
+
+    /// <summary>Key for <c>overhorizon:amethyst_block</c> (crystalline geode block).</summary>
+    public static readonly ResourceKey AmethystBlock = ResourceKey.OverHorizon("amethyst_block");
+
+    /// <summary>Key for <c>overhorizon:mossy_stone_bricks</c> (weathered structure masonry).</summary>
+    public static readonly ResourceKey MossyStoneBricks = ResourceKey.OverHorizon("mossy_stone_bricks");
+
+    /// <summary>Key for <c>overhorizon:chiseled_sandstone</c> (carved desert pyramid sandstone).</summary>
+    public static readonly ResourceKey ChiseledSandstone = ResourceKey.OverHorizon("chiseled_sandstone");
+
     /// <summary>
     /// Registers all built-in blocks into an unfrozen <see cref="BlockRegistry"/>.
     /// </summary>
@@ -338,18 +359,42 @@ public static class BuiltInBlocks
         _ = registry.Register(new BlockDefinition(Lever, isSolid: false, isOpaque: false, hardness: 0.5f, properties: [BlockProperty.Boolean("powered"), attachFacing]));
         _ = registry.Register(new BlockDefinition(StoneButton, isSolid: false, isOpaque: false, hardness: 0.5f, properties: [BlockProperty.Boolean("powered"), attachFacing]));
         _ = registry.Register(new BlockDefinition(StonePressurePlate, isSolid: false, isOpaque: false, hardness: 0.5f, properties: [BlockProperty.Boolean("powered")]));
-        _ = registry.Register(new BlockDefinition(RedstoneRepeater, isSolid: false, isOpaque: false, hardness: 0.1f, properties: [horizFacing, BlockProperty.IntegerRange("delay", 1, 4), BlockProperty.Boolean("powered")]));
+        _ = registry.Register(new BlockDefinition(RedstoneRepeater, isSolid: false, isOpaque: false, hardness: 0.1f, properties: [horizFacing, BlockProperty.IntegerRange("delay", 1, 4), BlockProperty.Boolean("powered"), BlockProperty.Boolean("locked")]));
         _ = registry.Register(new BlockDefinition(RedstoneLamp, hardness: 0.3f));
         _ = registry.Register(new BlockDefinition(LitRedstoneLamp, lightEmission: 15, hardness: 0.3f));
         _ = registry.Register(new BlockDefinition(Piston, isSolid: true, isOpaque: false, hardness: 1.5f, properties: [sixFacing, BlockProperty.Boolean("extended")]));
         _ = registry.Register(new BlockDefinition(StickyPiston, isSolid: true, isOpaque: false, hardness: 1.5f, properties: [sixFacing, BlockProperty.Boolean("extended")]));
         _ = registry.Register(new BlockDefinition(PistonHead, isSolid: true, isOpaque: false, hardness: 1.5f, properties: [sixFacing, BlockProperty.Boolean("sticky")]));
-        _ = registry.Register(new BlockDefinition(Fire, isSolid: false, isOpaque: false, lightEmission: 15, hardness: 0.02f));
+        _ = registry.Register(new BlockDefinition(Fire, isSolid: false, isOpaque: false, lightEmission: 15, hardness: 0.02f, properties: [BlockProperty.IntegerRange("age", 0, 15)]));
         _ = registry.Register(new BlockDefinition(RedBed, isSolid: true, isOpaque: false, hardness: 0.2f, properties: [horizFacing, new BlockProperty("part", ["foot", "head"])]));
         _ = registry.Register(new BlockDefinition(EmeraldBlock, hardness: 5.0f));
         _ = registry.Register(new BlockDefinition(LapisBlock, hardness: 3.0f));
         _ = registry.Register(new BlockDefinition(CopperBlock, hardness: 3.0f));
         _ = registry.Register(new BlockDefinition(PoweredRail, isSolid: false, isOpaque: false, hardness: 0.7f, properties: [poweredRailShape, BlockProperty.Boolean("powered")]));
+
+        // v0.8.0-alpha Comparator, Composter, Redstone Trapdoor & Generative Structure Blocks
+        _ = registry.Register(new BlockDefinition(
+            RedstoneComparator,
+            isSolid: false,
+            isOpaque: false,
+            hardness: 0.1f,
+            properties: [horizFacing, BlockProperty.Boolean("subtract"), BlockProperty.IntegerRange("power", 0, 15)]));
+        _ = registry.Register(new BlockDefinition(
+            Composter,
+            isSolid: true,
+            isOpaque: false,
+            hardness: 0.6f,
+            properties: [BlockProperty.IntegerRange("level", 0, 8)]));
+        _ = registry.Register(new BlockDefinition(
+            OakTrapdoor,
+            isSolid: false,
+            isOpaque: false,
+            hardness: 2.0f,
+            properties: [horizFacing, BlockProperty.Boolean("open"), BlockProperty.Boolean("powered")]));
+        _ = registry.Register(new BlockDefinition(MonsterSpawner, isSolid: true, isOpaque: false, lightEmission: 4, hardness: 5.0f));
+        _ = registry.Register(new BlockDefinition(AmethystBlock, lightEmission: 5, hardness: 1.5f));
+        _ = registry.Register(new BlockDefinition(MossyStoneBricks, hardness: 1.5f));
+        _ = registry.Register(new BlockDefinition(ChiseledSandstone, hardness: 0.8f));
     }
 
     /// <summary>Creates, populates, and freezes the default <see cref="BlockRegistry"/>.</summary>

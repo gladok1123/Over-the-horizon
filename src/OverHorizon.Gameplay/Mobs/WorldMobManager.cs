@@ -1,4 +1,6 @@
+using System.Numerics;
 using OverHorizon.Core.Math;
+using OverHorizon.Gameplay.Ai;
 using OverHorizon.Physics;
 
 namespace OverHorizon.Gameplay.Mobs;
@@ -33,8 +35,28 @@ public sealed partial class WorldMobManager
     /// <summary>Clears all active mobs.</summary>
     public void Clear() => _mobs.Clear();
 
+    /// <summary>Replaces client-side mirrored mobs from an authoritative multiplayer server snapshot.</summary>
+    public void ReplaceFromServerSnapshots(
+        ReadOnlySpan<(int Id, byte TypeByte, Vec3d FeetPos, float Yaw, float WalkPhase, float HurtFlash, float CreeperFuse, byte Flags)> snapshots)
+    {
+        _mobs.Clear();
+        for (var i = 0; i < snapshots.Length; i++)
+        {
+            var s = snapshots[i];
+            var m = new ActiveMob(s.Id, (MobType)Math.Clamp((int)s.TypeByte, 0, 7), s.FeetPos, s.Yaw)
+            {
+                WalkPhase = s.WalkPhase,
+                HurtFlashTimer = s.HurtFlash,
+                CreeperFuseTimer = s.CreeperFuse,
+                IsSheared = (s.Flags & 1) != 0,
+                BurnTimer = (s.Flags & 2) != 0 ? 1.0f : 0.0f,
+            };
+            _mobs.Add(m);
+        }
+    }
+
     /// <summary>
-    /// Advances mob spawning, undead sunlight burning, AI behavior, swept-voxel kinematics, and Survival melee/Creeper attacks.
+    /// Advances mob spawning, undead sunlight burning, A* pathfinding AI, swept-voxel kinematics, Shield blocking, and Creeper/Skeleton attacks.
     /// </summary>
     public float Step(
         IVoxelCollisionReader collisionWorld,
@@ -46,7 +68,12 @@ public sealed partial class WorldMobManager
         float deltaSeconds,
         List<Vec3d>? creeperDetonations = null,
         Action<Vec3d, Vec3d>? onSkeletonShootArrow = null,
-        List<(MobType Type, Vec3d Position, bool Died, float FallDamage)>? mobLandingHurtEvents = null)
+        List<(MobType Type, Vec3d Position, bool Died, float FallDamage)>? mobLandingHurtEvents = null,
+        List<Vec3d>? creeperFuseStartedPositions = null,
+        bool isPlayerBlockingShield = false,
+        Vector3 playerLookForward = default,
+        List<Vec3d>? shieldBlockedPositions = null,
+        Func<BlockPos, bool>? isFireBlock = null)
     {
         ArgumentNullException.ThrowIfNull(collisionWorld);
         ArgumentNullException.ThrowIfNull(spawnProbe);
@@ -61,6 +88,7 @@ public sealed partial class WorldMobManager
 
         var totalDamageToPlayer = 0.0f;
         var playerCanBeTargeted = playerMode == GameMode.Survival;
+        var pathQueriesRemaining = 2;
 
         for (var i = _mobs.Count - 1; i >= 0; i--)
         {
@@ -75,11 +103,31 @@ public sealed partial class WorldMobManager
             mob.InvulnerabilityTimer = MathF.Max(0.0f, mob.InvulnerabilityTimer - dt);
             mob.AttackCooldownTimer = MathF.Max(0.0f, mob.AttackCooldownTimer - dt);
             mob.PanicTimer = MathF.Max(0.0f, mob.PanicTimer - dt);
+            mob.KnockbackTimer = MathF.Max(0.0f, mob.KnockbackTimer - dt);
+            mob.PathRecomputeTimer = MathF.Max(0.0f, mob.PathRecomputeTimer - dt);
+
+            if (isFireBlock is not null && isFireBlock(mob.FeetPosition.ToBlockPos()))
+            {
+                mob.BurnTimer = MathF.Max(mob.BurnTimer, 4.0f);
+            }
 
             UpdateSunlightBurning(collisionWorld, spawnProbe, mob, skyBrightness, dt);
             if (!mob.IsDead)
             {
-                UpdateMobAiAndAttack(mob, playerFeetPos, playerCanBeTargeted, dt, ref totalDamageToPlayer, creeperDetonations, onSkeletonShootArrow);
+                UpdateMobAiAndAttack(
+                    collisionWorld,
+                    mob,
+                    playerFeetPos,
+                    playerCanBeTargeted,
+                    dt,
+                    ref pathQueriesRemaining,
+                    ref totalDamageToPlayer,
+                    creeperDetonations,
+                    onSkeletonShootArrow,
+                    creeperFuseStartedPositions,
+                    isPlayerBlockingShield,
+                    playerLookForward,
+                    shieldBlockedPositions);
                 StepMobPhysics(collisionWorld, mob, dt, mobLandingHurtEvents);
             }
 
@@ -140,13 +188,19 @@ public sealed partial class WorldMobManager
     }
 
     private void UpdateMobAiAndAttack(
+        IVoxelCollisionReader world,
         ActiveMob mob,
         Vec3d playerFeetPos,
         bool playerCanBeTargeted,
         float dt,
+        ref int pathQueriesRemaining,
         ref float totalDamageToPlayer,
         List<Vec3d>? creeperDetonations,
-        Action<Vec3d, Vec3d>? onSkeletonShootArrow)
+        Action<Vec3d, Vec3d>? onSkeletonShootArrow,
+        List<Vec3d>? creeperFuseStartedPositions,
+        bool isPlayerBlockingShield,
+        Vector3 playerLookForward,
+        List<Vec3d>? shieldBlockedPositions)
     {
         if (!mob.IsHostile)
         {
@@ -165,6 +219,8 @@ public sealed partial class WorldMobManager
         {
             mob.IsTargetingPlayer = false;
             mob.CreeperFuseTimer = 0.0f;
+            mob.CreeperFuseHissTriggered = false;
+            mob.PathWaypoints = null;
             UpdatePassiveWander(mob, dt, walkSpeed: 1.4f);
             return;
         }
@@ -173,24 +229,83 @@ public sealed partial class WorldMobManager
         var dy = playerFeetPos.Y - mob.FeetPosition.Y;
         var dz = playerFeetPos.Z - mob.FeetPosition.Z;
         var distSq = (dx * dx) + (dy * dy) + (dz * dz);
-        var aggroRange = mob.Type == MobType.Spider ? 18.0 : 22.0;
+        var aggroRange = mob.Type == MobType.Spider ? 20.0 : 24.0;
 
         if (distSq <= aggroRange * aggroRange)
         {
             mob.IsTargetingPlayer = true;
-            mob.YawDegrees = (float)(Math.Atan2(dx, dz) * (180.0 / Math.PI));
             var dist = Math.Sqrt(distSq);
+
+            // Smart A* Voxel Pathfinding around walls, doorways, ledges, and obstacles!
+            var steerDx = dx;
+            var steerDz = dz;
+            if (dist > 1.85)
+            {
+                if (mob.PathRecomputeTimer <= 0.0f && pathQueriesRemaining > 0)
+                {
+                    pathQueriesRemaining--;
+                    mob.PathRecomputeTimer = 0.60f + ((NextRandom() & 31U) * 0.01f);
+                    mob.PathWaypoints = VoxelPathfinder.FindPath(
+                        world,
+                        mob.FeetPosition.ToBlockPos(),
+                        playerFeetPos.ToBlockPos(),
+                        maxExpandedNodes: 96);
+                    mob.PathWaypointIndex = mob.PathWaypoints is { Count: > 1 } ? 1 : 0;
+                }
+
+                if (mob.PathWaypoints is { Count: > 1 } path)
+                {
+                    while (mob.PathWaypointIndex < path.Count - 1)
+                    {
+                        var wp = path[mob.PathWaypointIndex];
+                        var wdx = (wp.X + 0.5) - mob.FeetPosition.X;
+                        var wdz = (wp.Z + 0.5) - mob.FeetPosition.Z;
+                        if ((wdx * wdx) + (wdz * wdz) < 0.36)
+                        {
+                            mob.PathWaypointIndex++;
+                            continue;
+                        }
+
+                        break;
+                    }
+
+                    if (mob.PathWaypointIndex < path.Count)
+                    {
+                        var wp = path[mob.PathWaypointIndex];
+                        steerDx = (wp.X + 0.5) - mob.FeetPosition.X;
+                        steerDz = (wp.Z + 0.5) - mob.FeetPosition.Z;
+                    }
+                }
+            }
+
+            mob.YawDegrees = (float)(Math.Atan2(steerDx, steerDz) * (180.0 / Math.PI));
 
             if (mob.Type == MobType.Creeper)
             {
                 if (dist <= 3.0)
                 {
                     mob.DesiredSpeed = 0.0f;
+                    if (!mob.CreeperFuseHissTriggered)
+                    {
+                        mob.CreeperFuseHissTriggered = true;
+                        creeperFuseStartedPositions?.Add(mob.FeetPosition);
+                    }
+
                     mob.CreeperFuseTimer += dt;
                     if (mob.CreeperFuseTimer >= 1.5f)
                     {
                         var blastFactor = (float)Math.Clamp(1.0 - (dist / 4.5), 0.25, 1.0);
-                        totalDamageToPlayer += mob.AttackDamage * blastFactor;
+                        var blocked = IsFrontalShieldBlock(isPlayerBlockingShield, playerLookForward, playerFeetPos, mob.FeetPosition);
+                        if (blocked)
+                        {
+                            shieldBlockedPositions?.Add(playerFeetPos);
+                            totalDamageToPlayer += mob.AttackDamage * blastFactor * 0.15f;
+                        }
+                        else
+                        {
+                            totalDamageToPlayer += mob.AttackDamage * blastFactor;
+                        }
+
                         creeperDetonations?.Add(new Vec3d(mob.FeetPosition.X, mob.FeetPosition.Y + 0.8, mob.FeetPosition.Z));
                         mob.Health = 0.0f;
                     }
@@ -198,6 +313,11 @@ public sealed partial class WorldMobManager
                 else
                 {
                     mob.CreeperFuseTimer = MathF.Max(0.0f, mob.CreeperFuseTimer - dt);
+                    if (mob.CreeperFuseTimer <= 0.01f)
+                    {
+                        mob.CreeperFuseHissTriggered = false;
+                    }
+
                     mob.DesiredSpeed = 2.65f;
                 }
 
@@ -206,6 +326,7 @@ public sealed partial class WorldMobManager
 
             if (mob.Type == MobType.Skeleton && onSkeletonShootArrow is not null && dist <= 16.5)
             {
+                mob.YawDegrees = (float)(Math.Atan2(dx, dz) * (180.0 / Math.PI));
                 mob.DesiredSpeed = dist > 9.5 ? 2.45f : 0.0f;
                 if (mob.AttackCooldownTimer <= 0.0f && dist >= 1.5)
                 {
@@ -222,167 +343,42 @@ public sealed partial class WorldMobManager
             mob.DesiredSpeed = mob.Type == MobType.Spider ? 3.55f : 2.75f;
             if (dist <= 1.65 && Math.Abs(dy) <= 1.8 && mob.AttackCooldownTimer <= 0.0f)
             {
-                totalDamageToPlayer += mob.AttackDamage;
                 mob.AttackCooldownTimer = 1.05f;
+                if (IsFrontalShieldBlock(isPlayerBlockingShield, playerLookForward, playerFeetPos, mob.FeetPosition))
+                {
+                    shieldBlockedPositions?.Add(playerFeetPos);
+                    var pushBack = (mob.FeetPosition - playerFeetPos).Normalize();
+                    mob.Velocity = new Vec3d(pushBack.X * 5.2, 2.8, pushBack.Z * 5.2);
+                    mob.KnockbackTimer = 0.32f;
+                }
+                else
+                {
+                    totalDamageToPlayer += mob.AttackDamage;
+                }
             }
         }
         else
         {
             mob.IsTargetingPlayer = false;
             mob.CreeperFuseTimer = 0.0f;
+            mob.CreeperFuseHissTriggered = false;
+            mob.PathWaypoints = null;
             UpdatePassiveWander(mob, dt, walkSpeed: 1.45f);
         }
     }
 
-    private void UpdatePassiveWander(ActiveMob mob, float dt, float walkSpeed)
+    /// <summary>Returns <see langword="true"/> when an active Shield blocks an attack originating from <paramref name="attackerPos"/>.</summary>
+    public static bool IsFrontalShieldBlock(bool isBlockingShield, Vector3 defenderLookForward, Vec3d defenderFeet, Vec3d attackerPos)
     {
-        mob.WanderChangeTimer -= dt;
-        if (mob.WanderChangeTimer <= 0.0f)
-        {
-            mob.WanderChangeTimer = 1.8f + ((NextRandom() % 300U) * 0.01f);
-            if ((NextRandom() % 100U) < 38U)
-            {
-                mob.DesiredSpeed = 0.0f;
-            }
-            else
-            {
-                mob.YawDegrees = NextRandom() % 360U;
-                mob.DesiredSpeed = walkSpeed;
-            }
-        }
-    }
-
-    private static void StepMobPhysics(
-        IVoxelCollisionReader world,
-        ActiveMob mob,
-        float dt,
-        List<(MobType Type, Vec3d Position, bool Died, float FallDamage)>? mobLandingHurtEvents)
-    {
-        var yawRad = mob.YawDegrees * (Math.PI / 180.0);
-        var wishVx = Math.Sin(yawRad) * mob.DesiredSpeed;
-        var wishVz = Math.Cos(yawRad) * mob.DesiredSpeed;
-        var blend = Math.Min(1.0, dt * 10.0);
-        var vx = (mob.Velocity.X * (1.0 - blend)) + (wishVx * blend);
-        var vz = (mob.Velocity.Z * (1.0 - blend)) + (wishVz * blend);
-        var vy = mob.Type == MobType.Chicken ? Math.Max(mob.Velocity.Y, -2.2) : mob.Velocity.Y;
-
-        var prevPos = mob.FeetPosition;
-        var wasOnGround = mob.OnGround;
-        var step = KinematicsIntegrator.StepEntity(world, mob.FeetPosition, new Vec3d(vx, vy, vz), mob.Width, mob.Height, dt, swimUp: true);
-        var nextVel = step.Velocity;
-        if (mob.Type == MobType.Chicken && nextVel.Y < -2.2)
-        {
-            nextVel = new Vec3d(nextVel.X, -2.2, nextVel.Z);
-        }
-
-        if (step.InFluid || mob.Type == MobType.Chicken)
-        {
-            mob.FallDistance = 0.0;
-        }
-        else
-        {
-            var dy = step.Position.Y - prevPos.Y;
-            if (!step.OnGround && dy < 0.0)
-            {
-                mob.FallDistance += -dy;
-            }
-            else if (step.OnGround)
-            {
-                if (!wasOnGround && mob.FallDistance > 3.0)
-                {
-                    var fallDmg = MathF.Ceiling((float)(mob.FallDistance - 3.0));
-                    mob.Health = MathF.Max(0.0f, mob.Health - fallDmg);
-                    mob.HurtFlashTimer = 1.0f;
-                    mobLandingHurtEvents?.Add((mob.Type, step.Position, mob.IsDead, fallDmg));
-                }
-
-                mob.FallDistance = 0.0;
-            }
-        }
-
-        if (step.OnGround && step.CollidedHorizontally && mob.DesiredSpeed > 0.2f && !mob.IsDead)
-        {
-            nextVel = new Vec3d(wishVx, 8.8, wishVz);
-        }
-
-        mob.FeetPosition = step.Position;
-        mob.Velocity = nextVel;
-        mob.OnGround = step.OnGround;
-
-        var movedX = mob.FeetPosition.X - prevPos.X;
-        var movedZ = mob.FeetPosition.Z - prevPos.Z;
-        var horizDist = Math.Sqrt((movedX * movedX) + (movedZ * movedZ));
-        if (horizDist > 1e-4)
-        {
-            mob.WalkPhase += (float)(horizDist * 4.2);
-        }
-    }
-
-    private void TryNaturalSpawns(
-        Func<BlockPos, (byte SkyLight, byte BlockLight, bool IsGrassTop, bool IsSolidGround, bool IsClearSpace)> spawnProbe,
-        Vec3d playerFeetPos,
-        float skyBrightness)
-    {
-        var peacefulCount = 0;
-        var hostileCount = 0;
-        for (var i = 0; i < _mobs.Count; i++)
-        {
-            if (_mobs[i].IsHostile)
-            {
-                hostileCount++;
-            }
-            else
-            {
-                peacefulCount++;
-            }
-        }
-
-        for (var attempt = 0; attempt < 14; attempt++)
-        {
-            var angle = ((NextRandom() % 360U) * Math.PI) / 180.0;
-            var dist = 14.0 + (NextRandom() % 34U);
-            var wx = (int)Math.Floor(playerFeetPos.X + (Math.Cos(angle) * dist));
-            var wz = (int)Math.Floor(playerFeetPos.Z + (Math.Sin(angle) * dist));
-
-            var tryUnderground = hostileCount < MaxHostileMobs && (attempt & 1) == 1;
-            var baseY = tryUnderground
-                ? (int)Math.Clamp(playerFeetPos.Y - 26 + (int)(NextRandom() % 44U), -48, 62)
-                : (int)Math.Clamp(playerFeetPos.Y - 10 + (int)(NextRandom() % 24U), 58, 110);
-
-            for (var scan = 0; scan < 12; scan++)
-            {
-                var pos = new BlockPos(wx, baseY + scan, wz);
-                var info = spawnProbe(pos);
-                if (!info.IsSolidGround || !info.IsClearSpace)
-                {
-                    continue;
-                }
-
-                var effectiveLight = MathF.Max(info.SkyLight * skyBrightness, info.BlockLight);
-                if (!tryUnderground && peacefulCount < MaxPeacefulMobs && info.IsGrassTop && info.SkyLight >= 9)
-                {
-                    _ = SpawnMob((MobType)(NextRandom() % 4U), new Vec3d(wx + 0.5, pos.Y + 1.0, wz + 0.5), NextRandom() % 360U);
-                    peacefulCount++;
-                    break;
-                }
-
-                if (hostileCount < MaxHostileMobs && effectiveLight <= 7.0f)
-                {
-                    _ = SpawnMob((MobType)(4 + (NextRandom() % 4U)), new Vec3d(wx + 0.5, pos.Y + 1.0, wz + 0.5), NextRandom() % 360U);
-                    hostileCount++;
-                    break;
-                }
-            }
-        }
-    }
-
-    private uint NextRandom()
-    {
-        var x = _rng;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        _rng = x;
-        return x;
+        if (!isBlockingShield) return false;
+        var toAttackerX = (float)(attackerPos.X - defenderFeet.X);
+        var toAttackerZ = (float)(attackerPos.Z - defenderFeet.Z);
+        var len = MathF.Sqrt((toAttackerX * toAttackerX) + (toAttackerZ * toAttackerZ));
+        if (len < 1e-4f) return true;
+        var fwdXZ = new Vector2(defenderLookForward.X, defenderLookForward.Z);
+        var fwdLen = fwdXZ.Length();
+        if (fwdLen < 1e-4f) return true;
+        var dot = ((fwdXZ.X / fwdLen) * (toAttackerX / len)) + ((fwdXZ.Y / fwdLen) * (toAttackerZ / len));
+        return dot >= -0.05f;
     }
 }

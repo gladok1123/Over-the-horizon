@@ -4,7 +4,9 @@ using OverHorizon.Core.Items;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
 using OverHorizon.Gameplay;
+using OverHorizon.Gameplay.Effects;
 using OverHorizon.Gameplay.Inventory;
+using OverHorizon.Gameplay.Items;
 using OverHorizon.Gameplay.Mobs;
 using OverHorizon.Gameplay.Physics;
 using OverHorizon.Gameplay.Projectiles;
@@ -13,6 +15,7 @@ using OverHorizon.Gameplay.Survival;
 using OverHorizon.Gameplay.Vehicles;
 using OverHorizon.Rendering;
 using OverHorizon.Rendering.Hud;
+using OverHorizon.Rendering.Textures;
 using OverHorizon.World;
 using OverHorizon.World.Storage;
 
@@ -20,9 +23,9 @@ namespace OverHorizon.Client;
 
 /// <summary>
 /// Coordinates concentric Chebyshev chunk-ring snapshot synchronization, <see cref="WorldTimeCycle"/>,
-/// <see cref="RedstoneEngine"/> + Pistons + Powered Rails, <see cref="PrimedTntAndWorldTicker"/> (batch craters,
-/// Sand/Gravel, smooth 4-block slope Water), atomic 2-part <c>RedBed</c> rules, <see cref="MinecartManager"/>,
-/// <see cref="ArrowProjectileManager"/>, and 3D mob simulation + audio.
+/// <see cref="RedstoneEngine"/> (Wire, Repeater, Comparator, Pistons, Doors/Trapdoors, Powered Rails),
+/// <see cref="PrimedTntAndWorldTicker"/> (batch craters, smooth 60 FPS <see cref="FallingBlockEntity"/>, controlled Fire, Water),
+/// <see cref="DroppedItemManager"/>, <see cref="ParticleSystem"/>, <see cref="MinecartManager"/>, <see cref="ArrowProjectileManager"/>, and 3D Mobs.
 /// </summary>
 internal sealed partial class ClientWorldSyncAndMobBridge
 {
@@ -37,25 +40,37 @@ internal sealed partial class ClientWorldSyncAndMobBridge
     private readonly IRenderSubsystem _renderer;
     private readonly IAudioSubsystem _audio;
     private readonly WorldMobManager _mobManager;
+    private readonly TextureAtlasData _atlas;
     private readonly List<WorldMobVisual> _mobVisualScratch = new(36);
     private readonly List<PrimedTntVisual> _tntVisualScratch = new(16);
     private readonly List<MinecartVisual> _minecartVisualScratch = new(16);
     private readonly List<ArrowProjectileVisual> _arrowVisualScratch = new(32);
+    private readonly List<DroppedItemVisual> _droppedVisualScratch = new(96);
+    private readonly List<FallingBlockVisual> _fallingVisualScratch = new(32);
+    private readonly List<WorldParticleVisual> _particleVisualScratch = new(512);
     private readonly List<BlockPos> _ignitedTntScratch = new(8);
     private readonly List<(BlockPos Pos, RedstoneSoundKind Sound)> _redstoneSoundScratch = new(8);
     private readonly List<Vec3d> _detonatedScratch = new(8);
     private readonly List<Vec3d> _creeperDetonations = new(4);
+    private readonly List<Vec3d> _creeperFuseStarts = new(4);
+    private readonly List<Vec3d> _shieldBlockPositions = new(4);
     private readonly List<(MobType Type, Vec3d Position, bool Died, float FallDamage)> _mobFallScratch = new(8);
     private readonly List<ItemStack> _arrowDropScratch = new(8);
     private readonly List<Vec3d> _arrowHitSoundScratch = new(8);
+    private readonly List<(BlockPos Pos, BlockState BrokenState)> _brokenFragileScratch = new(8);
+    private readonly List<BlockPos> _extinguishedFireScratch = new(8);
     private readonly HashSet<ChunkPos> _touchedChunksScratch = [];
     private readonly List<BlockPos> _editedPositionsScratch = new(64);
 
     private IWorldSubsystem _localWorld;
     private double _ambientMobSoundTimer;
     private double _minecartRollAudioTimer;
+    private double _fireCrackleTimer;
+    private double _tntFuseAudioTimer;
+    private double _particleTickTimer;
     private int _rollingSyncRingCursor = 9;
     private int _dropSeq;
+    private float _mpDropSpinClock;
 
     public ClientWorldSyncAndMobBridge(
         IBlockRegistry blocks,
@@ -64,7 +79,8 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         ClientWorldCache worldCache,
         IRenderSubsystem renderer,
         IAudioSubsystem audio,
-        WorldMobManager mobManager)
+        WorldMobManager mobManager,
+        TextureAtlasData? atlas = null)
     {
         _blocks = blocks;
         _items = items;
@@ -73,10 +89,13 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         _renderer = renderer;
         _audio = audio;
         _mobManager = mobManager;
+        _atlas = atlas ?? ProceduralAtlasGenerator.CreateDefault(blocks);
         Redstone = new RedstoneEngine(blocks);
         WorldTicker = new PrimedTntAndWorldTicker(blocks);
         Minecarts = new MinecartManager(blocks);
         Arrows = new ArrowProjectileManager(blocks);
+        DroppedItems = new DroppedItemManager();
+        Particles = new ParticleSystem();
     }
 
     public IWorldSubsystem ActiveLocalWorld => _localWorld;
@@ -85,6 +104,8 @@ internal sealed partial class ClientWorldSyncAndMobBridge
     public PrimedTntAndWorldTicker WorldTicker { get; }
     public MinecartManager Minecarts { get; }
     public ArrowProjectileManager Arrows { get; }
+    public DroppedItemManager DroppedItems { get; }
+    public ParticleSystem Particles { get; }
 
     public void SetActiveLocalWorld(IWorldSubsystem nextWorld, long initialTimeTicks)
     {
@@ -93,6 +114,10 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         _mobManager.Clear();
         Minecarts.Clear();
         Arrows.Clear();
+        DroppedItems.Clear();
+        Particles.Clear();
+        WorldTicker.Clear();
+        ClearMultiplayerEntitySnapshots();
     }
 
     public void SeedInitialStarterMobs()
@@ -119,6 +144,14 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         }
     }
 
+    public void EmitBlockBreakParticles(BlockPos pos, ResourceKey blockKey)
+    {
+        if (blockKey == BuiltInBlocks.Air || blockKey == BuiltInBlocks.Fire) return;
+        var tile = _atlas.GetTileIndex(blockKey, Direction.Up);
+        var color = ClientHotbar.ResolveFallbackColor(blockKey);
+        Particles.EmitBlockBreak(pos, tile, color, baseCount: 14);
+    }
+
     public bool TryInteractRedstoneBlock(BlockPos pos)
     {
         _editedPositionsScratch.Clear();
@@ -130,6 +163,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         if (!interacted) return false;
 
         Redstone.EvaluateImmediate(_localWorld.GetBlockState, RecordWorldSet, _ignitedTntScratch, _redstoneSoundScratch);
+        Particles.EmitBurst(new Vec3d(pos.X + 0.5, pos.Y + 0.35, pos.Z + 0.5), ParticleKind.RedstoneSpark, 6);
         ProcessRedstoneOutputsAndRemesh();
         return true;
     }
@@ -137,7 +171,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
     public bool ApplyLocalBlockChangeWithCascade(
         BlockPos primaryPos,
         BlockState primaryState,
-        PlayerInventory? dropDetachedItemsToInventory)
+        bool spawnDetachedItemDrops)
     {
         var previousState = _localWorld.GetBlockState(primaryPos);
         if (!_localWorld.SetBlockState(primaryPos, primaryState))
@@ -151,6 +185,11 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         _redstoneSoundScratch.Clear();
 
         TrackEditedBlock(primaryPos);
+        if (!primaryState.IsAir && _blocks.GetStateMetadata(primaryState).BlockKey == BuiltInBlocks.Fire)
+        {
+            WorldTicker.TrackFireBlock(primaryPos);
+        }
+
         WorldTicker.NotifyWorldBlockChanged(primaryPos, _localWorld.GetBlockState, RecordWorldSet);
 
         // 1. Atomic 2-block RedBed breaking: breaking EITHER head or foot removes its partner without duplicate drops!
@@ -176,7 +215,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
             RailPlacementRules.RefreshAdjacentRails(_blocks, _localWorld.GetBlockState, RecordWorldSet, primaryPos);
         }
 
-        // 3. Detach unsupported neighbor Torches, Lanterns, Ladders, Redstone components, Rails, or Bed halves!
+        // 3. Detach unsupported neighbor Torches, Lanterns, Ladders, Redstone components, Rails, or Bed halves as 3D DroppedItems!
         var checkQueue = new Queue<BlockPos>();
         checkQueue.Enqueue(primaryPos);
         while (checkQueue.Count > 0)
@@ -197,13 +236,12 @@ internal sealed partial class ClientWorldSyncAndMobBridge
                     WorldTicker.NotifyWorldBlockChanged(nPos, _localWorld.GetBlockState, RecordWorldSet);
                     checkQueue.Enqueue(nPos);
 
-                    // Do not duplicate RedBed drop when its partner detaches!
-                    if (dropDetachedItemsToInventory is not null && nKey != BuiltInBlocks.RedBed)
+                    if (spawnDetachedItemDrops && nKey != BuiltInBlocks.RedBed && nKey != BuiltInBlocks.Fire)
                     {
                         var drop = BlockDropResolver.ResolveDrop(nKey, heldTool: null, _items, _dropSeq++);
                         if (!drop.IsEmpty)
                         {
-                            _ = dropDetachedItemsToInventory.AddItem(drop, _items);
+                            _ = DroppedItems.SpawnBlockDrop(nPos, drop);
                         }
                     }
                 }
@@ -255,10 +293,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
     {
         if (updates.Count == 0) return;
         var arr = new (BlockPos Position, BlockState State)[updates.Count];
-        for (var i = 0; i < updates.Count; i++)
-        {
-            arr[i] = updates[i];
-        }
+        for (var i = 0; i < updates.Count; i++) arr[i] = updates[i];
 
         _ = _localWorld.SetBlockStatesBatch(arr);
         for (var i = 0; i < updates.Count; i++)
@@ -286,7 +321,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         {
             var tPos = _ignitedTntScratch[i];
             _ = WorldTicker.SpawnPrimedTnt(tPos);
-            _audio.PlayPositional(SoundCue.TntFuse, new Vec3d(tPos.X + 0.5, tPos.Y + 0.5, tPos.Z + 0.5), gain: 0.90f);
+            _audio.PlayPositional(SoundCue.TntFuse, new Vec3d(tPos.X + 0.5, tPos.Y + 0.5, tPos.Z + 0.5), gain: 0.92f);
         }
 
         for (var i = 0; i < _redstoneSoundScratch.Count; i++)
@@ -297,7 +332,8 @@ internal sealed partial class ClientWorldSyncAndMobBridge
                 RedstoneSoundKind.PistonExtend => SoundCue.PistonExtend,
                 RedstoneSoundKind.PistonRetract => SoundCue.PistonRetract,
                 RedstoneSoundKind.TorchFizz => SoundCue.Fizz,
-                _ => SoundCue.UiClick,
+                RedstoneSoundKind.DoorToggle => SoundCue.DoorToggle,
+                _ => SoundCue.RedstoneClick,
             };
             _audio.PlayPositional(cue, new Vec3d(sPos.X + 0.5, sPos.Y + 0.5, sPos.Z + 0.5), gain: 0.72f);
         }
@@ -312,7 +348,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
             }
         }
 
-        if (_editedPositionsScratch.Count <= 16)
+        if (_editedPositionsScratch.Count <= 24)
         {
             for (var i = 0; i < _editedPositionsScratch.Count; i++)
             {

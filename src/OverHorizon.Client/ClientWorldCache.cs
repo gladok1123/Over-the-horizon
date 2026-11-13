@@ -23,6 +23,7 @@ public sealed class ClientWorldCache : IVoxelSelectionReader
     private readonly TextureAtlasData _atlas;
     private readonly Dictionary<ChunkPos, ChunkColumn> _mutableColumns = [];
     private readonly ConcurrentDictionary<ChunkPos, ChunkSnapshot> _publishedSnapshots = [];
+    private readonly ConcurrentDictionary<ChunkPos, uint> _columnGenerations = [];
     private readonly HashSet<ChunkPos> _dirtyMeshColumns = [];
     private readonly bool[] _isSolidByStateId;
     private readonly sbyte[] _fluidLevelByStateId;
@@ -76,8 +77,26 @@ public sealed class ClientWorldCache : IVoxelSelectionReader
 
         _publishedSnapshots.Clear();
         _mutableColumns.Clear();
+        _columnGenerations.Clear();
         _dirtyMeshColumns.Clear();
     }
+
+    /// <summary>Marks all currently loaded chunk columns dirty (e.g. when toggling X-Ray mode).</summary>
+    public void MarkAllLoadedChunksDirty()
+    {
+        foreach (var pos in _publishedSnapshots.Keys)
+        {
+            BumpGeneration(pos);
+            _ = _dirtyMeshColumns.Add(pos);
+        }
+    }
+
+    /// <summary>Returns the current monotonic mesh generation for <paramref name="pos"/>.</summary>
+    public uint GetColumnGeneration(ChunkPos pos) =>
+        _columnGenerations.TryGetValue(pos, out var gen) ? gen : 0U;
+
+    private uint BumpGeneration(ChunkPos pos) =>
+        _columnGenerations.AddOrUpdate(pos, 1U, static (_, prev) => unchecked(prev + 1U));
 
     /// <summary>Installs or replaces a full <see cref="ChunkColumn"/> received from multiplayer streaming.</summary>
     public void UpsertColumn(ChunkColumn column)
@@ -86,6 +105,7 @@ public sealed class ClientWorldCache : IVoxelSelectionReader
 
         var pos = column.Position;
         _mutableColumns[pos] = column;
+        BumpGeneration(pos);
         RelightMutableColumnAndCardinals(pos, column, EngineConstants.WorldMinY, EngineConstants.WorldMaxY - 1);
         MarkColumnAndCardinalsDirty(pos);
     }
@@ -107,6 +127,7 @@ public sealed class ClientWorldCache : IVoxelSelectionReader
             }
 
             _publishedSnapshots[pos] = snapshot;
+            BumpGeneration(pos);
             if (queueFullColumnRemesh)
             {
                 _ = _dirtyMeshColumns.Add(pos);
@@ -116,6 +137,7 @@ public sealed class ClientWorldCache : IVoxelSelectionReader
         }
 
         _publishedSnapshots[pos] = snapshot;
+        BumpGeneration(pos);
         MarkColumnAndCardinalsDirty(pos);
     }
 
@@ -144,6 +166,7 @@ public sealed class ClientWorldCache : IVoxelSelectionReader
         var maxY = Math.Min(EngineConstants.WorldMaxY - 1, Math.Max(worldPos.Y, Math.Max(oldStopY, newStopY)) + 16);
 
         RelightMutableColumnAndCardinals(chunkPos, column, minY, maxY);
+        BumpGeneration(chunkPos);
         _ = _dirtyMeshColumns.Add(chunkPos);
         if (lx == 0) MarkIfLoaded(new ChunkPos(chunkPos.X - 1, chunkPos.Z));
         if (lx == 15) MarkIfLoaded(new ChunkPos(chunkPos.X + 1, chunkPos.Z));
@@ -170,15 +193,39 @@ public sealed class ClientWorldCache : IVoxelSelectionReader
         var minSec = localY == 0 ? Math.Max(0, secIdx - 1) : secIdx;
         var maxSec = localY == 15 ? Math.Min(ChunkColumn.SectionCount - 1, secIdx + 1) : secIdx;
 
+        BumpGeneration(centerChunk);
         RemeshColumnSectionRange(centerChunk, minSec, maxSec, renderer);
         _ = _dirtyMeshColumns.Remove(centerChunk);
 
         var lx = editedPos.SectionLocalX;
         var lz = editedPos.SectionLocalZ;
-        if (lx <= 1) RemeshColumnSectionRange(new ChunkPos(centerChunk.X - 1, centerChunk.Z), minSec, maxSec, renderer);
-        if (lx >= 14) RemeshColumnSectionRange(new ChunkPos(centerChunk.X + 1, centerChunk.Z), minSec, maxSec, renderer);
-        if (lz <= 1) RemeshColumnSectionRange(new ChunkPos(centerChunk.X, centerChunk.Z - 1), minSec, maxSec, renderer);
-        if (lz >= 14) RemeshColumnSectionRange(new ChunkPos(centerChunk.X, centerChunk.Z + 1), minSec, maxSec, renderer);
+        if (lx <= 1)
+        {
+            var wPos = new ChunkPos(centerChunk.X - 1, centerChunk.Z);
+            BumpGeneration(wPos);
+            RemeshColumnSectionRange(wPos, minSec, maxSec, renderer);
+        }
+
+        if (lx >= 14)
+        {
+            var ePos = new ChunkPos(centerChunk.X + 1, centerChunk.Z);
+            BumpGeneration(ePos);
+            RemeshColumnSectionRange(ePos, minSec, maxSec, renderer);
+        }
+
+        if (lz <= 1)
+        {
+            var nPos = new ChunkPos(centerChunk.X, centerChunk.Z - 1);
+            BumpGeneration(nPos);
+            RemeshColumnSectionRange(nPos, minSec, maxSec, renderer);
+        }
+
+        if (lz >= 14)
+        {
+            var sPos = new ChunkPos(centerChunk.X, centerChunk.Z + 1);
+            BumpGeneration(sPos);
+            RemeshColumnSectionRange(sPos, minSec, maxSec, renderer);
+        }
     }
 
     /// <summary>Evicts cached chunk columns outside Chebyshev distance <paramref name="keepRadius"/>.</summary>

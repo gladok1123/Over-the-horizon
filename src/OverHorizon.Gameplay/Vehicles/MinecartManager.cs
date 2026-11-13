@@ -46,6 +46,25 @@ public sealed class MinecartManager
     /// <summary>Clears all active Minecarts (used on world transitions).</summary>
     public void Clear() => _carts.Clear();
 
+    /// <summary>Replaces client-side mirrored Minecarts from an authoritative multiplayer server snapshot.</summary>
+    public void ReplaceFromServerSnapshots(
+        ReadOnlySpan<(int Id, Vec3d Pos, float Yaw, float Pitch, float Wobble, long RiderSessionId)> snapshots,
+        int localRidingCartId)
+    {
+        _carts.Clear();
+        for (var i = 0; i < snapshots.Length; i++)
+        {
+            var s = snapshots[i];
+            var c = new MinecartEntity(s.Id, s.Pos, s.Yaw)
+            {
+                PitchDegrees = s.Pitch,
+                HurtWobbleTimer = s.Wobble,
+                HasPlayerPassenger = s.Id == localRidingCartId || s.RiderSessionId >= 0,
+            };
+            _carts.Add(c);
+        }
+    }
+
     /// <summary>Places a new <see cref="MinecartEntity"/> onto a rail block if none overlaps <paramref name="railPos"/>.</summary>
     public MinecartEntity? TrySpawnOnRail(BlockPos railPos, Func<BlockPos, BlockState> getBlock)
     {
@@ -53,24 +72,15 @@ public sealed class MinecartManager
 
         var st = getBlock(railPos);
         var meta = _blocks.GetStateMetadata(st);
-        if (!RailPlacementRules.IsRailBlock(meta.BlockKey))
-        {
-            return null;
-        }
+        if (!RailPlacementRules.IsRailBlock(meta.BlockKey)) return null;
 
         var spawnPos = new Vec3d(railPos.X + 0.5, railPos.Y + 0.0625, railPos.Z + 0.5);
         for (var i = 0; i < _carts.Count; i++)
         {
-            if (_carts[i].FeetPosition.DistanceTo(spawnPos) < 0.85)
-            {
-                return null;
-            }
+            if (_carts[i].FeetPosition.DistanceTo(spawnPos) < 0.85) return null;
         }
 
-        if (_carts.Count >= MaxActiveMinecarts)
-        {
-            _carts.RemoveAt(0);
-        }
+        if (_carts.Count >= MaxActiveMinecarts) _carts.RemoveAt(0);
 
         var shape = RailPlacementRules.GetRailShape(meta);
         var yaw = shape.Contains("east", StringComparison.Ordinal) || shape.Contains("west", StringComparison.Ordinal) ? 90.0f : 0.0f;

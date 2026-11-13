@@ -5,7 +5,13 @@ using OverHorizon.Core.Entities;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
 using OverHorizon.Gameplay;
+using OverHorizon.Gameplay.Items;
+using OverHorizon.Gameplay.Mobs;
+using OverHorizon.Gameplay.Physics;
+using OverHorizon.Gameplay.Projectiles;
 using OverHorizon.Gameplay.Redstone;
+using OverHorizon.Gameplay.Survival;
+using OverHorizon.Gameplay.Vehicles;
 using OverHorizon.Modding.Commands;
 using OverHorizon.Modding.Events;
 using OverHorizon.Networking.Packets;
@@ -22,14 +28,14 @@ namespace OverHorizon.Server;
 
 /// <summary>
 /// Authoritative main-thread bridge connecting network sessions (<see cref="IServerPlayHandler"/>)
-/// to <see cref="IWorldSubsystem"/>, <see cref="IGameplaySubsystem"/>, <see cref="IEventBus"/>, and <see cref="ICommandDispatcher"/>.
+/// to <see cref="IWorldSubsystem"/>, <see cref="IGameplaySubsystem"/>, world entities, Redstone, and PvP/PvE combat.
 /// </summary>
-public sealed class ServerPlaySessionBridge : IServerPlayHandler
+public sealed partial class ServerPlaySessionBridge : IServerPlayHandler
 {
     private const double PlayerWidth = 0.6;
     private const double PlayerHeight = 1.8;
     private const double PlayerEyeHeight = 1.62;
-    private const double MaxMoveDistanceSquared = 100.0; // Max 10 blocks per movement packet
+    private const double MaxMoveDistanceSquared = 196.0; // Max 14 blocks per movement packet (supports sprint/knockback/spectator)
     private const double MaxBlockReachSquared = 42.25; // Max 6.5 blocks from player eyes
 
     private readonly IWorldSubsystem _world;
@@ -41,7 +47,13 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
     private readonly ICommandDispatcher _commands;
     private readonly Func<INetworkBroadcaster>? _getBroadcaster;
     private readonly RedstoneEngine _redstone;
+    private readonly DroppedItemManager _droppedItems;
+    private readonly ArrowProjectileManager _arrows;
+    private readonly MinecartManager _minecarts;
+    private readonly WorldMobManager _mobs;
+    private readonly PrimedTntAndWorldTicker _tntAndWorld;
     private readonly ConcurrentDictionary<long, ConnectedPlayerState> _players = new();
+    private bool _hadEntitiesLastTick;
 
     /// <summary>Gets the authoritative server day/night clock.</summary>
     public WorldTimeCycle WorldTime { get; } = new();
@@ -87,24 +99,20 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
         _commands = commands;
         _getBroadcaster = getBroadcaster;
         _redstone = new RedstoneEngine(registries.Blocks);
+        _droppedItems = new DroppedItemManager();
+        _arrows = new ArrowProjectileManager(registries.Blocks);
+        _minecarts = new MinecartManager(registries.Blocks);
+        _mobs = new WorldMobManager(registries);
+        _tntAndWorld = new PrimedTntAndWorldTicker(registries.Blocks);
     }
 
-    /// <summary>
-    /// Teleports an active player session to <paramref name="destination"/> and sends a sync packet.
-    /// </summary>
-    /// <param name="sessionId">Target session ID.</param>
-    /// <param name="destination">Destination feet position.</param>
-    /// <param name="broadcaster">Network packet sender.</param>
-    /// <returns><see langword="true"/> if the player was online and teleported.</returns>
+    /// <summary>Teleports an active player session to <paramref name="destination"/> and sends a sync packet.</summary>
     public bool TryTeleportPlayer(long sessionId, Vec3d destination, INetworkBroadcaster broadcaster)
     {
         ArgumentNullException.ThrowIfNull(broadcaster);
+        if (!_players.TryGetValue(sessionId, out var state)) return false;
 
-        if (!_players.TryGetValue(sessionId, out var state))
-        {
-            return false;
-        }
-
+        DismountPlayerIfRiding(state);
         state.LastPosition = destination;
         _ = _gameplay.TrySetEntityKinematics(state.EntityId, destination, Vec3d.Zero, onGround: false);
         _ = broadcaster.SendToSession(
@@ -114,12 +122,7 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
         return true;
     }
 
-    /// <summary>
-    /// Updates the runtime <see cref="PermissionLevel"/> of an online player matching <paramref name="username"/>.
-    /// </summary>
-    /// <param name="username">Player username.</param>
-    /// <param name="level">New permission level.</param>
-    /// <returns><see langword="true"/> if a matching player was found.</returns>
+    /// <summary>Updates the runtime <see cref="PermissionLevel"/> of an online player matching <paramref name="username"/>.</summary>
     public bool TrySetPlayerPermission(string username, PermissionLevel level)
     {
         foreach (var (_, state) in _players)
@@ -148,12 +151,7 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
         var radius = Math.Max(0, _options.PlayerViewDistanceChunks);
         var diameter = (radius * 2) + 1;
 
-        _world.Chunks.UpsertTicket(new ChunkTicket(
-            session.SessionId,
-            ChunkTicketType.Player,
-            spawnChunk,
-            radius));
-
+        _world.Chunks.UpsertTicket(new ChunkTicket(session.SessionId, ChunkTicketType.Player, spawnChunk, radius));
         _ = await _world.Chunks.ProcessTicketsAsync(diameter * diameter, cancellationToken).ConfigureAwait(false);
 
         var spawnY = _world.Chunks.TryGetSnapshot(spawnChunk, out var centerSnap)
@@ -171,39 +169,28 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
             controllingSessionId: session.SessionId);
         _ = _gameplay.TrySetEntityKinematics(entityId, spawnPos, Vec3d.Zero, onGround: true);
 
-        var state = new ConnectedPlayerState(
-            entityId,
-            session.Username,
-            spawnChunk,
-            spawnPos,
-            _options.DefaultPlayerPermission);
+        var state = new ConnectedPlayerState(entityId, session.Username, spawnChunk, spawnPos, _options.DefaultPlayerPermission);
         _players[session.SessionId] = state;
 
-        initialPlayPackets.Add(new SynchronizePlayerPositionPacket(
-            spawnPos,
-            YawDegrees: 0.0f,
-            PitchDegrees: 0.0f,
-            TeleportId: state.NextTeleportId++));
+        initialPlayPackets.Add(new SynchronizePlayerPositionPacket(spawnPos, 0.0f, 0.0f, state.NextTeleportId++));
+        initialPlayPackets.Add(new WorldTimeUpdatePacket(WorldTime.TotalTicks));
 
         var broadcaster = _getBroadcaster?.Invoke();
         var joinedAnnouncement = new RemotePlayerSpawnPacket(entityId, session.Username, spawnPos, 0.0f, 0.0f);
         foreach (var (peerSessionId, peer) in _players)
         {
-            if (peerSessionId == session.SessionId)
-            {
-                continue;
-            }
-
-            initialPlayPackets.Add(new RemotePlayerSpawnPacket(
-                peer.EntityId,
-                peer.Username,
-                peer.LastPosition,
-                peer.YawDegrees,
-                peer.PitchDegrees));
+            if (peerSessionId == session.SessionId) continue;
+            initialPlayPackets.Add(new RemotePlayerSpawnPacket(peer.EntityId, peer.Username, peer.LastPosition, peer.YawDegrees, peer.PitchDegrees));
+            initialPlayPackets.Add(peer.ToEquipmentPacket());
             _ = broadcaster?.SendToSession(peerSessionId, joinedAnnouncement);
         }
 
         CollectUnsentChunksAround(state, spawnChunk, radius, initialPlayPackets);
+        if (HasAnyWorldEntities())
+        {
+            initialPlayPackets.Add(BuildWorldEntitiesSnapshot());
+        }
+
         return entityId;
     }
 
@@ -218,20 +205,12 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
         ArgumentNullException.ThrowIfNull(packet);
         ArgumentNullException.ThrowIfNull(broadcaster);
 
-        if (!_players.TryGetValue(session.SessionId, out var playerState))
-        {
-            return;
-        }
+        if (!_players.TryGetValue(session.SessionId, out var playerState)) return;
 
         switch (packet)
         {
             case MovePlayerPacket move:
-                await HandlePlayerMoveAsync(
-                    session,
-                    playerState,
-                    move,
-                    broadcaster,
-                    cancellationToken).ConfigureAwait(false);
+                await HandlePlayerMoveAsync(session, playerState, move, broadcaster, cancellationToken).ConfigureAwait(false);
                 break;
 
             case PlayerBlockActionPacket blockAction:
@@ -239,25 +218,20 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
                 break;
 
             case ChatMessagePacket chat:
-                await HandleChatOrCommandAsync(
-                    session,
-                    playerState,
-                    chat,
-                    broadcaster,
-                    cancellationToken).ConfigureAwait(false);
+                await HandleChatOrCommandAsync(session, playerState, chat, broadcaster, cancellationToken).ConfigureAwait(false);
                 break;
 
             case PlayerAttackEntityPacket attack:
                 ServerPvpCombatHandler.HandleAttack(
-                    session,
-                    playerState,
-                    attack,
-                    tickNumber,
-                    IsPvpEnabled,
-                    _players,
-                    _registries,
-                    _gameplay,
-                    broadcaster);
+                    session, playerState, attack, tickNumber, IsPvpEnabled, _players, _registries, _gameplay, broadcaster);
+                break;
+
+            case PlayerEquipmentAndModePacket equip:
+                HandleEquipmentAndMode(session.SessionId, playerState, equip, broadcaster);
+                break;
+
+            case PlayerWorldInteractionPacket interact:
+                HandleWorldInteraction(session, playerState, interact, tickNumber, broadcaster);
                 break;
         }
     }
@@ -265,13 +239,11 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
     /// <inheritdoc />
     public void OnPlayerDisconnected(PlayerSessionInfo session)
     {
-        if (!_players.TryRemove(session.SessionId, out var state))
-        {
-            return;
-        }
+        if (!_players.TryRemove(session.SessionId, out var state)) return;
 
         try
         {
+            DismountPlayerIfRiding(state);
             _ = _world.Chunks.RemoveTicket(session.SessionId);
             _ = _gameplay.DespawnEntity(state.EntityId);
             if (_getBroadcaster?.Invoke() is { } broadcaster)
@@ -322,32 +294,31 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
         INetworkBroadcaster broadcaster,
         CancellationToken ct)
     {
-        var currentPos = _gameplay.TryGetEntityPosition(playerState.EntityId);
-        if (currentPos is not { } authoritativePos)
+        if (playerState.RidingMinecartId != 0)
         {
+            playerState.YawDegrees = move.YawDegrees;
+            playerState.PitchDegrees = move.PitchDegrees;
+            BroadcastToPeers(session.SessionId, broadcaster, new RemotePlayerMovePacket(playerState.EntityId, playerState.LastPosition, move.YawDegrees, move.PitchDegrees));
             return;
         }
 
+        var currentPos = _gameplay.TryGetEntityPosition(playerState.EntityId);
+        if (currentPos is not { } authoritativePos) return;
+
         var target = move.Position;
         var delta = target - authoritativePos;
-        var outOfVerticalBounds = target.Y < EngineConstants.WorldMinY - 16.0 ||
-            target.Y > EngineConstants.WorldMaxY + 32.0;
+        var isSpectator = playerState.GameMode == GameMode.Spectator;
+        var outOfVerticalBounds = !isSpectator && (target.Y < EngineConstants.WorldMinY - 84.0 || target.Y > EngineConstants.WorldMaxY + 48.0);
+        var maxDistSq = isSpectator ? 900.0 : MaxMoveDistanceSquared;
 
-        var candidateBox = BoundingBox
-            .FromEntityFeet(target, PlayerWidth, PlayerHeight)
-            .Inflate(-0.06, -0.02, -0.06);
-
+        var candidateBox = BoundingBox.FromEntityFeet(target, PlayerWidth, PlayerHeight).Inflate(-0.06, -0.02, -0.06);
         if (outOfVerticalBounds ||
-            delta.LengthSquared > MaxMoveDistanceSquared ||
-            VoxelSweptCollider.IntersectsAnySolid(_collisionReader, candidateBox))
+            delta.LengthSquared > maxDistSq ||
+            (!isSpectator && VoxelSweptCollider.IntersectsAnySolid(_collisionReader, candidateBox)))
         {
             _ = broadcaster.SendToSession(
                 session.SessionId,
-                new SynchronizePlayerPositionPacket(
-                    authoritativePos,
-                    move.YawDegrees,
-                    move.PitchDegrees,
-                    playerState.NextTeleportId++));
+                new SynchronizePlayerPositionPacket(authoritativePos, move.YawDegrees, move.PitchDegrees, playerState.NextTeleportId++));
             return;
         }
 
@@ -361,10 +332,7 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
             playerState.LastPosition = target;
             playerState.YawDegrees = move.YawDegrees;
             playerState.PitchDegrees = move.PitchDegrees;
-            BroadcastToPeers(
-                session.SessionId,
-                broadcaster,
-                new RemotePlayerMovePacket(playerState.EntityId, target, move.YawDegrees, move.PitchDegrees));
+            BroadcastToPeers(session.SessionId, broadcaster, new RemotePlayerMovePacket(playerState.EntityId, target, move.YawDegrees, move.PitchDegrees));
         }
 
         var newChunk = target.ToBlockPos().ToChunkPos();
@@ -372,11 +340,7 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
         {
             playerState.CenterChunk = newChunk;
             var radius = Math.Max(0, _options.PlayerViewDistanceChunks);
-            _world.Chunks.UpsertTicket(new ChunkTicket(
-                session.SessionId,
-                ChunkTicketType.Player,
-                newChunk,
-                radius));
+            _world.Chunks.UpsertTicket(new ChunkTicket(session.SessionId, ChunkTicketType.Player, newChunk, radius));
 
             var diameter = (radius * 2) + 1;
             _ = await _world.Chunks.ProcessTicketsAsync(Math.Min(4, diameter), ct).ConfigureAwait(false);
@@ -390,81 +354,7 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
         }
     }
 
-    private void HandleBlockAction(
-        PlayerSessionInfo session,
-        ConnectedPlayerState playerState,
-        PlayerBlockActionPacket action,
-        long tickNumber,
-        INetworkBroadcaster broadcaster)
-    {
-        var currentPos = _gameplay.TryGetEntityPosition(playerState.EntityId);
-        if (currentPos is not { } playerFeet)
-        {
-            return;
-        }
-
-        var target = action.TargetPos;
-        if (target.Y < EngineConstants.WorldMinY || target.Y >= EngineConstants.WorldMaxY)
-        {
-            return;
-        }
-
-        var eyePos = new Vec3d(playerFeet.X, playerFeet.Y + PlayerEyeHeight, playerFeet.Z);
-        var blockCenter = new Vec3d(target.X + 0.5, target.Y + 0.5, target.Z + 0.5);
-        if ((blockCenter - eyePos).LengthSquared > MaxBlockReachSquared)
-        {
-            return;
-        }
-
-        var existingState = _world.GetBlockState(target);
-
-        if (action.Action == PlayerBlockActionKind.BreakBlock)
-        {
-            var breakEvent = new BlockBreakEvent(session.SessionId, session.Username, target, existingState);
-            _eventBus.Publish(ref breakEvent);
-            if (breakEvent.IsCancelled)
-            {
-                _ = broadcaster.SendToSession(session.SessionId, new BlockUpdatePacket(target, existingState.Id));
-                return;
-            }
-
-            ServerWorldTimeAndBlockSync.ApplyMutationAndBroadcastCascade(_world, _registries.Blocks, _redstone, target, BlockState.Air, tickNumber, broadcaster);
-            return;
-        }
-
-        if (action.BlockStateId == 0 || action.BlockStateId >= _registries.Blocks.StateCount)
-        {
-            return;
-        }
-
-        var candidateState = new BlockState(action.BlockStateId);
-        if (_registries.Blocks.GetStateMetadata(candidateState).IsSolid)
-        {
-            var playerBox = BoundingBox
-                .FromEntityFeet(playerFeet, PlayerWidth, PlayerHeight)
-                .Inflate(-1e-4, -1e-4, -1e-4);
-            if (playerBox.Intersects(BoundingBox.FromBlock(target)))
-            {
-                return;
-            }
-        }
-
-        var placeEvent = new BlockPlaceEvent(session.SessionId, session.Username, target, candidateState);
-        _eventBus.Publish(ref placeEvent);
-        if (placeEvent.IsCancelled)
-        {
-            _ = broadcaster.SendToSession(session.SessionId, new BlockUpdatePacket(target, existingState.Id));
-            return;
-        }
-
-        ServerWorldTimeAndBlockSync.ApplyMutationAndBroadcastCascade(_world, _registries.Blocks, _redstone, target, placeEvent.PlacedState, tickNumber, broadcaster);
-    }
-
-    private void CollectUnsentChunksAround(
-        ConnectedPlayerState state,
-        ChunkPos center,
-        int radius,
-        IList<IClientboundPacket> sink)
+    private void CollectUnsentChunksAround(ConnectedPlayerState state, ChunkPos center, int radius, IList<IClientboundPacket> sink)
     {
         for (var dz = -radius; dz <= radius; dz++)
         {
@@ -474,8 +364,7 @@ public sealed class ServerPlaySessionBridge : IServerPlayHandler
                 if (!state.SentChunks.Contains(pos.PackInt64()) &&
                     _world.Chunks.TryGetSnapshot(pos, out var snapshot))
                 {
-                    var bytes = ChunkNetworkSerializer.SerializeSnapshotToArray(snapshot);
-                    sink.Add(new ChunkDataPacket(pos, bytes));
+                    sink.Add(new ChunkDataPacket(pos, ChunkNetworkSerializer.SerializeSnapshotToArray(snapshot)));
                     _ = state.SentChunks.Add(pos.PackInt64());
                 }
             }

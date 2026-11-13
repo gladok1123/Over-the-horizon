@@ -7,7 +7,7 @@ namespace OverHorizon.Client;
 
 /// <summary>
 /// Executes asynchronous UI menu transitions: creating/opening Singleplayer worlds in <c>./saves/</c>,
-/// connecting to or hosting Multiplayer servers, and saving world chunks + metadata on Quit to Title.
+/// Pause Menu "Open to LAN", connecting to or hosting Multiplayer servers, and clean network/world shutdown on Quit to Title.
 /// </summary>
 internal sealed class ClientMenuSessionActions : IDisposable
 {
@@ -28,12 +28,17 @@ internal sealed class ClientMenuSessionActions : IDisposable
         _logger = logger;
     }
 
+    public bool IsLanOpen => _localServerLauncher.IsHostingLan;
+
+    public void StopHostedServerIfAny() => _localServerLauncher.StopServer();
+
     public void DispatchPendingActions(
         ClientInputBinder inputBinder,
         SilkOpenGlRenderSubsystem silkRenderer,
         Action<string> sendChat,
         Func<SavedWorldMetadata, CancellationToken, Task> loadSavedWorldAsync,
         Func<CancellationToken, Task> saveAndReturnToTitleAsync,
+        Func<LocalServerLauncher, CancellationToken, Task> openActiveWorldToLanAsync,
         Func<ClientMultiplayerTransport> getTransport,
         Action<ClientMultiplayerTransport> setTransport,
         Func<Action, Task> enqueueMainThread,
@@ -59,7 +64,14 @@ internal sealed class ClientMenuSessionActions : IDisposable
                     _pendingTask = loadSavedWorldAsync(created, ct);
                     break;
 
+                case "open_to_lan":
+                    if (_pendingTask is { IsCompleted: false }) break;
+                    _pendingTask = openActiveWorldToLanAsync(_localServerLauncher, ct);
+                    break;
+
                 case "quit_game":
+                    _menu.SavePersistedSettings();
+                    _localServerLauncher.StopServer();
                     silkRenderer.RequestClose();
                     break;
 
@@ -71,16 +83,19 @@ internal sealed class ClientMenuSessionActions : IDisposable
 
                 case "join_server":
                     if (_pendingTask is { IsCompleted: false }) break;
+                    _menu.SavePersistedSettings();
                     _pendingTask = ConnectFromMenuAsync(hostLocalFirst: false, getTransport, setTransport, enqueueMainThread, ct);
                     break;
 
                 case "host_and_join":
                     if (_pendingTask is { IsCompleted: false }) break;
+                    _menu.SavePersistedSettings();
                     _pendingTask = ConnectFromMenuAsync(hostLocalFirst: true, getTransport, setTransport, enqueueMainThread, ct);
                     break;
 
                 case "save_and_title":
                     if (_pendingTask is { IsCompleted: false }) break;
+                    _menu.SavePersistedSettings();
                     _pendingTask = saveAndReturnToTitleAsync(ct);
                     break;
             }
@@ -114,7 +129,8 @@ internal sealed class ClientMenuSessionActions : IDisposable
             if (hostLocalFirst)
             {
                 _menu.StatusMessage = "Starting local OverHorizon.Server on TCP 25565...";
-                var started = await _localServerLauncher.EnsureLocalServerRunningAsync(25565, ct).ConfigureAwait(false);
+                var started = await _localServerLauncher.EnsureLocalServerRunningAsync(
+                    25565, ct, viewDistance: Math.Clamp(_menu.ActiveViewDistance, 4, 12)).ConfigureAwait(false);
                 if (!started)
                 {
                     _menu.StatusMessage = "Could not auto-start local server binary.";

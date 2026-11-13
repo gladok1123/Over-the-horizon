@@ -3,17 +3,8 @@ using OverHorizon.Core.Math;
 namespace OverHorizon.Rendering.Hud;
 
 /// <summary>
-/// Render-thread snapshot of a connected remote player's 3D pose, limb animation phase, and PvP combat status.
+/// Render-thread snapshot of a connected remote player's 3D pose, lighting, limb animation, armor, and held equipment.
 /// </summary>
-/// <param name="EntityId">Authoritative entity ID.</param>
-/// <param name="Username">Player username (used for deterministic outfit palette).</param>
-/// <param name="FeetPosition">World-space feet position.</param>
-/// <param name="YawDegrees">Horizontal yaw in degrees.</param>
-/// <param name="PitchDegrees">Vertical pitch in degrees.</param>
-/// <param name="WalkPhase">Accumulated limb swing phase in radians.</param>
-/// <param name="HurtFlash">PvP hit red-flash intensity in <c>[0, 1]</c>.</param>
-/// <param name="Health">Latest known health points in <c>[0, 20]</c>.</param>
-/// <param name="Armor">Equipped 3D armor tier snapshot.</param>
 public readonly record struct RemotePlayerAvatar(
     long EntityId,
     string Username,
@@ -23,4 +14,17 @@ public readonly record struct RemotePlayerAvatar(
     float WalkPhase,
     float HurtFlash = 0.0f,
     float Health = 20.0f,
-    PlayerArmorVisual Armor = default);
+    PlayerArmorVisual Armor = default,
+    float LightBrightness = 1.0f,
+    bool IsSpectator = false,
+    bool IsBlockingShield = false,
+    bool IsDrawingBow = false,
+    float BowCharge = 0.0f,
+    float HandSwingProgress = 0.0f,
+    bool LeftHandSwing = false,
+    int MainHandSpriteTile = -1,
+    bool MainHandIsShield = false,
+    bool MainHandIsBlock3D = false,
+    int MainHandBlockTile = -1,
+    bool OffhandIsShield = false,
+    int OffhandSpriteTile = -1);

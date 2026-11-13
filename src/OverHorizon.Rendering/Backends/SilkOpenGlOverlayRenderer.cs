@@ -66,9 +66,14 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
     public unsafe int RenderSkyDome(FirstPersonCamera camera, FrameOverlayState state)
     {
         if (state.IsUnderwater) return 0;
+        if (camera.Position.Y < OverHorizon.Core.EngineConstants.WorldMinY + 1.0 ||
+            (camera.Position.Y < 44.0 && state.CameraSkyLightNormalized < 0.05f))
+        {
+            return 0;
+        }
 
         _skyVertices.Clear();
-        AppendCelestialBodies(_skyVertices, state.WorldTimeTicks);
+        AppendCelestialBodies(_skyVertices, state.WorldTimeTicks, camera.Position.Y);
         if (_skyVertices.Count == 0) return 0;
 
         _gl.UseProgram(_program);
@@ -111,9 +116,14 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
         _worldLineVertices.Clear();
         _viewModelVertices.Clear();
 
-        if (!state.IsUnderwater)
+        if (!state.IsUnderwater && camera.Position.Y > OverHorizon.Core.EngineConstants.WorldMinY - 2.0)
         {
             AppendWorldClouds(_cloudVertices, camera.Position, state.WorldTimeTicks, state.CloudDriftOffset);
+        }
+
+        if (camera.Position.Y < 24.0)
+        {
+            AppendVoidAbyssFloor(_worldTriangleVertices, camera.Position);
         }
 
         if (state.TargetedBlock is { } target)
@@ -127,11 +137,14 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
             }
         }
 
-        AppendRemotePlayerAvatars(_worldTriangleVertices, camera.Position, state.RemotePlayers);
+        WorldMob3DMesher.AppendRemotePlayers(_worldTriangleVertices, camera.Position, state.RemotePlayers);
         WorldMob3DMesher.AppendWorldMobs(_worldTriangleVertices, camera.Position, state.WorldMobs);
         WorldMob3DMesher.AppendMinecarts(_worldTriangleVertices, camera.Position, state.Minecarts);
         WorldMob3DMesher.AppendArrows(_worldTriangleVertices, camera.Position, state.Arrows);
         WorldMob3DMesher.AppendPrimedTnts(_worldTriangleVertices, camera.Position, state.PrimedTnts);
+        WorldMob3DMesher.AppendFallingBlocks(_worldTriangleVertices, camera.Position, state.FallingBlocks);
+        WorldMob3DMesher.AppendDroppedItems(_worldTriangleVertices, camera.Position, state.DroppedItems);
+        WorldMob3DMesher.AppendWorldParticles(_worldTriangleVertices, camera, state.Particles);
 
         if (state.Mode is UiOverlayMode.InGame or UiOverlayMode.ChatInput)
         {
@@ -236,11 +249,11 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
 
         var boxCenterX = rect.X + (rect.Z * 0.5f);
         var boxEyeY = rect.Y + (rect.W * 0.34f);
-        var dx = boxCenterX - state.CursorScreenPos.X;
-        var dy = boxEyeY - state.CursorScreenPos.Y;
+        var dx = state.CursorScreenPos.X - boxCenterX;
+        var dy = state.CursorScreenPos.Y - boxEyeY;
         var bodyYaw = MathF.Atan(dx / 65.0f) * 0.55f;
-        var headYaw = MathF.Atan(dx / 50.0f) * 0.65f;
-        var headPitch = -MathF.Atan(dy / 55.0f) * 0.55f;
+        var headYaw = MathF.Atan(dx / 50.0f) * 0.68f;
+        var headPitch = MathF.Atan(dy / 55.0f) * 0.55f;
 
         _invPreviewVertices.Clear();
         var root = Matrix4x4.CreateRotationY(bodyYaw) *
@@ -312,20 +325,6 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
         {
             dst.Add(new OverlayVertex(c[a], col));
             dst.Add(new OverlayVertex(c[b], col));
-        }
-    }
-
-    private static void AppendRemotePlayerAvatars(List<OverlayVertex> dst, Vec3d cameraPos, IReadOnlyList<RemotePlayerAvatar> avatars)
-    {
-        for (var i = 0; i < avatars.Count; i++)
-        {
-            var avatar = avatars[i];
-            var relFeet = new Vector3((float)(avatar.FeetPosition.X - cameraPos.X), (float)(avatar.FeetPosition.Y - cameraPos.Y), (float)(avatar.FeetPosition.Z - cameraPos.Z));
-            var yawRad = avatar.YawDegrees * (MathF.PI / 180.0f);
-            var pitchRad = avatar.PitchDegrees * (MathF.PI / 180.0f);
-            var swing = MathF.Sin(avatar.WalkPhase) * 0.55f;
-            var root = Matrix4x4.CreateRotationY(-yawRad + MathF.PI) * Matrix4x4.CreateTranslation(relFeet);
-            WorldMob3DMesher.AppendSteveModel(dst, root, 0.0f, pitchRad, swing, Vector4.One, avatar.Armor);
         }
     }
 

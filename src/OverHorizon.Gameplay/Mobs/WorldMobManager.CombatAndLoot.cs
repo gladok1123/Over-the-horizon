@@ -53,8 +53,9 @@ public sealed partial class WorldMobManager
             m.HurtFlashTimer = 1.0f;
 
             var dir = dist > 1e-3 ? delta * (1.0 / dist) : new Vec3d(0.0, 1.0, 0.0);
-            var kb = exposure * 9.5;
-            m.Velocity = new Vec3d(m.Velocity.X + (dir.X * kb), Math.Max(m.Velocity.Y, 4.5 + (exposure * 4.5)), m.Velocity.Z + (dir.Z * kb));
+            var kb = exposure * 12.5;
+            m.Velocity = new Vec3d(m.Velocity.X + (dir.X * kb), Math.Max(m.Velocity.Y, 4.8 + (exposure * 5.0)), m.Velocity.Z + (dir.Z * kb));
+            m.KnockbackTimer = 0.45f;
             m.OnGround = false;
             affected++;
 
@@ -78,7 +79,8 @@ public sealed partial class WorldMobManager
         bool isCriticalStrike,
         IRegistry<ItemDefinition> items,
         out ActiveMob? hitMob,
-        out List<ItemStack> drops)
+        out List<ItemStack> drops,
+        bool isSprintAttack = false)
     {
         ArgumentNullException.ThrowIfNull(items);
 
@@ -124,9 +126,12 @@ public sealed partial class WorldMobManager
         }
 
         var horizLen = MathF.Sqrt((rayDirection.X * rayDirection.X) + (rayDirection.Z * rayDirection.Z));
-        var kx = horizLen > 1e-4f ? (rayDirection.X / horizLen) * 6.8 : 0.0;
-        var kz = horizLen > 1e-4f ? (rayDirection.Z / horizLen) * 6.8 : 0.0;
-        hitMob.Velocity = new Vec3d(kx, 4.6, kz);
+        var kbStrength = isSprintAttack ? 12.8 : 8.8;
+        var kbLift = isSprintAttack ? 4.65 : 4.25;
+        var kx = horizLen > 1e-4f ? (rayDirection.X / horizLen) * kbStrength : 0.0;
+        var kz = horizLen > 1e-4f ? (rayDirection.Z / horizLen) * kbStrength : 0.0;
+        hitMob.Velocity = new Vec3d((hitMob.Velocity.X * 0.35) + kx, kbLift, (hitMob.Velocity.Z * 0.35) + kz);
+        hitMob.KnockbackTimer = 0.44f;
         hitMob.OnGround = false;
 
         if (hitMob.IsDead)
@@ -186,9 +191,10 @@ public sealed partial class WorldMobManager
         }
 
         var hLen = Math.Sqrt((arrowVelocity.X * arrowVelocity.X) + (arrowVelocity.Z * arrowVelocity.Z));
-        var kx = hLen > 1e-4 ? (arrowVelocity.X / hLen) * 6.2 : 0.0;
-        var kz = hLen > 1e-4 ? (arrowVelocity.Z / hLen) * 6.2 : 0.0;
-        hitMob.Velocity = new Vec3d(kx, 3.8, kz);
+        var kx = hLen > 1e-4 ? (arrowVelocity.X / hLen) * 8.2 : 0.0;
+        var kz = hLen > 1e-4 ? (arrowVelocity.Z / hLen) * 8.2 : 0.0;
+        hitMob.Velocity = new Vec3d((hitMob.Velocity.X * 0.3) + kx, 4.1, (hitMob.Velocity.Z * 0.3) + kz);
+        hitMob.KnockbackTimer = 0.40f;
         hitMob.OnGround = false;
 
         if (hitMob.IsDead)

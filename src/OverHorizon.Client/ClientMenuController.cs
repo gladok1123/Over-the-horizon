@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 using OverHorizon.Core.Items;
@@ -7,32 +8,36 @@ using OverHorizon.Gameplay;
 using OverHorizon.Gameplay.Crafting;
 using OverHorizon.Gameplay.Inventory;
 using OverHorizon.Rendering.Hud;
+using OverHorizon.Rendering.Meshing;
 
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Interactive menu &amp; container screen controller powering the Title Screen, World Select &amp; Create New World (<c>./saves/</c>),
-/// <c>2..64</c>-chunk Render Distance slider, <c>195x136</c> Creative Inventory, <c>2x2</c> Survival Inventory,
-/// <c>3x3</c> Crafting Table, <c>3</c>-slot Furnace smelting, Offhand, and <c>0..15</c> dynamic torch lighting.
+/// Interactive menu &amp; container screen controller powering the Title Screen, World Select (with double-click entry),
+/// Create World, persistent <c>options.json</c> Video/Graphics/Audio/Controls settings, X-Ray &amp; Spectator toggles,
+/// Pause Menu "Open to LAN", and Creative / Survival / Crafting / Furnace containers.
 /// </summary>
 internal sealed partial class ClientMenuController
 {
     private static readonly string[] SplashLines =
     [
-        "Redstone & Sticky Pistons!", "23w13a__or__b Real Sounds & Skins!", "Dynamic Held Torch Light!",
-        "Flint & Steel + Primed TNT!", "Offhand & Authentic Creative UI!", "Day / Sunset / Starry Night!",
+        "Redstone Comparators & Pistons!", "Open to LAN & Full 3D Armor!", "3D Volumetric Clouds & Stars!",
+        "Shield Blocking & 3D Drops!", "Mineshafts, Geodes & Pyramids!", "Spectator Noclip & X-Ray!",
     ];
 
     private readonly IRegistry<ItemDefinition> _items;
     private readonly IRegistry<ICraftingRecipe> _recipes;
     private readonly ClientContainerSlotController _containers;
+    private readonly Stopwatch _uiClickWatch = Stopwatch.StartNew();
     private readonly string _splashText;
+    private readonly bool _headlessMode;
 
     private UiOverlayMode _returnModeFromOptions = UiOverlayMode.TitleMenu;
     private IReadOnlyList<SavedWorldMetadata> _savedWorlds = [];
     private int _selectedWorldIndex;
+    private int _lastClickedWorldIndex = -1;
+    private double _lastWorldClickTimeSeconds = -10.0;
     private string? _draggingSliderId;
-    private float _fovDegrees = 78.0f;
     private int _creativeTabIndex;
     private int _inventoryScrollRow;
     private float _creativeScrollNorm;
@@ -41,17 +46,36 @@ internal sealed partial class ClientMenuController
         ClientOptions options,
         UiOverlayMode initialMode,
         IRegistry<ItemDefinition> items,
-        IRegistry<ICraftingRecipe>? recipes = null)
+        IRegistry<ICraftingRecipe>? recipes = null,
+        ClientPlayerController? playerToHydrate = null)
     {
         _items = items;
         _recipes = recipes ?? BuiltInRecipes.CreateFrozen(items);
         _containers = new ClientContainerSlotController(_items, _recipes);
+        _headlessMode = options.Headless || options.HeadlessCheckOnly;
         Mode = initialMode;
-        ServerEndpointInput = string.IsNullOrWhiteSpace(options.ServerHost)
-            ? $"127.0.0.1:{options.ServerPort.ToString(CultureInfo.InvariantCulture)}"
-            : $"{options.ServerHost}:{options.ServerPort.ToString(CultureInfo.InvariantCulture)}";
-        UsernameInput = options.Username;
-        ActiveViewDistance = Math.Clamp(options.ViewDistanceChunks, 1, 64);
+
+        var persisted = _headlessMode ? new PersistedClientSettings { ViewDistanceChunks = options.ViewDistanceChunks } : PersistedClientSettings.LoadOrDefault();
+        ServerEndpointInput = !string.IsNullOrWhiteSpace(options.ServerHost)
+            ? $"{options.ServerHost}:{options.ServerPort.ToString(CultureInfo.InvariantCulture)}"
+            : persisted.LastServerEndpoint;
+        UsernameInput = options.Username != "Explorer" ? options.Username : persisted.LastUsername;
+        ActiveViewDistance = options.ViewDistanceChunks != 4 ? Math.Clamp(options.ViewDistanceChunks, 1, 64) : Math.Clamp(persisted.ViewDistanceChunks, 2, 64);
+        FovDegrees = Math.Clamp(persisted.FovDegrees, 70.0f, 110.0f);
+        VSyncEnabled = persisted.VSync;
+        CloudsEnabled = persisted.CloudsEnabled;
+        ParticlesMode = persisted.ParticlesEnabled ? 0 : 2;
+        XRayEnabled = !_headlessMode && persisted.XRayEnabled;
+        GreedySectionMesher.XRayEnabled = XRayEnabled;
+
+        if (playerToHydrate is not null)
+        {
+            playerToHydrate.MasterVolume = Math.Clamp(persisted.MasterVolume, 0.0f, 1.0f);
+            playerToHydrate.MouseSensitivity = Math.Clamp(persisted.MouseSensitivity, 0.03f, 0.25f);
+            playerToHydrate.InvertMouseY = persisted.InvertMouseY;
+            playerToHydrate.Camera.FieldOfViewDegrees = FovDegrees;
+        }
+
         _splashText = SplashLines[(int)((uint)Environment.TickCount % (uint)SplashLines.Length)];
         RefreshSavedWorlds();
     }
@@ -68,12 +92,57 @@ internal sealed partial class ClientMenuController
     public string CreativeSearchQuery { get; set; } = string.Empty;
     public string StatusMessage { get; set; } = string.Empty;
     public int ActiveViewDistance { get; private set; }
+    public float FovDegrees { get; private set; } = 78.0f;
+    public bool VSyncEnabled { get; private set; } = true;
+    public bool CloudsEnabled { get; private set; } = true;
+    public int ParticlesMode { get; private set; }
+    public bool XRayEnabled { get; private set; }
+    public bool XRayDirtyRemeshRequested { get; set; }
+    public bool IsMultiplayerConnected { get; set; }
+    public bool IsLanOpen { get; set; }
     public Vector2 MousePosition { get; set; }
     public float PanoramaYawDegrees { get; set; }
     public float CloudDriftOffset { get; private set; }
+    private ClientPlayerController? _lastPlayerRef;
 
     public SavedWorldMetadata? SelectedSavedWorld =>
         _selectedWorldIndex >= 0 && _selectedWorldIndex < _savedWorlds.Count ? _savedWorlds[_selectedWorldIndex] : null;
+
+    public void SavePersistedSettings(ClientPlayerController? player = null)
+    {
+        if (_headlessMode) return;
+        var p = player ?? _lastPlayerRef;
+        var dto = new PersistedClientSettings
+        {
+            ViewDistanceChunks = ActiveViewDistance,
+            FovDegrees = FovDegrees,
+            MasterVolume = p?.MasterVolume ?? 1.0f,
+            MouseSensitivity = p?.MouseSensitivity ?? 0.12f,
+            InvertMouseY = p?.InvertMouseY ?? false,
+            VSync = VSyncEnabled,
+            CloudsEnabled = CloudsEnabled,
+            ParticlesEnabled = ParticlesMode < 2,
+            XRayEnabled = XRayEnabled,
+            LastUsername = string.IsNullOrWhiteSpace(UsernameInput) ? "Explorer" : UsernameInput,
+            LastServerEndpoint = string.IsNullOrWhiteSpace(ServerEndpointInput) ? "127.0.0.1:25565" : ServerEndpointInput,
+        };
+        dto.Save();
+    }
+
+    public void ToggleXRayMode(ClientPlayerController? player = null)
+    {
+        XRayEnabled = !XRayEnabled;
+        GreedySectionMesher.XRayEnabled = XRayEnabled;
+        XRayDirtyRemeshRequested = true;
+        SavePersistedSettings(player);
+    }
+
+    public void CloseOptionsAndReturn(ClientPlayerController? player = null)
+    {
+        _draggingSliderId = null;
+        SavePersistedSettings(player);
+        Mode = _returnModeFromOptions;
+    }
 
     public void RefreshSavedWorlds()
     {
@@ -98,7 +167,8 @@ internal sealed partial class ClientMenuController
 
     public void AdvanceAnimations(double dt, ClientPlayerController? player = null)
     {
-        CloudDriftOffset = (CloudDriftOffset + (float)(dt * 1.4)) % 1024.0f;
+        if (player is not null) _lastPlayerRef = player;
+        CloudDriftOffset = CloudsEnabled ? (CloudDriftOffset + (float)(dt * 1.4)) % 1024.0f : -99999.0f;
         if (Mode == UiOverlayMode.TitleMenu)
         {
             PanoramaYawDegrees = (PanoramaYawDegrees + (float)(dt * 9.0)) % 360.0f;
@@ -122,15 +192,11 @@ internal sealed partial class ClientMenuController
             return;
         }
 
-        if (Mode == UiOverlayMode.InGame)
+        if (Mode == UiOverlayMode.InGame && player.Mode != GameMode.Spectator)
         {
             _inventoryScrollRow = 0;
             StatusMessage = string.Empty;
-            if (player.Mode == GameMode.Creative)
-            {
-                player.Hotbar.SyncInventoryFromCreativeSlots();
-            }
-
+            player.Hotbar.SyncInventoryFromCreativeSlots();
             Mode = player.Mode == GameMode.Survival ? UiOverlayMode.SurvivalInventory : UiOverlayMode.BlockInventory;
         }
     }
@@ -175,15 +241,8 @@ internal sealed partial class ClientMenuController
     public void AppendTypedCharacter(char ch)
     {
         if (char.IsControl(ch)) return;
-        if (Mode == UiOverlayMode.ChatInput && ChatDraft.Length < 120)
-        {
-            ChatDraft += ch;
-        }
-        else if (Mode == UiOverlayMode.BlockInventory && _creativeTabIndex != 6 && CreativeSearchQuery.Length < 22)
-        {
-            CreativeSearchQuery += ch;
-            _inventoryScrollRow = 0;
-        }
+        if (Mode == UiOverlayMode.ChatInput && ChatDraft.Length < 120) ChatDraft += ch;
+        else if (Mode == UiOverlayMode.BlockInventory && _creativeTabIndex != 6 && CreativeSearchQuery.Length < 22) { CreativeSearchQuery += ch; _inventoryScrollRow = 0; }
         else if (Mode == UiOverlayMode.CreateWorldMenu)
         {
             if (FocusedInputField == 0 && NewWorldName.Length < 28) NewWorldName += ch;
@@ -204,15 +263,8 @@ internal sealed partial class ClientMenuController
 
     public void HandleBackspace()
     {
-        if (Mode == UiOverlayMode.ChatInput && ChatDraft.Length > 0)
-        {
-            ChatDraft = ChatDraft[..^1];
-        }
-        else if (Mode == UiOverlayMode.BlockInventory && CreativeSearchQuery.Length > 0)
-        {
-            CreativeSearchQuery = CreativeSearchQuery[..^1];
-            _inventoryScrollRow = 0;
-        }
+        if (Mode == UiOverlayMode.ChatInput && ChatDraft.Length > 0) ChatDraft = ChatDraft[..^1];
+        else if (Mode == UiOverlayMode.BlockInventory && CreativeSearchQuery.Length > 0) { CreativeSearchQuery = CreativeSearchQuery[..^1]; _inventoryScrollRow = 0; }
         else if (Mode == UiOverlayMode.CreateWorldMenu)
         {
             if (FocusedInputField == 0 && NewWorldName.Length > 0) NewWorldName = NewWorldName[..^1];
@@ -225,7 +277,14 @@ internal sealed partial class ClientMenuController
         }
     }
 
-    public void ReleaseSliderDrag() => _draggingSliderId = null;
+    public void ReleaseSliderDrag()
+    {
+        if (_draggingSliderId is not null)
+        {
+            _draggingSliderId = null;
+            SavePersistedSettings();
+        }
+    }
 
     public void HandleSliderDrag(Vector2 mousePos, Vector2 viewport, ClientPlayerController player)
     {
@@ -233,8 +292,8 @@ internal sealed partial class ClientMenuController
         if (_draggingSliderId is null || Mode != UiOverlayMode.OptionsMenu) return;
         var width = viewport.X > 64.0f ? viewport.X : 1280.0f;
         var height = viewport.Y > 64.0f ? viewport.Y : 720.0f;
-        var buttons = new List<UiButtonItem>(8);
-        ClientInventoryScreenBuilder.BuildStandardMenuButtons(Mode, width, height, mousePos, player, ServerEndpointInput, UsernameInput, FocusedInputField, _fovDegrees, ActiveViewDistance, _savedWorlds, _selectedWorldIndex, NewWorldName, NewWorldGameMode, NewWorldSeed, buttons);
+        var buttons = new List<UiButtonItem>(14);
+        ClientInventoryScreenBuilder.BuildStandardMenuButtons(Mode, width, height, mousePos, player, this, _savedWorlds, _selectedWorldIndex, buttons, IsMultiplayerConnected, IsLanOpen);
         for (var i = 0; i < buttons.Count; i++)
         {
             if (buttons[i].ActionId == _draggingSliderId)

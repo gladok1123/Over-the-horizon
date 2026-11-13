@@ -18,6 +18,7 @@ internal sealed class ClientPlayerVitalsAndAudio
     private double _ladderStepAccumulator;
     private double _drownTimer;
     private double _fireTickTimer;
+    private double _voidTickTimer;
     private double _swimSoundTimer;
     private double _underwaterAmbienceTimer;
     private int _stepPitchCounter;
@@ -28,6 +29,7 @@ internal sealed class ClientPlayerVitalsAndAudio
         _ladderStepAccumulator = 0.0;
         _drownTimer = 0.0;
         _fireTickTimer = 0.0;
+        _voidTickTimer = 0.0;
         _swimSoundTimer = 0.0;
         _underwaterAmbienceTimer = 0.0;
     }
@@ -117,6 +119,21 @@ internal sealed class ClientPlayerVitalsAndAudio
         if (player.Mode != GameMode.Survival)
         {
             return;
+        }
+
+        // The Void below Bedrock (Y < WorldMinY - 12 = -76): gradual 4.0 HP damage every 0.5s!
+        if (player.FeetPosition.Y < OverHorizon.Core.EngineConstants.WorldMinY - 12.0)
+        {
+            _voidTickTimer += dt;
+            if (_voidTickTimer >= 0.50)
+            {
+                _voidTickTimer -= 0.50;
+                _ = player.ApplyDamage(4.0f, audio, bypassArmor: true);
+            }
+        }
+        else
+        {
+            _voidTickTimer = 0.0;
         }
 
         if (feetBlockKey == BuiltInBlocks.Fire)

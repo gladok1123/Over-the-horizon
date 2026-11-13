@@ -11,7 +11,7 @@ namespace OverHorizon.Networking.Codec;
 /// <summary>
 /// Clean-room Java-style protocol codec implementing <c>Handshaking</c>, <c>Status</c>, <c>Login</c>, and <c>Play</c> states.
 /// </summary>
-public sealed class JavaProtocolCodec : IProtocolCodec
+public sealed partial class JavaProtocolCodec : IProtocolCodec
 {
     /// <summary>Default MVP wire protocol version identifier.</summary>
     public const int CurrentProtocolVersion = 767;
@@ -90,6 +90,14 @@ public sealed class JavaProtocolCodec : IProtocolCodec
                 PacketBufferWriter.WriteBool(destination, attack.IsCriticalHit);
                 break;
 
+            case PlayerEquipmentAndModePacket equip:
+                EncodePlayerEquipmentAndMode(destination, equip);
+                break;
+
+            case PlayerWorldInteractionPacket interact:
+                EncodePlayerWorldInteraction(destination, interact);
+                break;
+
             default:
                 throw new ProtocolException($"Unsupported serverbound packet type '{packet.GetType().Name}'.");
         }
@@ -112,6 +120,8 @@ public sealed class JavaProtocolCodec : IProtocolCodec
             (ConnectionState.Play, 0x02) => DecodeBlockAction(ref reader),
             (ConnectionState.Play, 0x03) => DecodeChat(ref reader),
             (ConnectionState.Play, 0x04) => DecodeAttackEntity(ref reader),
+            (ConnectionState.Play, 0x05) => DecodePlayerEquipmentAndMode(ref reader),
+            (ConnectionState.Play, 0x06) => DecodePlayerWorldInteraction(ref reader),
             _ => throw new ProtocolException($"Unknown serverbound packet ID 0x{packetId:X2} in state {state}."),
         };
 
@@ -247,6 +257,18 @@ public sealed class JavaProtocolCodec : IProtocolCodec
                 PacketBufferWriter.WriteInt64(destination, worldTime.WorldTimeTicks);
                 break;
 
+            case RemotePlayerEquipmentPacket remoteEquip:
+                EncodeRemotePlayerEquipment(destination, remoteEquip);
+                break;
+
+            case WorldEntitiesSnapshotPacket entitiesSnap:
+                EncodeWorldEntitiesSnapshot(destination, entitiesSnap);
+                break;
+
+            case InventoryGrantAndEventPacket grantEv:
+                EncodeInventoryGrantAndEvent(destination, grantEv);
+                break;
+
             default:
                 throw new ProtocolException($"Unsupported clientbound packet type '{packet.GetType().Name}'.");
         }
@@ -297,6 +319,9 @@ public sealed class JavaProtocolCodec : IProtocolCodec
             (ConnectionState.Play, 0x09) => DecodeCombatEvent(ref reader),
             (ConnectionState.Play, 0x0A) => DecodeMultiBlockUpdate(ref reader),
             (ConnectionState.Play, 0x0B) => new WorldTimeUpdatePacket(reader.ReadInt64()),
+            (ConnectionState.Play, 0x0C) => DecodeRemotePlayerEquipment(ref reader),
+            (ConnectionState.Play, 0x0D) => DecodeWorldEntitiesSnapshot(ref reader),
+            (ConnectionState.Play, 0x0E) => DecodeInventoryGrantAndEvent(ref reader),
             _ => throw new ProtocolException($"Unknown clientbound packet ID 0x{packetId:X2} in state {state}."),
         };
 

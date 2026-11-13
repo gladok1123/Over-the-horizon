@@ -2,13 +2,15 @@ using System.Globalization;
 using System.Numerics;
 using OverHorizon.Core.Math;
 using OverHorizon.Gameplay;
+using OverHorizon.Gameplay.Effects;
 using OverHorizon.Rendering.Hud;
 using OverHorizon.World.Lighting;
 
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Container click routing, button/slider activation, and <see cref="FrameOverlayState"/> assembly for <see cref="ClientMenuController"/>.
+/// Container click routing, double-click world entry, settings toggles, and <see cref="FrameOverlayState"/> assembly
+/// for <see cref="ClientMenuController"/>.
 /// </summary>
 internal sealed partial class ClientMenuController
 {
@@ -29,7 +31,7 @@ internal sealed partial class ClientMenuController
             }
         }
 
-        var buttons = new List<UiButtonItem>(12);
+        var buttons = new List<UiButtonItem>(14);
         var cells = new List<UiInventoryCell>(64);
         BuildScreenControls(width, height, player, buttons, cells);
 
@@ -102,7 +104,11 @@ internal sealed partial class ClientMenuController
         ClientChatHistory chatHistory,
         string latestDebugText,
         IReadOnlyList<MinecartVisual>? minecarts = null,
-        IReadOnlyList<ArrowProjectileVisual>? arrows = null)
+        IReadOnlyList<ArrowProjectileVisual>? arrows = null,
+        IReadOnlyList<DroppedItemVisual>? droppedItems = null,
+        IReadOnlyList<FallingBlockVisual>? fallingBlocks = null,
+        IReadOnlyList<WorldParticleVisual>? worldParticles = null,
+        IReadOnlyList<HudStatusEffectVisual>? statusEffects = null)
     {
         var width = viewport.X > 64.0f ? viewport.X : 1280.0f;
         var height = viewport.Y > 64.0f ? viewport.Y : 720.0f;
@@ -113,13 +119,13 @@ internal sealed partial class ClientMenuController
         var (title, subtitle) = Mode switch
         {
             UiOverlayMode.TitleMenu => ("OVER THE HORIZON", "C# EDITION"),
-            UiOverlayMode.WorldSelectMenu => ("SELECT WORLD", _savedWorlds.Count == 0 ? "No saved worlds yet — click 'Create New World'!" : "Choose a saved world or create a new one"),
-            UiOverlayMode.CreateWorldMenu => ("CREATE NEW WORLD", "Enter world name, choose Survival or Creative, and optional Seed"),
+            UiOverlayMode.WorldSelectMenu => ("SELECT WORLD", _savedWorlds.Count == 0 ? "No saved worlds yet - click 'Create New World'!" : "Double-click a world or click 'Play Selected World'"),
+            UiOverlayMode.CreateWorldMenu => ("CREATE NEW WORLD", "Enter world name, choose Game Mode, and optional Seed"),
             UiOverlayMode.MultiplayerMenu => ("PLAY MULTIPLAYER", "Enter server IP:Port or host a local server on TCP 25565"),
-            UiOverlayMode.OptionsMenu => ("OPTIONS", "Render Distance (2-64 Chunks), FOV, Sound Volume & Sensitivity"),
-            UiOverlayMode.PauseMenu => ("GAME MENU", $"Mode: {player.Mode} — Press Esc to resume"),
+            UiOverlayMode.OptionsMenu => ("OPTIONS", "Controls: LMB Mine | RMB Use/Shield | MMB Pick Block | Q Drop | F Offhand | E Inv | F4 Mode"),
+            UiOverlayMode.PauseMenu => ("GAME MENU", IsLanOpen ? "Hosted on LAN (TCP 25565) - Press Esc to resume" : $"Mode: {player.Mode} - Press Esc to resume"),
             UiOverlayMode.BlockInventory => (ClientInventoryScreenBuilder.GetCreativeTabTitle(_creativeTabIndex), string.Empty),
-            UiOverlayMode.DeathScreen => ("YOU DIED!", "Click Respawn to return to your bed or world spawn"),
+            UiOverlayMode.DeathScreen => ("YOU DIED!", "Your items dropped in the world - click Respawn to continue"),
             _ => (string.Empty, string.Empty),
         };
 
@@ -127,15 +133,16 @@ internal sealed partial class ClientMenuController
         List<UiInventoryCell>? invCells = null;
         if (Mode is not (UiOverlayMode.InGame or UiOverlayMode.ChatInput))
         {
-            buttons = new List<UiButtonItem>(12);
+            buttons = new List<UiButtonItem>(14);
             invCells = new List<UiInventoryCell>(64);
             BuildScreenControls(width, height, player, buttons, invCells);
         }
 
         var (eyeSky, eyeBlock) = worldCache.GetLight(player.Camera.Position.ToBlockPos());
+        var nightVisionBoost = player.StatusEffects.HasEffect(StatusEffectType.NightVision) ? (byte)15 : (byte)0;
         var effectiveSky = (byte)Math.Clamp((int)MathF.Round(eyeSky * skyBrightness), 0, 15);
         var furnaceBoost = _containers.ComputeNearbyLitFurnaceLight(player.Camera.Position);
-        var heldEmit = player.Hotbar.CombinedHeldLightEmission;
+        var heldEmit = Math.Max(player.Hotbar.CombinedHeldLightEmission, nightVisionBoost);
         var effLevel = LightingEngine.ComputeEffectiveLightLevel(effectiveSky, Math.Max(eyeBlock, furnaceBoost), heldEmit);
         var handBright = LightingEngine.LightLevelToBrightness(effLevel);
 
@@ -143,7 +150,7 @@ internal sealed partial class ClientMenuController
         var curStack = _containers.CursorStack;
         var cursorTile = curStack.IsEmpty ? -1 : player.Hotbar.ResolveAtlasTile(_items.GetById(curStack.ItemId).Key);
 
-        BlockPos? targetBlock = Mode == UiOverlayMode.InGame ? player.CurrentTarget?.BlockPosition : null;
+        BlockPos? targetBlock = (Mode == UiOverlayMode.InGame && player.Mode != GameMode.Spectator) ? player.CurrentTarget?.BlockPosition : null;
         BoundingBox? targetBox = null;
         if (targetBlock is { } tb && worldCache.TryGetSelectionBox(tb, out var selBounds))
         {
@@ -176,6 +183,7 @@ internal sealed partial class ClientMenuController
             ActiveBlockDisplayName = player.Hotbar.SelectedBlockDisplayName,
             HeldBlockColor = player.Hotbar.SelectedBlockColor,
             HandSwingProgress = player.HandSwingProgress,
+            OffhandSwingProgress = player.OffhandSwingProgress,
             WalkBobPhase = player.WalkBobPhase,
             CloudDriftOffset = CloudDriftOffset,
             DebugOverlayText = player.IsDebugOverlayVisible ? latestDebugText : string.Empty,
@@ -189,6 +197,7 @@ internal sealed partial class ClientMenuController
             InventoryCells = invCells,
             IsUnderwater = player.IsHeadUnderwater,
             IsSurvivalMode = player.Mode == GameMode.Survival,
+            IsSpectatorMode = player.Mode == GameMode.Spectator,
             IsCreativeFlying = player.IsFlying,
             Health = player.Health,
             MaxHealth = 20.0f,
@@ -218,6 +227,8 @@ internal sealed partial class ClientMenuController
             OffhandBottomTile = player.Hotbar.OffhandBottomTile,
             OffhandItemSpriteTile = player.Hotbar.OffhandItemTile,
             OffhandCount = player.Hotbar.OffhandCount,
+            IsBlockingShield = player.IsBlockingShield,
+            ShieldRaiseNormalized = player.ShieldRaiseNormalized,
             HeldLightBrightness = handBright,
             HeldTorchLightLevel = Math.Max(heldEmit, furnaceBoost),
             CursorScreenPos = MousePosition,
@@ -239,6 +250,10 @@ internal sealed partial class ClientMenuController
             LocalPlayerArmor = player.Hotbar.BuildLocalArmorVisual(),
             Minecarts = minecarts,
             Arrows = arrows,
+            DroppedItems = droppedItems,
+            FallingBlocks = fallingBlocks,
+            WorldParticles = worldParticles,
+            StatusEffects = statusEffects,
             HeldIsBow = player.Hotbar.SelectedIsBow,
             BowChargeNormalized = player.BowChargeNormalized,
             ChunkFogDistance = chunkFogDist,
@@ -252,7 +267,7 @@ internal sealed partial class ClientMenuController
         switch (b.ActionId)
         {
             case "slider_view_dist": ActiveViewDistance = Math.Clamp((int)MathF.Round(2.0f + (t * 62.0f)), 2, 64); break;
-            case "slider_fov": _fovDegrees = MathF.Round(70.0f + (t * 40.0f)); player.Camera.FieldOfViewDegrees = _fovDegrees; break;
+            case "slider_fov": FovDegrees = MathF.Round(70.0f + (t * 40.0f)); player.Camera.FieldOfViewDegrees = FovDegrees; break;
             case "slider_volume": player.MasterVolume = MathF.Round(t * 100.0f) / 100.0f; break;
             case "slider_sensitivity": player.MouseSensitivity = 0.03f + (t * 0.22f); break;
         }
@@ -263,8 +278,13 @@ internal sealed partial class ClientMenuController
         StatusMessage = string.Empty;
         if (id.StartsWith("select_world_", StringComparison.Ordinal) && int.TryParse(id.AsSpan(13), out var wIdx))
         {
-            _selectedWorldIndex = Math.Clamp(wIdx, 0, Math.Max(0, _savedWorlds.Count - 1));
-            return id;
+            var clamped = Math.Clamp(wIdx, 0, Math.Max(0, _savedWorlds.Count - 1));
+            var now = _uiClickWatch.Elapsed.TotalSeconds;
+            var isDoubleClick = clamped == _lastClickedWorldIndex && (now - _lastWorldClickTimeSeconds) <= 0.48 && _savedWorlds.Count > 0;
+            _selectedWorldIndex = clamped;
+            _lastClickedWorldIndex = clamped;
+            _lastWorldClickTimeSeconds = now;
+            return isDoubleClick ? "play_selected_world" : id;
         }
 
         switch (id)
@@ -276,7 +296,14 @@ internal sealed partial class ClientMenuController
                 FocusedInputField = 0;
                 Mode = UiOverlayMode.CreateWorldMenu;
                 return id;
-            case "toggle_create_gamemode": NewWorldGameMode = NewWorldGameMode == GameMode.Survival ? GameMode.Creative : GameMode.Survival; return id;
+            case "toggle_create_gamemode":
+                NewWorldGameMode = NewWorldGameMode switch
+                {
+                    GameMode.Survival => GameMode.Creative,
+                    GameMode.Creative => GameMode.Spectator,
+                    _ => GameMode.Survival,
+                };
+                return id;
             case "focus_world_name": FocusedInputField = 0; return id;
             case "focus_world_seed": FocusedInputField = 1; return id;
             case "delete_selected_world":
@@ -298,11 +325,19 @@ internal sealed partial class ClientMenuController
                 return "play_selected_world";
             case "resume": CloseContainerAndRefundCursor(player); Mode = UiOverlayMode.InGame; return id;
             case "respawn_player": player.Respawn(); Mode = UiOverlayMode.InGame; return id;
-            case "toggle_gamemode": player.SetGameMode(player.Mode == GameMode.Creative ? GameMode.Survival : GameMode.Creative); return id;
+            case "toggle_gamemode": _ = player.CycleNextGameMode(); return id;
+            case "toggle_xray": ToggleXRayMode(player); return id;
+            case "toggle_clouds": CloudsEnabled = !CloudsEnabled; SavePersistedSettings(player); return id;
+            case "toggle_particles": ParticlesMode = (ParticlesMode + 1) % 3; SavePersistedSettings(player); return id;
+            case "toggle_vsync": VSyncEnabled = !VSyncEnabled; SavePersistedSettings(player); return id;
+            case "toggle_invert_y": player.InvertMouseY = !player.InvertMouseY; SavePersistedSettings(player); return id;
             case "open_multiplayer": FocusedInputField = 0; Mode = UiOverlayMode.MultiplayerMenu; return id;
             case "open_options": _returnModeFromOptions = Mode; Mode = UiOverlayMode.OptionsMenu; return id;
-            case "options_done": Mode = _returnModeFromOptions; return id;
-            case "open_inventory": Mode = player.Mode == GameMode.Survival ? UiOverlayMode.SurvivalInventory : UiOverlayMode.BlockInventory; return id;
+            case "options_done": CloseOptionsAndReturn(player); return id;
+            case "open_inventory":
+                if (player.Mode == GameMode.Spectator) return id;
+                Mode = player.Mode == GameMode.Survival ? UiOverlayMode.SurvivalInventory : UiOverlayMode.BlockInventory;
+                return id;
             case "back_to_title": Mode = UiOverlayMode.TitleMenu; return id;
             case "focus_endpoint": FocusedInputField = 0; return id;
             case "focus_username": FocusedInputField = 1; return id;
@@ -325,6 +360,6 @@ internal sealed partial class ClientMenuController
         }
 
         ClientInventoryScreenBuilder.BuildStandardMenuButtons(
-            Mode, width, height, MousePosition, player, ServerEndpointInput, UsernameInput, FocusedInputField, _fovDegrees, ActiveViewDistance, _savedWorlds, _selectedWorldIndex, NewWorldName, NewWorldGameMode, NewWorldSeed, buttons);
+            Mode, width, height, MousePosition, player, this, _savedWorlds, _selectedWorldIndex, buttons, IsMultiplayerConnected, IsLanOpen);
     }
 }

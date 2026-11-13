@@ -119,8 +119,19 @@ public static partial class ProceduralAtlasGenerator
     internal const ushort TilePoweredRailOff = 89;
     internal const ushort TilePoweredRailOn = 100;
     internal const ushort TileRedBedHeadSide = 101;
+    internal const ushort TileComparatorOff = 102;
+    internal const ushort TileComparatorOn = 103;
+    internal const ushort TileComposterSide = 104;
+    internal const ushort TileComposterTop = 105;
+    internal const ushort TileComposterBottom = 106;
+    internal const ushort TileComposterCompost = 107;
+    internal const ushort TileOakTrapdoor = 108;
+    internal const ushort TileMonsterSpawner = 109;
+    internal const ushort TileAmethystBlock = 110;
+    internal const ushort TileMossyStoneBricks = 111;
+    internal const ushort TileChiseledSandstone = 112;
 
-    private const ushort FirstCustomTile = 104;
+    private const ushort FirstCustomTile = 114;
     private const ushort FirstItemSpriteTile = 128;
 
     /// <summary>Creates the default <c>256x256</c> block &amp; item texture atlas.</summary>

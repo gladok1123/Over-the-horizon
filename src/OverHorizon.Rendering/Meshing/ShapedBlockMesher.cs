@@ -41,6 +41,10 @@ internal static partial class ShapedBlockMesher
                key == BuiltInBlocks.StoneButton ||
                key == BuiltInBlocks.StonePressurePlate ||
                key == BuiltInBlocks.RedstoneRepeater ||
+               key == BuiltInBlocks.RedstoneComparator ||
+               key == BuiltInBlocks.Composter ||
+               key == BuiltInBlocks.OakTrapdoor ||
+               key == BuiltInBlocks.MonsterSpawner ||
                key == BuiltInBlocks.PistonHead ||
                key == BuiltInBlocks.Fire ||
                key == BuiltInBlocks.RedBed;
@@ -105,9 +109,18 @@ internal static partial class ShapedBlockMesher
                     {
                         EmitLadderWithFacing(opaqueVerts, opaqueIndices, origin, atlas.GetTileIndex(key, Direction.North), meta, packedLight);
                     }
-                    else if (key == BuiltInBlocks.Cobweb || key == BuiltInBlocks.Fire)
+                    else if (key == BuiltInBlocks.Cobweb)
                     {
                         EmitCrossPlanes(opaqueVerts, opaqueIndices, origin, atlas.GetTileIndex(key, Direction.North), packedLight);
+                    }
+                    else if (key == BuiltInBlocks.Fire)
+                    {
+                        EmitFireFlames(opaqueVerts, opaqueIndices, origin, atlas.GetTileIndex(key, Direction.North), packedLight);
+                    }
+                    else if (key == BuiltInBlocks.RedstoneComparator || key == BuiltInBlocks.Composter ||
+                             key == BuiltInBlocks.OakTrapdoor || key == BuiltInBlocks.MonsterSpawner)
+                    {
+                        EmitComparatorComposterTrapdoorOrSpawner(opaqueVerts, opaqueIndices, origin, meta, packedLight);
                     }
                     else if (key == BuiltInBlocks.OakFence)
                     {

@@ -11,14 +11,14 @@ using OverHorizon.Rendering.Textures;
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Manages the 9-slot quick-access hotbar, the 41-slot <see cref="PlayerInventory"/> (including 4 Armor slots and Offhand slot 40),
-/// and the Creative Catalog with <c>16x16</c> atlas sprite tile mappings and 3D held-viewmodel face tiles.
+/// Manages the unified 41-slot <see cref="PlayerInventory"/> (9 hotbar + 27 storage + 4 armor + 1 offhand)
+/// shared seamlessly across Creative, Survival, and Spectator modes, plus Middle-Click Pick Block,
+/// Bow arrow consumption, death item drop extraction, and Creative Catalog metadata.
 /// </summary>
 public sealed partial class ClientHotbar
 {
     private readonly IBlockRegistry _blocks;
     private readonly IRegistry<ItemDefinition> _items;
-    private readonly int[] _creativeSlots = [0, 1, 2, 3, 4, 5, 6, 7, 8];
     private readonly Vector3[] _hotbarColors = new Vector3[PlayerInventory.HotbarSlotCount];
     private readonly int[] _hotbarTiles = new int[PlayerInventory.HotbarSlotCount];
     private readonly int[] _hotbarCounts = new int[PlayerInventory.HotbarSlotCount];
@@ -34,7 +34,7 @@ public sealed partial class ClientHotbar
         _items = items ?? BuiltInItems.CreateFrozen(blocks);
         _atlas = atlas;
         SurvivalInventory = new PlayerInventory();
-        PopulateStarterSurvivalGear();
+        SeedInitialCreativeHotbar();
         RefreshSlotVisuals(GameMode.Creative);
     }
 
@@ -47,17 +47,24 @@ public sealed partial class ClientHotbar
     /// <summary>Gets the active zero-based hotbar slot index (<c>0..8</c>).</summary>
     public int SelectedSlot => _selectedSlot;
 
-    /// <summary>Gets the 41-slot player inventory.</summary>
+    /// <summary>Gets the single unified 41-slot player inventory shared across all game modes.</summary>
     public PlayerInventory SurvivalInventory { get; }
 
-    /// <summary>Gets the active <see cref="GameMode"/> mirrored into hotbar slots.</summary>
+    /// <summary>Gets the active <see cref="GameMode"/> mirrored into hotbar visuals.</summary>
     public GameMode ActiveMode { get; private set; } = GameMode.Creative;
 
     /// <summary>Gets the frozen item registry associated with this hotbar.</summary>
     public IRegistry<ItemDefinition> Items => _items;
 
     /// <summary>Gets the currently held main-hand <see cref="ItemDefinition"/>, or <see langword="null"/> when empty-handed.</summary>
-    public ItemDefinition? SelectedItem => GetSlotItem(_selectedSlot);
+    public ItemDefinition? SelectedItem
+    {
+        get
+        {
+            var st = SurvivalInventory.GetSlot(_selectedSlot);
+            return st.IsEmpty ? null : _items.GetById(st.ItemId);
+        }
+    }
 
     /// <summary>Gets the currently held offhand <see cref="ItemDefinition"/>, or <see langword="null"/> when empty.</summary>
     public ItemDefinition? OffhandItem
@@ -76,9 +83,15 @@ public sealed partial class ClientHotbar
     public ResourceKey OffhandKey => OffhandItem?.Key ?? BuiltInBlocks.Air;
 
     /// <summary>Gets the display name of the currently selected item or block.</summary>
-    public string SelectedBlockDisplayName => ActiveMode == GameMode.Creative && _creativeSlots[_selectedSlot] >= 0
-        ? Catalog[_creativeSlots[_selectedSlot]].DisplayName
-        : (SelectedItem?.EffectiveName ?? string.Empty);
+    public string SelectedBlockDisplayName
+    {
+        get
+        {
+            if (SelectedItem is not { } def) return string.Empty;
+            var idx = FindCatalogIndex(def.Key);
+            return idx >= 0 ? Catalog[idx].DisplayName : def.EffectiveName;
+        }
+    }
 
     /// <summary>Gets the representative 3D viewmodel RGB tint of the selected slot.</summary>
     public Vector3 SelectedBlockColor => _hotbarColors[_selectedSlot];
@@ -183,16 +196,6 @@ public sealed partial class ClientHotbar
         LeggingsTier: ResolveArmorTierCode(SurvivalInventory.GetSlot(PlayerInventory.ArmorSlotStart + 2)),
         BootsTier: ResolveArmorTierCode(SurvivalInventory.GetSlot(PlayerInventory.ArmorSlotStart + 3)));
 
-    private byte ResolveArmorTierCode(ItemStack stack)
-    {
-        if (stack.IsEmpty) return 0;
-        var path = _items.GetById(stack.ItemId).Key.Path;
-        if (path.StartsWith("leather_", StringComparison.Ordinal)) return 1;
-        if (path.StartsWith("iron_", StringComparison.Ordinal)) return 2;
-        if (path.StartsWith("golden_", StringComparison.Ordinal)) return 3;
-        return path.StartsWith("diamond_", StringComparison.Ordinal) ? (byte)4 : (byte)0;
-    }
-
     /// <summary>Gets the default <see cref="BlockState"/> placed by the selected item.</summary>
     public BlockState SelectedBlockState =>
         SelectedItem?.PlacedBlockKey is { } blockKey ? _blocks.GetDefaultState(blockKey) : BlockState.Air;
@@ -217,91 +220,147 @@ public sealed partial class ClientHotbar
     /// <summary>Swaps the currently selected main-hand slot with the offhand slot (<c>F</c> key).</summary>
     public void SwapMainHandAndOffhand()
     {
-        if (ActiveMode == GameMode.Creative)
-        {
-            var oldOffhand = SurvivalInventory.OffhandItem;
-            var curMainIdx = _creativeSlots[_selectedSlot];
-            if (curMainIdx >= 0)
-            {
-                var mainId = (ushort)_items.GetId(Catalog[curMainIdx].Key);
-                SurvivalInventory.OffhandItem = mainId > 0 ? new ItemStack(mainId, 1) : ItemStack.Empty;
-            }
-            else
-            {
-                SurvivalInventory.OffhandItem = ItemStack.Empty;
-            }
-
-            if (oldOffhand.IsEmpty)
-            {
-                _creativeSlots[_selectedSlot] = -1;
-            }
-            else
-            {
-                var offKey = _items.GetById(oldOffhand.ItemId).Key;
-                _creativeSlots[_selectedSlot] = FindCatalogIndex(offKey);
-            }
-        }
-        else
-        {
-            SurvivalInventory.SwapMainHandAndOffhand();
-        }
-
+        SurvivalInventory.SelectedHotbarSlot = _selectedSlot;
+        SurvivalInventory.SwapMainHandAndOffhand();
         RefreshSlotVisuals(ActiveMode);
     }
 
-    /// <summary>Clears a Creative hotbar slot (used by the Creative Delete Item / Trash slot).</summary>
+    /// <summary>Clears a hotbar slot (used by the Creative Delete Item / Trash slot).</summary>
     public void ClearCreativeSlot(int hotbarSlot)
     {
         var clamped = Math.Clamp(hotbarSlot, 0, PlayerInventory.HotbarSlotCount - 1);
-        _creativeSlots[clamped] = -1;
         SurvivalInventory.SetSlot(clamped, ItemStack.Empty);
         RefreshSlotVisuals(ActiveMode);
     }
 
-    /// <summary>Synchronizes <c>_creativeSlots[slot]</c> from <see cref="SurvivalInventory"/> after a GUI drag-and-drop click.</summary>
+    /// <summary>Refreshes unified hotbar visuals after an inventory slot mutation.</summary>
     public void SyncCreativeSlotFromInventory(int slotIndex)
     {
-        if (slotIndex is < 0 or >= PlayerInventory.HotbarSlotCount) return;
-        var st = SurvivalInventory.GetSlot(slotIndex);
-        _creativeSlots[slotIndex] = st.IsEmpty ? -1 : FindCatalogIndex(_items.GetById(st.ItemId).Key);
+        _ = slotIndex;
+        RefreshSlotVisuals(ActiveMode);
     }
 
-    /// <summary>Synchronizes Creative hotbar slots into <see cref="SurvivalInventory"/> when opening the Creative GUI.</summary>
-    public void SyncInventoryFromCreativeSlots()
-    {
-        for (var i = 0; i < PlayerInventory.HotbarSlotCount; i++)
-        {
-            var cur = SurvivalInventory.GetSlot(i);
-            var cIdx = _creativeSlots[i];
-            if (cIdx < 0)
-            {
-                if (!cur.IsEmpty) SurvivalInventory.SetSlot(i, ItemStack.Empty);
-                continue;
-            }
+    /// <summary>Refreshes unified hotbar visuals when opening the Creative GUI.</summary>
+    public void SyncInventoryFromCreativeSlots() => RefreshSlotVisuals(ActiveMode);
 
-            var key = Catalog[cIdx].Key;
-            var rawId = _items.GetId(key);
-            if (rawId > 0 && cur.ItemId != rawId)
-            {
-                SurvivalInventory.SetSlot(i, new ItemStack((ushort)rawId, 1));
-            }
-        }
-    }
-
-    /// <summary>Clears all 41 inventory slots (hotbar, storage, armor, offhand) and Creative quick-slots.</summary>
+    /// <summary>Clears all 41 unified inventory slots.</summary>
     public void ClearEntireInventory()
     {
+        SurvivalInventory.Clear();
+        RefreshSlotVisuals(ActiveMode);
+    }
+
+    /// <summary>Extracts all non-empty stacks for 3D death drops and leaves the inventory empty (never resetting to Creative blocks).</summary>
+    public List<ItemStack> ExtractAndClearInventoryForDeathDrop()
+    {
+        var drops = new List<ItemStack>(16);
         for (var i = 0; i < PlayerInventory.TotalSlotCount; i++)
         {
-            SurvivalInventory.SetSlot(i, ItemStack.Empty);
-        }
-
-        if (ActiveMode == GameMode.Creative)
-        {
-            Array.Fill(_creativeSlots, -1);
+            var st = SurvivalInventory.GetSlot(i);
+            if (!st.IsEmpty)
+            {
+                drops.Add(st);
+                SurvivalInventory.SetSlot(i, ItemStack.Empty);
+            }
         }
 
         RefreshSlotVisuals(ActiveMode);
+        return drops;
+    }
+
+    /// <summary>Middle-Click Pick Block: selects matching hotbar slot, swaps from storage, or spawns in Creative.</summary>
+    public bool TryPickBlock(ResourceKey targetItemKey, GameMode mode)
+    {
+        if (!_items.TryGet(targetItemKey, out var itemDef) || targetItemKey == BuiltInBlocks.Air)
+        {
+            return false;
+        }
+
+        for (var h = 0; h < PlayerInventory.HotbarSlotCount; h++)
+        {
+            if (SurvivalInventory.GetSlot(h).ItemId == itemDef.NumericId)
+            {
+                SelectSlot(h);
+                RefreshSlotVisuals(mode);
+                return true;
+            }
+        }
+
+        for (var s = PlayerInventory.HotbarSlotCount; s < PlayerInventory.MainSlotCount; s++)
+        {
+            var st = SurvivalInventory.GetSlot(s);
+            if (st.ItemId == itemDef.NumericId)
+            {
+                var cur = SurvivalInventory.GetSlot(_selectedSlot);
+                SurvivalInventory.SetSlot(_selectedSlot, st);
+                SurvivalInventory.SetSlot(s, cur);
+                RefreshSlotVisuals(mode);
+                return true;
+            }
+        }
+
+        if (mode != GameMode.Creative)
+        {
+            return false;
+        }
+
+        if (!SurvivalInventory.GetSlot(_selectedSlot).IsEmpty)
+        {
+            for (var h = 0; h < PlayerInventory.HotbarSlotCount; h++)
+            {
+                if (SurvivalInventory.GetSlot(h).IsEmpty)
+                {
+                    SelectSlot(h);
+                    break;
+                }
+            }
+        }
+
+        SurvivalInventory.SetSlot(_selectedSlot, new ItemStack(itemDef.NumericId, 1));
+        RefreshSlotVisuals(mode);
+        return true;
+    }
+
+    /// <summary>Returns <see langword="true"/> if the player can draw a Bow (Creative or owns at least one Arrow).</summary>
+    public bool HasArrowForBow(GameMode mode)
+    {
+        if (mode == GameMode.Creative) return true;
+        if (!_items.TryGet(BuiltInItems.Arrow, out var arrowDef)) return false;
+        if (SurvivalInventory.OffhandItem.ItemId == arrowDef.NumericId) return true;
+        for (var i = 0; i < PlayerInventory.MainSlotCount; i++)
+        {
+            if (SurvivalInventory.GetSlot(i).ItemId == arrowDef.NumericId) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Consumes 1 Arrow from Offhand or main inventory in Survival (infinite in Creative).</summary>
+    public bool TryConsumeArrowForBow(GameMode mode)
+    {
+        if (mode == GameMode.Creative) return true;
+        if (!_items.TryGet(BuiltInItems.Arrow, out var arrowDef)) return false;
+
+        var off = SurvivalInventory.OffhandItem;
+        if (off.ItemId == arrowDef.NumericId && off.Count > 0)
+        {
+            SurvivalInventory.OffhandItem = off.Count > 1 ? new ItemStack(arrowDef.NumericId, off.Count - 1) : ItemStack.Empty;
+            RefreshSlotVisuals(mode);
+            return true;
+        }
+
+        for (var i = 0; i < PlayerInventory.MainSlotCount; i++)
+        {
+            var st = SurvivalInventory.GetSlot(i);
+            if (st.ItemId == arrowDef.NumericId && st.Count > 0)
+            {
+                SurvivalInventory.SetSlot(i, st.Count > 1 ? new ItemStack(arrowDef.NumericId, st.Count - 1) : ItemStack.Empty);
+                RefreshSlotVisuals(mode);
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>Finds the Creative Catalog index for <paramref name="key"/>, or <c>-1</c> if absent.</summary>
@@ -340,29 +399,6 @@ public sealed partial class ClientHotbar
         return idx >= 0 ? Catalog[idx].Color : new Vector3(0.65f, 0.65f, 0.68f);
     }
 
-    /// <summary>Builds a concise gameplay stats line for hover tooltips.</summary>
-    public string BuildTooltipDetail(ResourceKey key)
-    {
-        if (!_items.TryGet(key, out var def)) return string.Empty;
-        if (key == BuiltInItems.Shield) return "+2 Defense (Press F to hold in Offhand!)";
-        if (def.ArmorDefense > 0) return $"+{def.ArmorDefense} Armor Defense (Equip in Armor Slot or Right-Click)";
-        if (def.ToolType == ToolKind.Sword) return $"+{def.AttackDamage:F0} Melee Damage (Jump Crit: {def.AttackDamage * 1.5f:F1})";
-        if (def.ToolType != ToolKind.None) return $"{def.ToolType} Tier {def.ToolTier} (Speed x{def.MiningSpeedMultiplier:F1}, +{def.AttackDamage:F1} Dmg)";
-        if (def.HeldLightEmission > 0) return $"Emits Light Level {def.HeldLightEmission} (Dynamic Held + Offhand Illumination!)";
-
-        return def.UseAction switch
-        {
-            ItemUseAction.EatFood => $"Food: +{def.FoodNutrition} Hunger, +{def.FoodSaturation:F1} Sat",
-            ItemUseAction.WaterBucket => "Right-Click: Pour flowing Water source",
-            ItemUseAction.EmptyBucket => "Right-Click: Scoop Water source",
-            ItemUseAction.IgniteTnt => "Right-Click: Spark Fire or ignite physics TNT",
-            ItemUseAction.DrawBow => "Hold Right-Click to draw & release 3D ballistic Arrows!",
-            ItemUseAction.PlaceMinecart => "Right-Click on Rail / Powered Rail to place & ride!",
-            ItemUseAction.PlaceBlock => "Placeable Voxel Block (Right-Click)",
-            _ => key == BuiltInItems.Arrow ? "Ammunition for Bow (consumed in Survival)" : "Crafting & Smelting Material",
-        };
-    }
-
     /// <summary>Selects a specific zero-based hotbar slot (<c>0..8</c>).</summary>
     public void SelectSlot(int slotIndex)
     {
@@ -383,7 +419,6 @@ public sealed partial class ClientHotbar
     {
         var s = Math.Clamp(hotbarSlot, 0, PlayerInventory.HotbarSlotCount - 1);
         var p = Math.Clamp(paletteIndex, 0, Catalog.Length - 1);
-        _creativeSlots[s] = p;
         var rawId = _items.GetId(Catalog[p].Key);
         if (rawId > 0)
         {
@@ -395,101 +430,4 @@ public sealed partial class ClientHotbar
 
     /// <summary>Equips a Creative Catalog item into the currently selected hotbar slot.</summary>
     public void EquipPaletteBlock(int paletteIndex) => EquipPaletteEntryInSlot(paletteIndex, _selectedSlot);
-
-    /// <summary>Populates starter Survival gear.</summary>
-    public void PopulateStarterSurvivalGear()
-    {
-        SurvivalInventory.Clear();
-        SetStarterSlot(0, BuiltInItems.WoodenPickaxe, 1);
-        SetStarterSlot(1, BuiltInItems.StoneSword, 1);
-        SetStarterSlot(2, BuiltInBlocks.Torch, 16);
-        SetStarterSlot(3, BuiltInItems.Bread, 8);
-        SetStarterSlot(4, BuiltInBlocks.Cobblestone, 16);
-        SetStarterSlot(5, BuiltInBlocks.CraftingTable, 1);
-        SetStarterSlot(6, BuiltInBlocks.Furnace, 1);
-        SetStarterSlot(7, BuiltInItems.Bucket, 1);
-    }
-
-    /// <summary>Synchronizes hotbar sprite tiles, counts, and fallback colors for <paramref name="mode"/>.</summary>
-    public void RefreshSlotVisuals(GameMode mode)
-    {
-        ActiveMode = mode;
-        for (var i = 0; i < PlayerInventory.HotbarSlotCount; i++)
-        {
-            if (mode == GameMode.Creative)
-            {
-                var cIdx = _creativeSlots[i];
-                if (cIdx < 0)
-                {
-                    _hotbarColors[i] = new Vector3(0.16f, 0.17f, 0.20f);
-                    _hotbarTiles[i] = -1;
-                    _hotbarCounts[i] = 0;
-                }
-                else
-                {
-                    var entry = Catalog[cIdx];
-                    _hotbarColors[i] = entry.Color;
-                    _hotbarTiles[i] = ResolveAtlasTile(entry.Key);
-                    _hotbarCounts[i] = 1;
-                }
-            }
-            else
-            {
-                var stack = SurvivalInventory.GetSlot(i);
-                if (stack.IsEmpty)
-                {
-                    _hotbarColors[i] = new Vector3(0.16f, 0.17f, 0.20f);
-                    _hotbarTiles[i] = -1;
-                    _hotbarCounts[i] = 0;
-                }
-                else
-                {
-                    var def = _items.GetById(stack.ItemId);
-                    _hotbarColors[i] = ResolveFallbackColor(def.Key);
-                    _hotbarTiles[i] = ResolveAtlasTile(def.Key);
-                    _hotbarCounts[i] = stack.Count;
-                }
-            }
-        }
-    }
-
-    private static bool IsToolOrWeapon(ItemDefinition? item) =>
-        item is { } def && def.Key != BuiltInItems.Shield &&
-        (def.ToolType != ToolKind.None || def.Key == BuiltInItems.Stick || def.Key == BuiltInItems.Bone);
-
-    private static bool IsTorchStyleKey(ResourceKey key) =>
-        key == BuiltInBlocks.Torch || key == BuiltInBlocks.RedstoneTorch || key == BuiltInBlocks.Lantern || key == BuiltInBlocks.Lever;
-
-    private static bool IsBlock3DCube(ItemDefinition? item) =>
-        item?.PlacedBlockKey is { } bk &&
-        !IsTorchStyleKey(bk) &&
-        bk != BuiltInBlocks.Rail &&
-        bk != BuiltInBlocks.PoweredRail &&
-        bk != BuiltInBlocks.RedBed &&
-        bk != BuiltInBlocks.Ladder &&
-        bk != BuiltInBlocks.Cobweb &&
-        bk != BuiltInBlocks.RedstoneWire &&
-        bk != BuiltInBlocks.RedstoneRepeater;
-
-    private int GetFaceTile(ItemDefinition? item, Direction face) =>
-        _atlas is not null && item?.PlacedBlockKey is { } bk ? _atlas.GetTileIndex(bk, face) : -1;
-
-    private void SetStarterSlot(int slot, ResourceKey key, int count)
-    {
-        var id = _items.GetId(key);
-        if (id > 0) SurvivalInventory.SetSlot(slot, new ItemStack((ushort)id, count));
-    }
-
-    private ItemDefinition? GetSlotItem(int slot)
-    {
-        if (ActiveMode == GameMode.Creative)
-        {
-            var cIdx = _creativeSlots[slot];
-            if (cIdx < 0) return null;
-            return _items.TryGet(Catalog[cIdx].Key, out var def) ? def : null;
-        }
-
-        var stack = SurvivalInventory.GetSlot(slot);
-        return stack.IsEmpty ? null : _items.GetById(stack.ItemId);
-    }
 }

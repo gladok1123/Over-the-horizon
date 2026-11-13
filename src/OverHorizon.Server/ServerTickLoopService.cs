@@ -119,7 +119,9 @@ public sealed class ServerTickLoopService : BackgroundService
 
                 if (_playBridge is not null)
                 {
-                    _playBridge.WorldTime.AdvanceSeconds(1.0 / _options.TicksPerSecond);
+                    var dt = 1.0 / _options.TicksPerSecond;
+                    _playBridge.WorldTime.AdvanceSeconds(dt);
+                    _playBridge.StepWorldEntitiesAndSync(dt, tickNumber, _networkServer);
                     if (_networkServer is not null && (tickNumber % 100) == 0)
                     {
                         _networkServer.BroadcastToPlaySessions(
@@ -167,6 +169,18 @@ public sealed class ServerTickLoopService : BackgroundService
         }
         finally
         {
+            try
+            {
+                _networkServer?.BroadcastToPlaySessions(
+                    new Networking.Packets.Clientbound.DisconnectPacket(
+                        Networking.Packets.ConnectionState.Play,
+                        "Server closed."));
+            }
+            catch
+            {
+                // Ignore disconnect broadcast errors during teardown.
+            }
+
             if (_worldSubsystem is not null && !string.IsNullOrWhiteSpace(_options.WorldSaveDirectory))
             {
                 var finalSaved = await _worldSubsystem.Chunks.SaveDirtyChunksAsync(CancellationToken.None)

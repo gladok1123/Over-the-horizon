@@ -1,26 +1,42 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net.Sockets;
 
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Launches and manages an optional local <c>OverHorizon.Server</c> child process when a player clicks
-/// "Host Local Server (25565) &amp; Play" inside the Multiplayer screen (searching root, <c>server/</c>, and <c>engine/</c>).
+/// Launches and manages a local <c>OverHorizon.Server</c> child process for both "Host Local Server &amp; Play"
+/// and Pause Menu "Open to LAN", shutting it down cleanly when leaving the world or closing the game.
 /// </summary>
 internal sealed class LocalServerLauncher : IDisposable
 {
     private Process? _serverProcess;
 
-    public async ValueTask<bool> EnsureLocalServerRunningAsync(ushort port, CancellationToken ct)
+    public bool IsHostingLan { get; private set; }
+
+    public async ValueTask<bool> EnsureLocalServerRunningAsync(
+        ushort port,
+        CancellationToken ct,
+        string? customWorldDir = null,
+        long? seed = null,
+        int viewDistance = 6)
     {
-        if (await IsPortAcceptingAsync(port, ct).ConfigureAwait(false))
+        if (customWorldDir is not null)
+        {
+            // Restart owned server if switching to a specific singleplayer world for Open to LAN!
+            StopServer();
+        }
+        else if (await IsPortAcceptingAsync(port, ct).ConfigureAwait(false))
         {
             return true;
         }
 
-        var serverExeName = OperatingSystem.IsWindows() ? "OverHorizon.Server.exe" : "OverHorizon.Server";
-        var serverArgs = $"--port {port} --view-distance 4 --world-dir ./saves/multiplayer_host --op-all";
+        var worldDir = string.IsNullOrWhiteSpace(customWorldDir) ? "./saves/multiplayer_host" : customWorldDir;
+        var seedArg = seed.HasValue ? $" --seed {seed.Value.ToString(CultureInfo.InvariantCulture)}" : string.Empty;
+        var vd = Math.Clamp(viewDistance, 2, 16);
+        var serverArgs = $"--port {port} --view-distance {vd} --world-dir \"{worldDir}\"{seedArg} --op-all";
 
+        var serverExeName = OperatingSystem.IsWindows() ? "OverHorizon.Server.exe" : "OverHorizon.Server";
         string[] candidatePaths =
         [
             Path.Combine(AppContext.BaseDirectory, "server", serverExeName),
@@ -63,10 +79,12 @@ internal sealed class LocalServerLauncher : IDisposable
         }
 
         _serverProcess = Process.Start(psi);
-        for (var attempt = 0; attempt < 25; attempt++)
+        IsHostingLan = customWorldDir is not null;
+
+        for (var attempt = 0; attempt < 30; attempt++)
         {
             ct.ThrowIfCancellationRequested();
-            await Task.Delay(200, ct).ConfigureAwait(false);
+            await Task.Delay(180, ct).ConfigureAwait(false);
             if (await IsPortAcceptingAsync(port, ct).ConfigureAwait(false))
             {
                 return true;
@@ -76,17 +94,19 @@ internal sealed class LocalServerLauncher : IDisposable
         return false;
     }
 
-    public void Dispose()
+    public void StopServer()
     {
+        IsHostingLan = false;
         if (_serverProcess is null) return;
         try
         {
             if (!_serverProcess.HasExited)
             {
                 _serverProcess.Kill(entireProcessTree: true);
+                _ = _serverProcess.WaitForExit(1500);
             }
         }
-        catch (InvalidOperationException)
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             // Already exited.
         }
@@ -96,6 +116,8 @@ internal sealed class LocalServerLauncher : IDisposable
             _serverProcess = null;
         }
     }
+
+    public void Dispose() => StopServer();
 
     private static async ValueTask<bool> IsPortAcceptingAsync(ushort port, CancellationToken ct)
     {

@@ -15,6 +15,10 @@ public static class GreedySectionMesher
     private const ulong TranslucentBit = 1UL << 32;
     private const ulong EmissiveFullShadeBit = 1UL << 33;
     private const ulong TransposeUvBit = 1UL << 34;
+    private const ulong FlipVBit = 1UL << 35;
+
+    /// <summary>Gets or sets a value indicating whether X-Ray ore/structure inspection mode is active.</summary>
+    public static bool XRayEnabled { get; set; }
 
     /// <summary>Meshes a single <c>16x16x16</c> chunk section into opaque and translucent vertex/index buffers.</summary>
     public static SectionMeshData MeshSection(
@@ -119,22 +123,29 @@ public static class GreedySectionMesher
                     continue;
                 }
 
+                var xray = XRayEnabled;
+                if (xray && IsXRayHiddenBlock(meta.BlockKey))
+                {
+                    continue;
+                }
+
                 var adjX = lx + normal.X;
                 var adjY = wy + normal.Y;
                 var adjZ = lz + normal.Z;
 
                 var neighborState = neighborhood.GetBlockState(adjX, adjY, adjZ);
-                if (!ShouldRenderFace(meta, blocks.GetStateMetadata(neighborState), face))
+                var neighborMeta = blocks.GetStateMetadata(neighborState);
+                if (!ShouldRenderFace(meta, neighborMeta, face, xray))
                 {
                     continue;
                 }
 
-                var (modelFace, transposeUv) = ResolveOrientedModelFace(meta, face);
+                var (modelFace, transposeUv, flipV) = ResolveOrientedModelFace(meta, face);
                 var tile = atlas.GetTileIndex(meta.BlockKey, modelFace);
                 var (sky, blk) = neighborhood.GetLight(adjX, adjY, adjZ);
-                var effBlk = Math.Max(meta.LightEmission, blk);
+                var effBlk = xray ? (byte)15 : Math.Max(meta.LightEmission, blk);
                 var packedSkyAndBlk = (byte)(((sky & 0x0F) << 4) | (effBlk & 0x0F));
-                var isEmissive = meta.LightEmission >= 12;
+                var isEmissive = xray || meta.LightEmission >= 12;
                 var packedAo = isEmissive ? (byte)0xFF : QuadGeometryBuilder.SampleFaceCornerAo(in neighborhood, blocks, face, adjX, adjY, adjZ);
                 var isTranslucent = meta.IsFluid;
 
@@ -142,6 +153,7 @@ public static class GreedySectionMesher
                     (isTranslucent ? TranslucentBit : 0UL) |
                     (isEmissive ? EmissiveFullShadeBit : 0UL) |
                     (transposeUv ? TransposeUvBit : 0UL) |
+                    (flipV ? FlipVBit : 0UL) |
                     ((ulong)packedAo << 24) |
                     ((ulong)packedSkyAndBlk << 16) |
                     tile;
@@ -153,9 +165,25 @@ public static class GreedySectionMesher
         return any;
     }
 
-    private static bool ShouldRenderFace(BlockStateMetadata current, BlockStateMetadata neighbor, Direction face)
+    private static bool IsXRayHiddenBlock(OverHorizon.Core.Registry.ResourceKey key) =>
+        key == BuiltInBlocks.Stone ||
+        key == BuiltInBlocks.Deepslate ||
+        key == BuiltInBlocks.CobbledDeepslate ||
+        key == BuiltInBlocks.Dirt ||
+        key == BuiltInBlocks.GrassBlock ||
+        key == BuiltInBlocks.Sand ||
+        key == BuiltInBlocks.Sandstone ||
+        key == BuiltInBlocks.Gravel ||
+        key == BuiltInBlocks.SnowBlock;
+
+    private static bool ShouldRenderFace(BlockStateMetadata current, BlockStateMetadata neighbor, Direction face, bool xray)
     {
         if (neighbor.State.IsAir)
+        {
+            return true;
+        }
+
+        if (xray && IsXRayHiddenBlock(neighbor.BlockKey))
         {
             return true;
         }
@@ -277,13 +305,15 @@ public static class GreedySectionMesher
         float packedLightFloat = packedSkyBlk;
         var baseIdx = (uint)verts.Count;
 
+        var isTranslucent = (token & TranslucentBit) != 0UL;
         var (p0, p1, p2, p3, uv0, uv1, uv2, uv3) = QuadGeometryBuilder.BuildQuadCorners(
             rect.Face,
             rect.Slice,
             rect.U,
             rect.V,
             rect.Width,
-            rect.Height);
+            rect.Height,
+            expandTangents: !isTranslucent);
 
         if ((token & TransposeUvBit) != 0UL)
         {
@@ -291,6 +321,15 @@ public static class GreedySectionMesher
             uv1 = new System.Numerics.Vector2(uv1.Y, uv1.X);
             uv2 = new System.Numerics.Vector2(uv2.Y, uv2.X);
             uv3 = new System.Numerics.Vector2(uv3.Y, uv3.X);
+        }
+
+        if ((token & FlipVBit) != 0UL)
+        {
+            var maxV = MathF.Max(MathF.Max(uv0.Y, uv1.Y), MathF.Max(uv2.Y, uv3.Y));
+            uv0 = new System.Numerics.Vector2(uv0.X, maxV - uv0.Y);
+            uv1 = new System.Numerics.Vector2(uv1.X, maxV - uv1.Y);
+            uv2 = new System.Numerics.Vector2(uv2.X, maxV - uv2.Y);
+            uv3 = new System.Numerics.Vector2(uv3.X, maxV - uv3.Y);
         }
 
         var effFaceShade = (token & EmissiveFullShadeBit) != 0UL ? MathF.Max(0.95f, faceShade) : faceShade;
@@ -319,30 +358,30 @@ public static class GreedySectionMesher
         }
     }
 
-    private static (Direction ModelFace, bool TransposeUv) ResolveOrientedModelFace(BlockStateMetadata meta, Direction worldFace)
+    private static (Direction ModelFace, bool TransposeUv, bool FlipV) ResolveOrientedModelFace(BlockStateMetadata meta, Direction worldFace)
     {
         if (meta.Properties.TryGetValue("axis", out var axisStr))
         {
             if (axisStr == "x")
             {
                 return worldFace.GetAxis() == Axis.X
-                    ? (Direction.Up, false)
-                    : (Direction.North, true);
+                    ? (Direction.Up, false, false)
+                    : (Direction.North, true, false);
             }
 
             if (axisStr == "z")
             {
                 return worldFace.GetAxis() == Axis.Z
-                    ? (Direction.Up, false)
-                    : (Direction.North, worldFace.GetAxis() == Axis.Y);
+                    ? (Direction.Up, false, false)
+                    : (Direction.North, worldFace.GetAxis() == Axis.X, false);
             }
 
-            return (worldFace, false);
+            return (worldFace, false, false);
         }
 
         if (!meta.Properties.TryGetValue("facing", out var facingStr))
         {
-            return (worldFace, false);
+            return (worldFace, false, false);
         }
 
         var facingDir = ParseFacing(facingStr);
@@ -351,20 +390,36 @@ public static class GreedySectionMesher
         // 6-way top-oriented blocks: Piston, StickyPiston, Barrel -> model Up points along `facing`!
         if (key == BuiltInBlocks.Piston || key == BuiltInBlocks.StickyPiston || key == BuiltInBlocks.Barrel)
         {
-            if (worldFace == facingDir) return (Direction.Up, false);
-            if (worldFace == facingDir.Opposite()) return (Direction.Down, false);
-            var transpose = facingDir.GetAxis() == Axis.X || (facingDir.GetAxis() == Axis.Z && worldFace.GetAxis() == Axis.Y);
-            return (Direction.East, transpose);
+            if (worldFace == facingDir) return (Direction.Up, false, false);
+            if (worldFace == facingDir.Opposite()) return (Direction.Down, false, false);
+            return ResolvePistonSideUv(facingDir, worldFace);
         }
 
         // 4-way front-oriented blocks: Furnace, LitFurnace, Chest -> model North points along `facing`!
         if (worldFace.GetAxis() == Axis.Y)
         {
-            return (worldFace, false);
+            return (worldFace, false, false);
         }
 
-        return worldFace == facingDir ? (Direction.North, false) : (Direction.East, false);
+        return worldFace == facingDir ? (Direction.North, false, false) : (Direction.East, false, false);
     }
+
+    private static (Direction ModelFace, bool TransposeUv, bool FlipV) ResolvePistonSideUv(Direction facingDir, Direction worldFace) =>
+        (facingDir, worldFace) switch
+        {
+            (Direction.Up, _) => (Direction.East, false, false),
+            (Direction.Down, _) => (Direction.East, false, true),
+            (Direction.North, Direction.Up or Direction.Down) => (Direction.East, false, false),
+            (Direction.South, Direction.Up or Direction.Down) => (Direction.East, false, true),
+            (Direction.West, Direction.Up or Direction.Down) => (Direction.East, true, false),
+            (Direction.East, Direction.Up) => (Direction.East, true, true),
+            (Direction.East, Direction.Down) => (Direction.East, true, true),
+            (Direction.South, Direction.East) or (Direction.North, Direction.West) => (Direction.East, true, false),
+            (Direction.North, Direction.East) or (Direction.South, Direction.West) => (Direction.East, true, true),
+            (Direction.West, Direction.South) or (Direction.East, Direction.North) => (Direction.East, true, false),
+            (Direction.East, Direction.South) or (Direction.West, Direction.North) => (Direction.East, true, true),
+            _ => (Direction.East, false, false),
+        };
 
     private static Direction ParseFacing(string facing) => facing switch
     {

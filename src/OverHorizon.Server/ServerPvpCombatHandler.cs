@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
 using OverHorizon.Gameplay;
+using OverHorizon.Gameplay.Mobs;
 using OverHorizon.Networking.Packets.Clientbound;
 using OverHorizon.Networking.Packets.Serverbound;
 using OverHorizon.Networking.Sessions;
@@ -9,15 +10,16 @@ using OverHorizon.Networking.Sessions;
 namespace OverHorizon.Server;
 
 /// <summary>
-/// Server-authoritative PvP melee combat evaluator handling reach checks, 10-tick hurt immunity,
-/// weapon &amp; critical damage scaling, knockback vectors, death announcements, and respawn synchronization.
+/// Server-authoritative PvP melee combat evaluator handling Creative/Spectator immunity, frontal Shield deflection,
+/// armor mitigation, reach checks, 10-tick hurt immunity, vanilla knockback vectors, and respawn synchronization.
 /// </summary>
 internal static class ServerPvpCombatHandler
 {
-    private const double MaxPvpReachDistanceSquared = 5.0 * 5.0;
+    private const double MaxPvpReachDistanceSquared = 5.2 * 5.2;
     private const long HurtImmunityTicks = 10L;
-    private const double HorizontalKnockbackSpeed = 6.8;
-    private const double VerticalKnockbackSpeed = 4.4;
+    private const double HorizontalKnockbackSpeed = 8.8;
+    private const double SprintKnockbackSpeed = 12.2;
+    private const double VerticalKnockbackSpeed = 4.6;
 
     public static void HandleAttack(
         PlayerSessionInfo attackerSession,
@@ -30,7 +32,9 @@ internal static class ServerPvpCombatHandler
         IGameplaySubsystem gameplay,
         INetworkBroadcaster broadcaster)
     {
-        if (!pvpEnabled || attack.TargetEntityId == attackerState.EntityId)
+        if (!pvpEnabled ||
+            attack.TargetEntityId == attackerState.EntityId ||
+            attackerState.GameMode == GameMode.Spectator)
         {
             return;
         }
@@ -52,6 +56,12 @@ internal static class ServerPvpCombatHandler
             return;
         }
 
+        // Creative and Spectator players are strictly immune to PvP damage and death!
+        if (victimState.IsInvulnerable)
+        {
+            return;
+        }
+
         if (tickNumber - victimState.LastHurtTick < HurtImmunityTicks)
         {
             return;
@@ -60,6 +70,15 @@ internal static class ServerPvpCombatHandler
         var delta = victimState.LastPosition - attackerState.LastPosition;
         if (delta.LengthSquared > MaxPvpReachDistanceSquared)
         {
+            return;
+        }
+
+        // Frontal Shield block deflects melee attacks completely!
+        if (victimState.IsBlockingShield &&
+            WorldMobManager.IsFrontalShieldBlock(victimState.LastPosition, victimState.YawDegrees, attackerState.LastPosition))
+        {
+            victimState.LastHurtTick = tickNumber - (HurtImmunityTicks / 2);
+            broadcaster.BroadcastToPlaySessions(new InventoryGrantAndEventPacket(0, 0, EventKind: 2, victimState.LastPosition));
             return;
         }
 
@@ -73,6 +92,8 @@ internal static class ServerPvpCombatHandler
         {
             baseDamage *= 1.5f;
         }
+
+        baseDamage *= victimState.GetArmorDamageMultiplier();
 
         var horizLen = Math.Sqrt((delta.X * delta.X) + (delta.Z * delta.Z));
         double dirX;
@@ -89,18 +110,50 @@ internal static class ServerPvpCombatHandler
             dirZ = -Math.Cos(yawRad);
         }
 
+        var kbSpeed = attackerState.IsSprinting ? SprintKnockbackSpeed : HorizontalKnockbackSpeed;
         var knockback = new Vec3d(
-            dirX * HorizontalKnockbackSpeed,
+            dirX * kbSpeed,
             VerticalKnockbackSpeed,
-            dirZ * HorizontalKnockbackSpeed);
+            dirZ * kbSpeed);
+
+        ApplyPlayerDamageAndCheckDeath(
+            victimState,
+            targetSessionId,
+            attackerState.EntityId,
+            baseDamage,
+            knockback,
+            tickNumber,
+            $"[PvP] {victimState.Username} was slain by {attackerSession.Username}" +
+            ((attack.HeldItemId > 0 && registries.Items.TryGetById(attack.HeldItemId, out var weapon))
+                ? $" using [{weapon.EffectiveName}]!"
+                : "!"),
+            gameplay,
+            broadcaster);
+    }
+
+    public static void ApplyPlayerDamageAndCheckDeath(
+        ConnectedPlayerState victimState,
+        long targetSessionId,
+        long attackerEntityId,
+        float damage,
+        Vec3d knockback,
+        long tickNumber,
+        string deathAnnouncement,
+        IGameplaySubsystem gameplay,
+        INetworkBroadcaster broadcaster)
+    {
+        if (victimState.IsInvulnerable || damage <= 0.0f)
+        {
+            return;
+        }
 
         victimState.LastHurtTick = tickNumber;
-        victimState.Health = Math.Max(0.0f, victimState.Health - baseDamage);
+        victimState.Health = Math.Max(0.0f, victimState.Health - damage);
         var died = victimState.Health <= 0.01f;
 
         broadcaster.BroadcastToPlaySessions(new EntityCombatEventPacket(
             victimState.EntityId,
-            attackerState.EntityId,
+            attackerEntityId,
             died ? ConnectedPlayerState.MaxPlayerHealth : victimState.Health,
             knockback,
             died));
@@ -110,12 +163,9 @@ internal static class ServerPvpCombatHandler
             return;
         }
 
-        var weaponLabel = (attack.HeldItemId > 0 && registries.Items.TryGetById(attack.HeldItemId, out var weapon))
-            ? $" using [{weapon.EffectiveName}]"
-            : string.Empty;
-        broadcaster.BroadcastToPlaySessions(
-            new SystemChatPacket($"[PvP] {victimState.Username} was slain by {attackerSession.Username}{weaponLabel}!"));
+        broadcaster.BroadcastToPlaySessions(new SystemChatPacket(deathAnnouncement));
 
+        victimState.RidingMinecartId = 0;
         victimState.Health = ConnectedPlayerState.MaxPlayerHealth;
         victimState.LastPosition = victimState.SpawnPosition;
         _ = gameplay.TrySetEntityKinematics(victimState.EntityId, victimState.SpawnPosition, Vec3d.Zero, onGround: true);
@@ -127,15 +177,10 @@ internal static class ServerPvpCombatHandler
                 0.0f,
                 0.0f,
                 victimState.NextTeleportId++));
-
-        foreach (var (peerSid, _) in players)
-        {
-            if (peerSid != targetSessionId)
-            {
-                _ = broadcaster.SendToSession(
-                    peerSid,
-                    new RemotePlayerMovePacket(victimState.EntityId, victimState.SpawnPosition, 0.0f, 0.0f));
-            }
-        }
+        broadcaster.BroadcastToPlaySessions(new RemotePlayerMovePacket(
+            victimState.EntityId,
+            victimState.SpawnPosition,
+            0.0f,
+            0.0f));
     }
 }

@@ -106,6 +106,17 @@ public static partial class ProceduralAtlasGenerator
         ProceduralItemTilePainter.PaintRailCornerTile(pixels, TileRailCorner);
         ProceduralItemTilePainter.PaintPoweredRailTile(pixels, TilePoweredRailOff, energized: false);
         ProceduralItemTilePainter.PaintPoweredRailTile(pixels, TilePoweredRailOn, energized: true);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileComparatorOff, 162, 156, 156, variation: 12, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileComparatorOn, 198, 140, 140, variation: 12, alpha: 255);
+        ProceduralBlockTilePainter.PaintPlanksTile(pixels, TileComposterSide);
+        ProceduralBlockTilePainter.PaintPlanksTile(pixels, TileComposterTop);
+        ProceduralBlockTilePainter.PaintPlanksTile(pixels, TileComposterBottom);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileComposterCompost, 102, 138, 52, variation: 20, alpha: 255);
+        ProceduralItemTilePainter.PaintTrapdoorOrSpawnerTile(pixels, TileOakTrapdoor, isSpawner: false);
+        ProceduralItemTilePainter.PaintTrapdoorOrSpawnerTile(pixels, TileMonsterSpawner, isSpawner: true);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileAmethystBlock, 142, 92, 198, variation: 28, alpha: 255);
+        ProceduralBlockTilePainter.PaintCobblestoneTile(pixels, TileMossyStoneBricks, mossy: true);
+        ProceduralBlockTilePainter.PaintSandstoneSideTile(pixels, TileChiseledSandstone);
 
         for (var stage = 0; stage < 10; stage++)
         {
@@ -210,6 +221,22 @@ public static partial class ProceduralAtlasGenerator
         ProceduralItemTilePainter.PaintBedItem(pixels, 216);
         ProceduralItemTilePainter.PaintBowAndArrowTiles(pixels, bowBaseTile: 218, arrowTile: 219, minecartTile: 217);
         ProceduralItemTilePainter.PaintPoweredRailTile(pixels, 223, energized: false);
+        ProceduralItemTilePainter.PaintComparatorItem(pixels, 224);
+        ProceduralItemTilePainter.PaintDiscOrGem(pixels, 225, 238, 232, 224);
+        ProceduralItemTilePainter.PaintDiscOrGem(pixels, 226, 244, 244, 236);
+        ProceduralItemTilePainter.PaintPotionBottle(pixels, 227, 124, 185, 240);
+        ProceduralItemTilePainter.PaintPotionBottle(pixels, 228, 228, 98, 186);
+        ProceduralItemTilePainter.PaintPotionBottle(pixels, 229, 184, 42, 40);
+        ProceduralItemTilePainter.PaintPotionBottle(pixels, 230, 44, 58, 212);
+        ProceduralItemTilePainter.PaintSpawnEgg(pixels, 231, 240, 165, 162, 219, 99, 95);
+        ProceduralItemTilePainter.PaintSpawnEgg(pixels, 232, 231, 231, 231, 255, 181, 181);
+        ProceduralItemTilePainter.PaintSpawnEgg(pixels, 233, 68, 54, 38, 161, 161, 161);
+        ProceduralItemTilePainter.PaintSpawnEgg(pixels, 234, 225, 225, 225, 255, 48, 48);
+        ProceduralItemTilePainter.PaintSpawnEgg(pixels, 235, 0, 175, 175, 86, 156, 62);
+        ProceduralItemTilePainter.PaintSpawnEgg(pixels, 236, 193, 193, 193, 73, 73, 73);
+        ProceduralItemTilePainter.PaintSpawnEgg(pixels, 237, 52, 45, 39, 168, 14, 14);
+        ProceduralItemTilePainter.PaintSpawnEgg(pixels, 238, 13, 167, 11, 16, 16, 16);
+        ProceduralItemTilePainter.PaintTrapdoorOrSpawnerTile(pixels, 239, isSpawner: false);
     }
 
     private static Dictionary<(ResourceKey, Direction), ushort> BuildFaceLookup()
@@ -292,6 +319,13 @@ public static partial class ProceduralAtlasGenerator
         MapAllFaces(lookup, BuiltInBlocks.EmeraldBlock, TileEmeraldBlock);
         MapAllFaces(lookup, BuiltInBlocks.LapisBlock, TileLapisBlock);
         MapBlockTopBottomSide(lookup, BuiltInBlocks.RedBed, TileRedBedTopFoot, TileOakPlanks, TileRedBedSide);
+        MapAllFaces(lookup, BuiltInBlocks.RedstoneComparator, TileComparatorOff);
+        MapBlockTopBottomSide(lookup, BuiltInBlocks.Composter, TileComposterTop, TileComposterBottom, TileComposterSide);
+        MapAllFaces(lookup, BuiltInBlocks.OakTrapdoor, TileOakTrapdoor);
+        MapAllFaces(lookup, BuiltInBlocks.MonsterSpawner, TileMonsterSpawner);
+        MapAllFaces(lookup, BuiltInBlocks.AmethystBlock, TileAmethystBlock);
+        MapAllFaces(lookup, BuiltInBlocks.MossyStoneBricks, TileMossyStoneBricks);
+        MapBlockTopBottomSide(lookup, BuiltInBlocks.ChiseledSandstone, TileSandstoneTop, TileSandstoneBottom, TileChiseledSandstone);
         return lookup;
     }
 
@@ -385,6 +419,17 @@ public static partial class ProceduralAtlasGenerator
         _ = pack.TryBlitTile(pixels, TileCopperBlock, "copper_block");
         _ = pack.TryBlitTile(pixels, TileEmeraldBlock, "emerald_block");
         _ = pack.TryBlitTile(pixels, TileLapisBlock, "lapis_block");
+        _ = pack.TryBlitTile(pixels, TileComparatorOff, "comparator");
+        _ = pack.TryBlitTile(pixels, TileComparatorOn, "comparator_on");
+        _ = pack.TryBlitTile(pixels, TileComposterSide, "composter_side");
+        _ = pack.TryBlitTile(pixels, TileComposterTop, "composter_top");
+        _ = pack.TryBlitTile(pixels, TileComposterBottom, "composter_bottom");
+        _ = pack.TryBlitTile(pixels, TileComposterCompost, "composter_compost");
+        _ = pack.TryBlitTile(pixels, TileOakTrapdoor, "oak_trapdoor");
+        _ = pack.TryBlitTile(pixels, TileMonsterSpawner, "spawner");
+        _ = pack.TryBlitTile(pixels, TileAmethystBlock, "amethyst_block");
+        _ = pack.TryBlitTile(pixels, TileMossyStoneBricks, "mossy_stone_bricks");
+        _ = pack.TryBlitTile(pixels, TileChiseledSandstone, "chiseled_sandstone");
 
         for (var stage = 0; stage < 10; stage++)
         {

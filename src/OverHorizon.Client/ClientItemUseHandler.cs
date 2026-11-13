@@ -1,23 +1,25 @@
+using System.Globalization;
 using OverHorizon.Audio;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Items;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
 using OverHorizon.Gameplay;
+using OverHorizon.Gameplay.Effects;
 using OverHorizon.Gameplay.Inventory;
 using OverHorizon.Gameplay.Mobs;
 using OverHorizon.Gameplay.Survival;
+using OverHorizon.Networking.Packets.Serverbound;
 using OverHorizon.Rendering.Hud;
 
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Handles right-click block/item interactions: Crafting Table &amp; Furnace opening, Redstone Lever/Button/Repeater interaction,
-/// <c>RedBed</c> respawn &amp; night-skipping sleep, Sheep shearing, Hoe tilling, Armor quick-equipping, Food eating with saturation,
-/// Water Bucket scooping/pouring, Flint &amp; Steel (<c>Fire</c> + physics <c>PrimedTnt</c>), and attachment-validated block placement
-/// (including Offhand fallback!).
+/// Handles right-click block/item interactions: Crafting Table &amp; Furnace, Redstone Lever/Button/Repeater/Comparator/Trapdoor,
+/// Composter composting &amp; Bone Meal harvest, Spawn Eggs, Potions &amp; Golden Apple status effects, Offhand Left-Arm swing,
+/// Rideable Minecarts (SP + MP), Flint &amp; Steel, and attachment-validated block placement.
 /// </summary>
-internal sealed class ClientItemUseHandler
+internal sealed partial class ClientItemUseHandler
 {
     private readonly IBlockRegistry _blocks;
     private readonly IRegistry<ItemDefinition> _items;
@@ -35,6 +37,7 @@ internal sealed class ClientItemUseHandler
         ClientWorldCache world,
         ClientWorldSyncAndMobBridge worldBridge,
         WorldMobManager mobManager,
+        ClientMultiplayerTransport transport,
         ClientChatHistory chatHistory,
         Func<BlockPos, Direction, BlockState, bool> applyWorldBlockChange,
         ref double useCooldown,
@@ -44,34 +47,50 @@ internal sealed class ClientItemUseHandler
         openContainerMode = null;
         openedContainerPos = null;
 
+        var f = player.Camera.Forward;
+        var forwardVec = new Vec3d(f.X, f.Y, f.Z);
         var held = player.Hotbar.SelectedItem;
-        if (player.RidingMinecartId < 0 &&
-            worldBridge.Minecarts.TryMountAlongRay(player.Camera.Position, player.Camera.Forward, 4.2) is { } mountedCart)
+
+        // 0. Mount Minecart along look ray (Singleplayer & Multiplayer!)
+        if (player.RidingMinecartId < 0)
         {
-            useCooldown = 0.25;
-            player.MountMinecart(mountedCart.Id);
-            _audio.PlayPositional(SoundCue.MinecartRoll, mountedCart.FeetPosition, gain: 0.55f * player.MasterVolume);
-            chatHistory.AddMessage("[Minecart] Mounted! Press W/S to steer, Left-Shift or C to dismount.");
-            return true;
+            if (transport.IsConnected)
+            {
+                if (TryHitMultiplayerMinecart(player.Camera.Position, forwardVec, 4.2, worldBridge))
+                {
+                    useCooldown = 0.25;
+                    transport.EnqueueOutbound(new PlayerWorldInteractionPacket(
+                        PlayerWorldInteractionKind.MountOrDismountMinecart, player.Camera.Position, forwardVec, 0, 1));
+                    return true;
+                }
+            }
+            else if (worldBridge.Minecarts.TryMountAlongRay(player.Camera.Position, f, 4.2) is { } mountedCart)
+            {
+                useCooldown = 0.25;
+                player.MountMinecart(mountedCart.Id);
+                _audio.PlayPositional(SoundCue.MinecartRoll, mountedCart.FeetPosition, gain: 0.55f * player.MasterVolume);
+                chatHistory.AddMessage("[Minecart] Mounted! Press W/S to steer, Left-Shift or C to dismount.");
+                return true;
+            }
         }
 
-        if (held is { ToolType: ToolKind.Shears } &&
-            mobManager.TryShearAlongRay(player.Camera.Position, player.Camera.Forward, 3.8, _items, out var woolDrop))
+        if (!transport.IsConnected &&
+            held is { ToolType: ToolKind.Shears } &&
+            mobManager.TryShearAlongRay(player.Camera.Position, f, 3.8, _items, out var woolDrop))
         {
             useCooldown = 0.25;
-            player.TriggerHandSwing();
-            if (!woolDrop.IsEmpty && player.Mode == GameMode.Survival)
+            player.TriggerHandSwing(isOffhand: false);
+            if (!woolDrop.IsEmpty)
             {
-                _ = player.Hotbar.SurvivalInventory.AddItem(woolDrop, _items);
-                player.Hotbar.RefreshSlotVisuals(player.Mode);
+                _ = worldBridge.DroppedItems.SpawnScatterDrop(player.FeetPosition + (forwardVec * 1.4), woolDrop, 0.3f);
             }
 
             _audio.PlayPositional(SoundCue.MobSheepShear, player.Camera.Position, gain: 0.80f * player.MasterVolume);
             return true;
         }
 
-        // 1. Targeted Interactive Blocks (Crafting Table, Furnace, Redstone Lever/Button/Repeater, Red Bed)
-        if (player.CurrentTarget is { } targetHit)
+        // 1. Targeted Interactive Blocks (Crafting Table, Furnace, Redstone Lever/Button/Repeater/Comparator/Trapdoor, Composter, Bed)
+        if (player.CurrentTarget is { } targetHit && !player.IsSneaking)
         {
             var targetState = world.GetBlockState(targetHit.BlockPosition);
             var targetMeta = _blocks.GetStateMetadata(targetState);
@@ -93,68 +112,110 @@ internal sealed class ClientItemUseHandler
                 return true;
             }
 
-            if ((clickedKey == BuiltInBlocks.Lever ||
-                 clickedKey == BuiltInBlocks.StoneButton ||
-                 clickedKey == BuiltInBlocks.RedstoneRepeater) &&
-                worldBridge.TryInteractRedstoneBlock(targetHit.BlockPosition))
+            if (clickedKey == BuiltInBlocks.Lever ||
+                clickedKey == BuiltInBlocks.StoneButton ||
+                clickedKey == BuiltInBlocks.RedstoneRepeater ||
+                clickedKey == BuiltInBlocks.RedstoneComparator ||
+                clickedKey == BuiltInBlocks.OakTrapdoor)
             {
                 useCooldown = 0.16;
-                player.TriggerHandSwing();
-                _audio.PlayPositional(SoundCue.UiClick, new Vec3d(targetHit.BlockPosition.X + 0.5, targetHit.BlockPosition.Y + 0.5, targetHit.BlockPosition.Z + 0.5), gain: 0.65f * player.MasterVolume, pitch: 0.92f);
+                player.TriggerHandSwing(isOffhand: false);
+                var center = new Vec3d(targetHit.BlockPosition.X + 0.5, targetHit.BlockPosition.Y + 0.5, targetHit.BlockPosition.Z + 0.5);
+                if (transport.IsConnected)
+                {
+                    transport.EnqueueOutbound(new PlayerWorldInteractionPacket(
+                        PlayerWorldInteractionKind.InteractWorldComponent, center, Vec3d.Zero, 0, 0));
+                    _audio.PlayPositional(clickedKey == BuiltInBlocks.OakTrapdoor ? SoundCue.DoorToggle : SoundCue.RedstoneClick, center, gain: 0.68f * player.MasterVolume);
+                    return true;
+                }
+
+                if (worldBridge.TryInteractRedstoneBlock(targetHit.BlockPosition))
+                {
+                    return true;
+                }
+            }
+
+            if (clickedKey == BuiltInBlocks.Composter &&
+                TryInteractComposter(player, world, worldBridge, transport, targetHit.BlockPosition, targetMeta, applyWorldBlockChange, ref useCooldown))
+            {
                 return true;
             }
 
             if (clickedKey == BuiltInBlocks.RedBed)
             {
                 useCooldown = 0.30;
-                player.TriggerHandSwing();
+                player.TriggerHandSwing(isOffhand: false);
                 TrySleepInBed(player, worldBridge, mobManager, chatHistory, targetHit.BlockPosition);
                 return true;
             }
         }
 
-        // 2. Try Main Hand item first; if empty or passive (e.g. holding Sword while Torch is in Offhand!), fall back to Offhand!
-        if (held is not null && TryExecuteHandItemUse(player, world, worldBridge, held, isOffhand: false, applyWorldBlockChange, ref useCooldown))
+        // 2. Main Hand first; if empty or passive (e.g. holding Sword while Torch/Food/Block is in Offhand), use Offhand & swing LEFT arm!
+        if (held is not null &&
+            TryExecuteHandItemUse(player, world, worldBridge, mobManager, transport, held, isOffhand: false, applyWorldBlockChange, ref useCooldown))
         {
             return true;
         }
 
         var offhandDef = player.Hotbar.OffhandItem;
-        return offhandDef is not null && TryExecuteHandItemUse(player, world, worldBridge, offhandDef, isOffhand: true, applyWorldBlockChange, ref useCooldown);
+        return offhandDef is not null &&
+               TryExecuteHandItemUse(player, world, worldBridge, mobManager, transport, offhandDef, isOffhand: true, applyWorldBlockChange, ref useCooldown);
     }
 
-    private static void TrySleepInBed(
+    private bool TryInteractComposter(
         ClientPlayerController player,
+        ClientWorldCache world,
         ClientWorldSyncAndMobBridge worldBridge,
-        WorldMobManager mobManager,
-        ClientChatHistory chatHistory,
-        BlockPos bedPos)
+        ClientMultiplayerTransport transport,
+        BlockPos pos,
+        BlockStateMetadata meta,
+        Func<BlockPos, Direction, BlockState, bool> applyWorldBlockChange,
+        ref double useCooldown)
     {
-        var wakePos = new Vec3d(bedPos.X + 0.5, bedPos.Y + 0.65, bedPos.Z + 0.5);
-        player.SpawnPosition = wakePos;
-        chatHistory.AddMessage("[Bed] Respawn point set.");
+        _ = world;
+        var level = meta.Properties.TryGetValue("level", out var lv) && int.TryParse(lv, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
+        var center = new Vec3d(pos.X + 0.5, pos.Y + 0.65, pos.Z + 0.5);
 
-        if (!worldBridge.TimeCycle.IsNightForSleeping)
+        if (level >= 8)
         {
-            chatHistory.AddMessage("[Bed] You can sleep only at night.");
-            return;
+            useCooldown = 0.22;
+            player.TriggerHandSwing(isOffhand: false);
+            var emptyState = _blocks.GetState(BuiltInBlocks.Composter, new Dictionary<string, string> { ["level"] = "0" });
+            _ = applyWorldBlockChange(pos, Direction.Up, emptyState);
+            if (!transport.IsConnected && _items.TryGet(BuiltInItems.BoneMeal, out var bm))
+            {
+                _ = worldBridge.DroppedItems.SpawnBlockDrop(new BlockPos(pos.X, pos.Y + 1, pos.Z), new ItemStack(bm.NumericId, 1));
+            }
+            else if (transport.IsConnected)
+            {
+                transport.EnqueueOutbound(new PlayerWorldInteractionPacket(PlayerWorldInteractionKind.InteractWorldComponent, center, Vec3d.Zero, 0, 0));
+            }
+
+            _audio.PlayPositional(SoundCue.ComposterReady, center, gain: 0.78f * player.MasterVolume);
+            worldBridge.Particles.EmitBurst(center, ParticleKind.GrowthSparkle, 8);
+            return true;
         }
 
-        if (player.Mode == GameMode.Survival && mobManager.HasHostileMobNear(wakePos))
-        {
-            chatHistory.AddMessage("[Bed] You may not rest now; there are monsters nearby.");
-            return;
-        }
+        var held = player.Hotbar.SelectedItem;
+        if (held is null || (!IsCompostable(held.Key))) return false;
 
-        worldBridge.TimeCycle.SkipNightToMorning();
-        player.StartSleepVignette();
-        chatHistory.AddMessage("[Bed] Good morning! Slept through the night.");
+        useCooldown = 0.18;
+        player.TriggerHandSwing(isOffhand: false);
+        var nextLevel = level == 7 ? 8 : level + 1;
+        var nextState = _blocks.GetState(BuiltInBlocks.Composter, new Dictionary<string, string> { ["level"] = nextLevel.ToString(CultureInfo.InvariantCulture) });
+        _ = applyWorldBlockChange(pos, Direction.Up, nextState);
+        ConsumeOneFromSlotInSurvival(player, player.Hotbar.SelectedSlot);
+        _audio.PlayPositional(nextLevel == 8 ? SoundCue.ComposterReady : SoundCue.ComposterFill, center, gain: 0.75f * player.MasterVolume);
+        worldBridge.Particles.EmitBurst(center, ParticleKind.GrowthSparkle, 6);
+        return true;
     }
 
     private bool TryExecuteHandItemUse(
         ClientPlayerController player,
         ClientWorldCache world,
         ClientWorldSyncAndMobBridge worldBridge,
+        WorldMobManager mobManager,
+        ClientMultiplayerTransport transport,
         ItemDefinition itemDef,
         bool isOffhand,
         Func<BlockPos, Direction, BlockState, bool> applyWorldBlockChange,
@@ -164,22 +225,72 @@ internal sealed class ClientItemUseHandler
 
         switch (itemDef.UseAction)
         {
+            case ItemUseAction.BlockWithShield:
+                return false; // Handled continuously in StepBowAndShield!
+
             case ItemUseAction.TillSoil:
                 if (player.CurrentTarget is not { } hoeHit) return false;
                 var soilKey = _blocks.GetStateMetadata(world.GetBlockState(hoeHit.BlockPosition)).BlockKey;
                 if (soilKey != BuiltInBlocks.GrassBlock && soilKey != BuiltInBlocks.Dirt) return false;
                 useCooldown = 0.20;
-                player.TriggerHandSwing();
+                player.TriggerHandSwing(isOffhand);
                 return applyWorldBlockChange(hoeHit.BlockPosition, hoeHit.HitFace, _blocks.GetDefaultState(BuiltInBlocks.Farmland));
 
+            case ItemUseAction.ApplyBoneMeal:
+                if (player.CurrentTarget is not { } bmHit) return false;
+                var bmTargetKey = _blocks.GetStateMetadata(world.GetBlockState(bmHit.BlockPosition)).BlockKey;
+                if (bmTargetKey != BuiltInBlocks.Dirt) return false;
+                useCooldown = 0.20;
+                player.TriggerHandSwing(isOffhand);
+                _ = applyWorldBlockChange(bmHit.BlockPosition, bmHit.HitFace, _blocks.GetDefaultState(BuiltInBlocks.GrassBlock));
+                worldBridge.Particles.EmitBurst(new Vec3d(bmHit.BlockPosition.X + 0.5, bmHit.BlockPosition.Y + 1.05, bmHit.BlockPosition.Z + 0.5), ParticleKind.GrowthSparkle, 12);
+                ConsumeOneFromSlotInSurvival(player, invSlot);
+                return true;
+
+            case ItemUseAction.SpawnMob:
+                if (player.CurrentTarget is not { } eggHit) return false;
+                var spawnPos = new Vec3d(eggHit.AdjacentPosition.X + 0.5, eggHit.AdjacentPosition.Y + 0.05, eggHit.AdjacentPosition.Z + 0.5);
+                var mobType = (MobType)Math.Clamp(itemDef.SpawnMobType, (byte)0, (byte)7);
+                useCooldown = 0.22;
+                player.TriggerHandSwing(isOffhand);
+                if (transport.IsConnected)
+                {
+                    transport.EnqueueOutbound(new PlayerWorldInteractionPacket(
+                        PlayerWorldInteractionKind.SpawnMobEgg, spawnPos, Vec3d.Zero, itemDef.NumericId, itemDef.SpawnMobType));
+                }
+                else
+                {
+                    _ = mobManager.SpawnMob(mobType, spawnPos, player.Camera.YawDegrees + 180.0f);
+                }
+
+                worldBridge.Particles.EmitBurst(spawnPos + new Vec3d(0, 0.6, 0), ParticleKind.GrowthSparkle, 8);
+                _audio.PlayPositional(SoundCue.ItemPop, spawnPos, gain: 0.72f * player.MasterVolume, pitch: 0.92f);
+                ConsumeOneFromSlotInSurvival(player, invSlot);
+                return true;
+
+            case ItemUseAction.DrinkPotion:
+                useCooldown = 0.38;
+                player.TriggerHandSwing(isOffhand);
+                ApplyPotionStatusEffect(player, itemDef.Key);
+                worldBridge.Particles.EmitBurst(player.FeetPosition + new Vec3d(0, 1.1, 0), ParticleKind.GrowthSparkle, 10);
+                _audio.PlayPositional(SoundCue.PotionDrink, player.Camera.Position, gain: 0.85f * player.MasterVolume);
+                ConsumeOneFromSlotInSurvival(player, invSlot);
+                return true;
+
             case ItemUseAction.EquipArmor:
-                return TryQuickEquipArmor(player, itemDef, invSlot, ref useCooldown);
+                return TryQuickEquipArmor(player, itemDef, invSlot, isOffhand, ref useCooldown);
 
             case ItemUseAction.EatFood:
                 if (player.Mode == GameMode.Survival && player.Hunger >= 20 && itemDef.BonusHealPoints <= 0.0f) return false;
                 useCooldown = 0.35;
-                player.TriggerHandSwing();
-                player.ConsumeFood(itemDef.FoodNutrition, itemDef.BonusHealPoints, itemDef.FoodNutrition * 1.2f);
+                player.TriggerHandSwing(isOffhand);
+                player.ConsumeFood(itemDef.FoodNutrition, itemDef.BonusHealPoints, itemDef.FoodSaturation > 0 ? itemDef.FoodSaturation : itemDef.FoodNutrition * 1.2f);
+                if (itemDef.Key == BuiltInItems.GoldenApple)
+                {
+                    player.StatusEffects.ApplyEffect(StatusEffectType.Regeneration, 12.0f);
+                    player.StatusEffects.ApplyEffect(StatusEffectType.Absorption, 90.0f);
+                }
+
                 _audio.PlayPositional(SoundCue.EatFood, player.Camera.Position, gain: 0.85f * player.MasterVolume);
                 _audio.PlayPositional(SoundCue.Burp, player.Camera.Position, gain: 0.55f * player.MasterVolume);
                 ConsumeOneFromSlotInSurvival(player, invSlot);
@@ -188,7 +299,7 @@ internal sealed class ClientItemUseHandler
             case ItemUseAction.WaterBucket:
                 if (player.CurrentTarget is not { } waterHit) return false;
                 useCooldown = 0.22;
-                player.TriggerHandSwing();
+                player.TriggerHandSwing(isOffhand);
                 _ = applyWorldBlockChange(waterHit.AdjacentPosition, waterHit.HitFace, _blocks.GetDefaultState(BuiltInBlocks.Water));
                 _audio.PlayPositional(SoundCue.WaterSplash, player.Camera.Position, gain: 0.85f * player.MasterVolume);
                 ReplaceSlotItemInSurvival(player, invSlot, BuiltInItems.Bucket);
@@ -197,22 +308,33 @@ internal sealed class ClientItemUseHandler
             case ItemUseAction.EmptyBucket:
                 if (!TryFindFluidBlockAlongRay(player, world, out var fluidPos)) return false;
                 useCooldown = 0.22;
-                player.TriggerHandSwing();
+                player.TriggerHandSwing(isOffhand);
                 _ = applyWorldBlockChange(fluidPos, Direction.Up, BlockState.Air);
                 _audio.PlayPositional(SoundCue.WaterSplash, player.Camera.Position, gain: 0.85f * player.MasterVolume);
                 ReplaceSlotItemInSurvival(player, invSlot, BuiltInItems.WaterBucket);
                 return true;
 
             case ItemUseAction.IgniteTnt:
-                return TryUseFlintAndSteel(player, world, worldBridge, applyWorldBlockChange, ref useCooldown);
+                return TryUseFlintAndSteel(player, world, worldBridge, isOffhand, applyWorldBlockChange, ref useCooldown);
 
             case ItemUseAction.PlaceMinecart:
                 if (player.CurrentTarget is not { } cartHit) return false;
                 var railKey = _blocks.GetStateMetadata(world.GetBlockState(cartHit.BlockPosition)).BlockKey;
                 if (!RailPlacementRules.IsRailBlock(railKey)) return false;
+                var railVec = new Vec3d(cartHit.BlockPosition.X + 0.5, cartHit.BlockPosition.Y + 0.1, cartHit.BlockPosition.Z + 0.5);
+                if (transport.IsConnected)
+                {
+                    useCooldown = 0.22;
+                    player.TriggerHandSwing(isOffhand);
+                    transport.EnqueueOutbound(new PlayerWorldInteractionPacket(PlayerWorldInteractionKind.PlaceMinecart, railVec, Vec3d.Zero, itemDef.NumericId, 1));
+                    _audio.PlayPositional(SoundCue.FootstepMetal, railVec, gain: 0.75f * player.MasterVolume);
+                    ConsumeOneFromSlotInSurvival(player, invSlot);
+                    return true;
+                }
+
                 if (worldBridge.Minecarts.TrySpawnOnRail(cartHit.BlockPosition, world.GetBlockState) is not { } spawnedCart) return false;
                 useCooldown = 0.22;
-                player.TriggerHandSwing();
+                player.TriggerHandSwing(isOffhand);
                 _audio.PlayPositional(SoundCue.FootstepMetal, spawnedCart.FeetPosition, gain: 0.75f * player.MasterVolume);
                 ConsumeOneFromSlotInSurvival(player, invSlot);
                 return true;
@@ -235,7 +357,7 @@ internal sealed class ClientItemUseHandler
                 }
 
                 useCooldown = 0.14;
-                player.TriggerHandSwing();
+                player.TriggerHandSwing(isOffhand);
                 if (!applyWorldBlockChange(placePos, placeHit.HitFace, resolvedState)) return false;
                 if (secondaryBlock is { } secPlace)
                 {
@@ -248,118 +370,5 @@ internal sealed class ClientItemUseHandler
             default:
                 return false;
         }
-    }
-
-    private void ReplaceSlotItemInSurvival(ClientPlayerController player, int slotIndex, ResourceKey replacementKey)
-    {
-        if (player.Mode != GameMode.Survival) return;
-        var id = _items.GetId(replacementKey);
-        if (id > 0)
-        {
-            player.Hotbar.SurvivalInventory.SetSlot(slotIndex, new ItemStack((ushort)id, 1));
-            player.Hotbar.RefreshSlotVisuals(player.Mode);
-        }
-    }
-
-    private bool TryQuickEquipArmor(ClientPlayerController player, ItemDefinition held, int sourceSlot, ref double useCooldown)
-    {
-        var path = held.Key.Path;
-        var sub = -1;
-        if (path.EndsWith("helmet", StringComparison.Ordinal)) sub = 0;
-        else if (path.EndsWith("chestplate", StringComparison.Ordinal)) sub = 1;
-        else if (path.EndsWith("leggings", StringComparison.Ordinal)) sub = 2;
-        else if (path.EndsWith("boots", StringComparison.Ordinal)) sub = 3;
-        if (sub < 0) return false;
-
-        var heldItemId = (ushort)Math.Max(0, _items.GetId(held.Key));
-        if (heldItemId == 0) return false;
-
-        useCooldown = 0.22;
-        var armorSlotIdx = PlayerInventory.ArmorSlotStart + sub;
-        var inv = player.Hotbar.SurvivalInventory;
-        var previousArmor = inv.GetSlot(armorSlotIdx);
-        inv.SetSlot(armorSlotIdx, new ItemStack(heldItemId, 1));
-        if (player.Mode == GameMode.Survival)
-        {
-            inv.SetSlot(sourceSlot, previousArmor);
-            player.Hotbar.RefreshSlotVisuals(player.Mode);
-        }
-
-        _audio.PlayPositional(SoundCue.ItemPop, player.Camera.Position, gain: 0.65f * player.MasterVolume);
-        return true;
-    }
-
-    private static void ConsumeOneFromSlotInSurvival(ClientPlayerController player, int slotIndex)
-    {
-        if (player.Mode != GameMode.Survival) return;
-        var cur = player.Hotbar.SurvivalInventory.GetSlot(slotIndex);
-        if (!cur.IsEmpty)
-        {
-            player.Hotbar.SurvivalInventory.SetSlot(slotIndex, cur.WithCount(cur.Count - 1));
-            player.Hotbar.RefreshSlotVisuals(player.Mode);
-        }
-    }
-
-    private bool TryUseFlintAndSteel(
-        ClientPlayerController player,
-        ClientWorldCache world,
-        ClientWorldSyncAndMobBridge worldBridge,
-        Func<BlockPos, Direction, BlockState, bool> applyWorldBlockChange,
-        ref double useCooldown)
-    {
-        if (player.CurrentTarget is not { } hit) return false;
-        var targetKey = _blocks.GetStateMetadata(world.GetBlockState(hit.BlockPosition)).BlockKey;
-        var hitCenter = new Vec3d(hit.BlockPosition.X + 0.5, hit.BlockPosition.Y + 0.5, hit.BlockPosition.Z + 0.5);
-
-        // Ignite TNT into live physics-simulated flashing PrimedTntEntity!
-        if (targetKey == BuiltInBlocks.Tnt)
-        {
-            useCooldown = 0.25;
-            player.TriggerHandSwing();
-            _ = applyWorldBlockChange(hit.BlockPosition, Direction.Up, BlockState.Air);
-            _ = worldBridge.WorldTicker.SpawnPrimedTnt(hit.BlockPosition);
-            _audio.PlayPositional(SoundCue.FireIgnite, hitCenter, gain: 0.90f * player.MasterVolume);
-            _audio.PlayPositional(SoundCue.TntFuse, hitCenter, gain: 0.95f * player.MasterVolume);
-            return true;
-        }
-
-        // Place Fire on the clicked adjacent block if empty!
-        var firePos = hit.AdjacentPosition;
-        if (world.GetBlockState(firePos).IsAir)
-        {
-            useCooldown = 0.20;
-            player.TriggerHandSwing();
-            var ok = applyWorldBlockChange(firePos, hit.HitFace, _blocks.GetDefaultState(BuiltInBlocks.Fire));
-            if (ok)
-            {
-                _audio.PlayPositional(SoundCue.FireIgnite, hitCenter, gain: 0.85f * player.MasterVolume);
-            }
-
-            return ok;
-        }
-
-        return false;
-    }
-
-    private bool TryFindFluidBlockAlongRay(ClientPlayerController player, ClientWorldCache world, out BlockPos fluidPos)
-    {
-        var origin = player.Camera.Position;
-        var f = player.Camera.Forward;
-        for (var step = 1; step <= 26; step++)
-        {
-            var dist = step * 0.22;
-            var sample = new Vec3d(origin.X + (f.X * dist), origin.Y + (f.Y * dist), origin.Z + (f.Z * dist)).ToBlockPos();
-            var def = _blocks.GetRequired(_blocks.GetStateMetadata(world.GetBlockState(sample)).BlockKey);
-            if (def.IsFluid)
-            {
-                fluidPos = sample;
-                return true;
-            }
-
-            if (def.IsSolid) break;
-        }
-
-        fluidPos = default;
-        return false;
     }
 }

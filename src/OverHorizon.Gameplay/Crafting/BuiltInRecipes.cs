@@ -167,6 +167,19 @@ public static class BuiltInRecipes
         AddShaped(registry, "bow_right", 3, 3, [0, stick, str, stick, 0, str, 0, stick, str], Id(BuiltInItems.Bow), 1);
         AddShaped(registry, "bow_left", 3, 3, [str, stick, 0, str, 0, stick, str, stick, 0], Id(BuiltInItems.Bow), 1);
         AddShaped(registry, "arrow", 1, 3, [flint, stick, feather], Id(BuiltInItems.Arrow), 4);
+
+        // 10. v0.8.0 Redstone Comparator, Composter, Oak Trapdoor, Bone Meal & Structure Masonry
+        var rTorch = Id(BuiltInBlocks.RedstoneTorch);
+        var stone = Id(BuiltInBlocks.Stone);
+        var quartz = Id(BuiltInItems.Quartz);
+        var oakPlanks = Id(BuiltInBlocks.OakPlanks);
+        AddShaped(registry, "comparator", 3, 3, [0, rTorch, 0, rTorch, quartz, rTorch, stone, stone, stone], Id(BuiltInBlocks.RedstoneComparator), 1);
+        AddShaped(registry, "comparator_amethyst", 3, 3, [0, rTorch, 0, rTorch, Id(BuiltInBlocks.AmethystBlock), rTorch, stone, stone, stone], Id(BuiltInBlocks.RedstoneComparator), 1);
+        AddShaped(registry, "composter", 3, 3, [oakPlanks, 0, oakPlanks, oakPlanks, 0, oakPlanks, oakPlanks, oakPlanks, oakPlanks], Id(BuiltInBlocks.Composter), 1);
+        AddShaped(registry, "oak_trapdoor", 3, 2, [oakPlanks, oakPlanks, oakPlanks, oakPlanks, oakPlanks, oakPlanks], Id(BuiltInBlocks.OakTrapdoor), 2);
+        AddShapeless(registry, "bone_meal_from_bone", [Id(BuiltInItems.Bone)], Id(BuiltInItems.BoneMeal), 3);
+        AddShapeless(registry, "quartz_from_amethyst", [Id(BuiltInBlocks.AmethystBlock)], quartz, 2);
+        AddShaped(registry, "chiseled_sandstone", 1, 2, [Id(BuiltInBlocks.Sandstone), Id(BuiltInBlocks.Sandstone)], Id(BuiltInBlocks.ChiseledSandstone), 2);
     }
 
     /// <summary>Creates, populates, and freezes the built-in crafting recipe registry.</summary>

@@ -2,267 +2,436 @@ using System.Globalization;
 using OverHorizon.Core;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
+using OverHorizon.Core.Registry;
 using OverHorizon.Gameplay.Survival;
 using OverHorizon.Physics;
 
 namespace OverHorizon.Gameplay.Physics;
 
 /// <summary>
-/// Gravity-block falling, fluid frontier stepping, attachment cascading, and grass spread/decay for <see cref="PrimedTntAndWorldTicker"/>.
+/// Smooth <see cref="FallingBlockEntity"/> physics, batched zero-lag fluid stepping, bounded <c>Fire</c> aging/spread,
+/// attachment cascading, and grass spread/decay routines for <see cref="PrimedTntAndWorldTicker"/>.
 /// </summary>
 public sealed partial class PrimedTntAndWorldTicker
 {
-    /// <summary>Executes one immediate step of falling Sand/Gravel blocks.</summary>
-    public int StepGravityBlocks(Func<BlockPos, BlockState> getBlock, Action<BlockPos, BlockState> setBlock)
+    private const int MaxFallingBlockEntities = 96;
+    private const int MaxGravityDetachmentsPerStep = 24;
+    private const int MaxFluidUpdatesPerStep = 48;
+    private const double FallingBlockGravity = 24.0;
+
+    private int DetachDestabilizedGravityBlocks(
+        Func<BlockPos, BlockState> getBlock,
+        Action<BlockPos, BlockState> setBlock)
     {
-        ArgumentNullException.ThrowIfNull(getBlock);
-        ArgumentNullException.ThrowIfNull(setBlock);
-
-        if (_activeGravityBlocks.Count == 0)
-        {
-            return 0;
-        }
-
-        var ordered = _activeGravityBlocks.ToArray();
-        Array.Sort(ordered, static (a, b) => a.Y.CompareTo(b.Y));
+        var snapshot = _activeGravityBlocks.OrderBy(static p => p.Y).ToArray();
         _activeGravityBlocks.Clear();
-        var moved = 0;
+        var spawned = 0;
 
-        for (var i = 0; i < ordered.Length; i++)
+        for (var i = 0; i < snapshot.Length; i++)
         {
-            var pos = ordered[i];
-            var st = getBlock(pos);
-            if (!IsGravityBlock(st) || pos.Y <= EngineConstants.WorldMinY)
+            var pos = snapshot[i];
+            if (pos.Y <= EngineConstants.WorldMinY) continue;
+
+            var cur = getBlock(pos);
+            if (!IsGravityAffected(cur)) continue;
+
+            var belowState = getBlock(pos.Offset(Direction.Down));
+            if (!CanGravityFallInto(belowState)) continue;
+
+            if (spawned >= MaxGravityDetachmentsPerStep || _fallingBlocks.Count >= MaxFallingBlockEntities)
             {
+                _ = _activeGravityBlocks.Add(pos);
                 continue;
             }
 
-            var below = pos.Offset(Direction.Down);
-            var belowState = getBlock(below);
-            var belowMeta = _blocks.GetStateMetadata(belowState);
-            if (belowState.IsAir || belowMeta.IsFluid || belowMeta.BlockKey == BuiltInBlocks.Fire)
-            {
-                setBlock(pos, BlockState.Air);
-                setBlock(below, st);
-                moved++;
-
-                _ = _activeGravityBlocks.Add(below);
-                var above = pos.Offset(Direction.Up);
-                if (above.Y < EngineConstants.WorldMaxY && IsGravityBlock(getBlock(above)))
-                {
-                    _ = _activeGravityBlocks.Add(above);
-                }
-
-                CascadeUnsupportedAttachments(pos, getBlock, setBlock);
-            }
+            setBlock(pos, BlockState.Air);
+            _fallingBlocks.Add(new FallingBlockEntity(_nextFallingId++, cur, pos));
+            EnqueueFrontierNeighbors(pos, getBlock);
+            spawned++;
         }
 
-        return moved;
+        return spawned;
     }
 
-    /// <summary>Executes one immediate step of active water flow &amp; drainage using <see cref="FluidSimulator"/>.</summary>
-    public int StepFluidFrontier(
-        IVoxelCollisionReader collisionWorld,
+    private void StepFallingBlockEntities(
+        double dt,
         Func<BlockPos, BlockState> getBlock,
         Action<BlockPos, BlockState> setBlock,
-        Action<IReadOnlyList<(BlockPos Pos, BlockState State)>>? setBlockBatch = null)
+        List<(BlockPos Pos, BlockState BrokenState)>? brokenFragileDrops)
     {
-        ArgumentNullException.ThrowIfNull(collisionWorld);
-        ArgumentNullException.ThrowIfNull(getBlock);
-        ArgumentNullException.ThrowIfNull(setBlock);
-
-        if (_activeFluidFrontier.Count == 0)
+        for (var i = _fallingBlocks.Count - 1; i >= 0; i--)
         {
-            return 0;
-        }
+            var fb = _fallingBlocks[i];
+            fb.VelocityY = Math.Max(-36.0, fb.VelocityY - (FallingBlockGravity * dt));
+            var nextY = fb.CurrentY + (fb.VelocityY * dt);
 
-        var takeCount = Math.Min(256, _activeFluidFrontier.Count);
-        var batch = new BlockPos[takeCount];
-        var idx = 0;
-        foreach (var p in _activeFluidFrontier)
-        {
-            batch[idx++] = p;
-            if (idx >= takeCount) break;
-        }
-
-        for (var i = 0; i < batch.Length; i++)
-        {
-            _ = _activeFluidFrontier.Remove(batch[i]);
-        }
-
-        var changes = FluidSimulator.EvaluateStep(collisionWorld, batch);
-        if (changes.Count == 0)
-        {
-            return 0;
-        }
-
-        var baseWater = _blocks.GetDefaultState(BuiltInBlocks.Water);
-        var mutations = new List<(BlockPos Pos, BlockState State)>(changes.Count);
-
-        for (var i = 0; i < changes.Count; i++)
-        {
-            var ch = changes[i];
-            if (ch.NewLevel == FluidChange.RemoveFluidSentinel)
+            if (nextY < EngineConstants.WorldMinY - 16)
             {
-                mutations.Add((ch.Position, BlockState.Air));
+                _fallingBlocks.RemoveAt(i);
+                continue;
+            }
+
+            var currentCellY = (int)Math.Floor(fb.CurrentY + 0.001);
+            var targetCellY = (int)Math.Floor(nextY);
+            var landed = false;
+
+            for (var checkY = currentCellY; checkY >= targetCellY; checkY--)
+            {
+                if (checkY <= EngineConstants.WorldMinY)
+                {
+                    PlaceOrDropFallingBlock(fb, new BlockPos(fb.BlockX, EngineConstants.WorldMinY, fb.BlockZ), getBlock, setBlock, brokenFragileDrops);
+                    landed = true;
+                    break;
+                }
+
+                var belowPos = new BlockPos(fb.BlockX, checkY - 1, fb.BlockZ);
+                var belowState = getBlock(belowPos);
+                if (!CanGravityFallInto(belowState))
+                {
+                    PlaceOrDropFallingBlock(fb, new BlockPos(fb.BlockX, checkY, fb.BlockZ), getBlock, setBlock, brokenFragileDrops);
+                    landed = true;
+                    break;
+                }
+            }
+
+            if (landed)
+            {
+                _fallingBlocks.RemoveAt(i);
             }
             else
             {
-                var exMeta = _blocks.GetStateMetadata(getBlock(ch.Position));
-                if (exMeta.IsSolid)
-                {
-                    continue;
-                }
-
-                var waterState = _blocks.WithProperty(baseWater, "level", ch.NewLevel.ToString(CultureInfo.InvariantCulture));
-                mutations.Add((ch.Position, waterState));
-            }
-
-            _ = _activeFluidFrontier.Add(ch.Position);
-            foreach (var dir in DirectionExtensions.All)
-            {
-                var np = ch.Position.Offset(dir);
-                if (np.Y >= EngineConstants.WorldMinY && np.Y < EngineConstants.WorldMaxY)
-                {
-                    _ = _activeFluidFrontier.Add(np);
-                }
+                fb.CurrentY = nextY;
             }
         }
-
-        if (mutations.Count > 0)
-        {
-            ApplyMutations(mutations, setBlock, setBlockBatch);
-        }
-
-        return mutations.Count;
     }
 
-    /// <summary>Evaluates Grass Block spread onto nearby Dirt and Grass decay under opaque blocks.</summary>
-    public int StepGrassSpreadAndDecay(
-        Vec3d centerPos,
+    private void PlaceOrDropFallingBlock(
+        FallingBlockEntity fb,
+        BlockPos landPos,
         Func<BlockPos, BlockState> getBlock,
-        Func<BlockPos, (byte Sky, byte Block)> getLight,
         Action<BlockPos, BlockState> setBlock,
-        int sampleCount = 28)
+        List<(BlockPos Pos, BlockState BrokenState)>? brokenFragileDrops)
     {
-        ArgumentNullException.ThrowIfNull(getBlock);
-        ArgumentNullException.ThrowIfNull(getLight);
-        ArgumentNullException.ThrowIfNull(setBlock);
+        var existing = getBlock(landPos);
+        var existingMeta = _blocks.GetStateMetadata(existing);
 
-        var grassDefault = _blocks.GetDefaultState(BuiltInBlocks.GrassBlock);
-        var dirtDefault = _blocks.GetDefaultState(BuiltInBlocks.Dirt);
-        var centerBlock = centerPos.ToBlockPos();
-        var mutated = 0;
-
-        for (var s = 0; s < sampleCount; s++)
+        // Vanilla rule: Sand/Gravel landing on a non-solid fragile block (Torch, Rail, Repeater, Wire) pops into a dropped item!
+        if (!existing.IsAir && !existingMeta.IsFluid && existingMeta.BlockKey != BuiltInBlocks.Fire && !existingMeta.IsSolid)
         {
-            var dx = (int)(NextRandom() % 49U) - 24;
-            var dy = (int)(NextRandom() % 25U) - 12;
-            var dz = (int)(NextRandom() % 49U) - 24;
-            var pos = new BlockPos(centerBlock.X + dx, Math.Clamp(centerBlock.Y + dy, EngineConstants.WorldMinY + 1, EngineConstants.WorldMaxY - 2), centerBlock.Z + dz);
-            var st = getBlock(pos);
-            if (_blocks.GetStateMetadata(st).BlockKey != BuiltInBlocks.GrassBlock)
+            brokenFragileDrops?.Add((landPos, fb.State));
+            return;
+        }
+
+        setBlock(landPos, fb.State);
+        EnqueueFrontierNeighbors(landPos, getBlock);
+    }
+
+    private int StepFluidFrontier(
+        IVoxelCollisionReader collisionWorld,
+        Func<BlockPos, BlockState> getBlock,
+        Action<BlockPos, BlockState> setBlock,
+        Action<IReadOnlyList<(BlockPos Pos, BlockState State)>>? setBlockBatch,
+        List<BlockPos>? extinguishedFirePositions)
+    {
+        var candidates = _activeFluidFrontier
+            .Where(collisionWorld.IsColumnLoaded)
+            .Take(96)
+            .ToArray();
+        if (candidates.Length == 0)
+        {
+            return 0;
+        }
+
+        for (var i = 0; i < candidates.Length; i++)
+        {
+            _ = _activeFluidFrontier.Remove(candidates[i]);
+        }
+
+        var updates = FluidSimulator.ComputeStep(candidates, getBlock, _blocks);
+        if (updates.Count == 0)
+        {
+            return 0;
+        }
+
+        var count = Math.Min(updates.Count, MaxFluidUpdatesPerStep);
+        var batch = new List<(BlockPos Pos, BlockState State)>(count);
+        for (var i = 0; i < count; i++)
+        {
+            var (pos, nextState) = updates[i];
+            var prev = getBlock(pos);
+            if (_blocks.GetStateMetadata(prev).BlockKey == BuiltInBlocks.Fire)
+            {
+                _ = _activeFires.Remove(pos);
+                extinguishedFirePositions?.Add(pos);
+            }
+
+            batch.Add((pos, nextState));
+        }
+
+        ApplyMutations(batch, setBlock, setBlockBatch);
+
+        for (var i = 0; i < batch.Count; i++)
+        {
+            EnqueueFluidOnlyNeighbors(batch[i].Pos);
+        }
+
+        for (var i = count; i < updates.Count; i++)
+        {
+            _ = _activeFluidFrontier.Add(updates[i].Position);
+        }
+
+        return batch.Count;
+    }
+
+    private void StepBoundedFireFrontier(
+        Func<BlockPos, BlockState> getBlock,
+        Action<BlockPos, BlockState> setBlock,
+        List<BlockPos>? extinguishedFirePositions)
+    {
+        var fires = _activeFires.Take(48).ToArray();
+        for (var i = 0; i < fires.Length; i++)
+        {
+            var pos = fires[i];
+            var cur = getBlock(pos);
+            var meta = _blocks.GetStateMetadata(cur);
+            if (meta.BlockKey != BuiltInBlocks.Fire)
+            {
+                _ = _activeFires.Remove(pos);
+                continue;
+            }
+
+            // Extinguish immediately if adjacent to Water or missing floor support!
+            var touchesWater = false;
+            foreach (var dir in DirectionExtensions.All)
+            {
+                if (_blocks.GetStateMetadata(getBlock(pos.Offset(dir))).IsFluid)
+                {
+                    touchesWater = true;
+                    break;
+                }
+            }
+
+            var belowKey = _blocks.GetStateMetadata(getBlock(pos.Offset(Direction.Down))).BlockKey;
+            if (touchesWater || belowKey == BuiltInBlocks.Air)
+            {
+                setBlock(pos, BlockState.Air);
+                _ = _activeFires.Remove(pos);
+                if (touchesWater) extinguishedFirePositions?.Add(pos);
+                continue;
+            }
+
+            // Eternal flame on Obsidian or Bedrock (never spreads endlessly, stays warm!)
+            if (belowKey == BuiltInBlocks.Obsidian || belowKey == BuiltInBlocks.Bedrock)
             {
                 continue;
             }
+
+            var age = meta.Properties.TryGetValue("age", out var ageStr) && int.TryParse(ageStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+                ? parsed
+                : 0;
+            var nextAge = age + 2 + (int)(NextRandom() & 1U);
+
+            // Controlled bounded spread: only young fire (age <= 7) has a small chance to hop 1 cell with child age >= 9!
+            if (age <= 7 && (NextRandom() % 5U) == 0U && _activeFires.Count < 24)
+            {
+                var offX = ((int)(NextRandom() % 3U)) - 1;
+                var offY = ((int)(NextRandom() % 2U));
+                var offZ = ((int)(NextRandom() % 3U)) - 1;
+                var target = new BlockPos(pos.X + offX, pos.Y + offY, pos.Z + offZ);
+                if (target != pos && target.Y >= EngineConstants.WorldMinY + 1 && target.Y < EngineConstants.WorldMaxY - 1 &&
+                    getBlock(target).IsAir && HasAdjacentFlammable(target, getBlock) &&
+                    _blocks.GetStateMetadata(getBlock(target.Offset(Direction.Down))).IsSolid)
+                {
+                    var childAge = Math.Min(15, age + 6);
+                    var childFire = _blocks.WithProperty(_blocks.GetDefaultState(BuiltInBlocks.Fire), "age", childAge.ToString(CultureInfo.InvariantCulture));
+                    setBlock(target, childFire);
+                    _ = _activeFires.Add(target);
+                }
+            }
+
+            // Rarely consume directly underlying flammable block when fire reaches maturity
+            if (nextAge >= 14 && IsFlammableBlock(belowKey) && (NextRandom() % 4U) == 0U)
+            {
+                setBlock(pos.Offset(Direction.Down), BlockState.Air);
+            }
+
+            if (nextAge >= 15)
+            {
+                setBlock(pos, BlockState.Air);
+                _ = _activeFires.Remove(pos);
+            }
+            else
+            {
+                setBlock(pos, _blocks.WithProperty(cur, "age", nextAge.ToString(CultureInfo.InvariantCulture)));
+            }
+        }
+    }
+
+    private bool HasAdjacentFlammable(BlockPos pos, Func<BlockPos, BlockState> getBlock)
+    {
+        foreach (var dir in DirectionExtensions.All)
+        {
+            if (IsFlammableBlock(_blocks.GetStateMetadata(getBlock(pos.Offset(dir))).BlockKey))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsFlammableBlock(ResourceKey key) =>
+        key == BuiltInBlocks.OakPlanks || key == BuiltInBlocks.BirchPlanks ||
+        key == BuiltInBlocks.OakLog || key == BuiltInBlocks.BirchLog ||
+        key == BuiltInBlocks.OakLeaves || key == BuiltInBlocks.BirchLeaves ||
+        key == BuiltInBlocks.OakFence || key == BuiltInBlocks.Bookshelf ||
+        key == BuiltInBlocks.HayBlock || key == BuiltInBlocks.CrimsonWool ||
+        key == BuiltInBlocks.WhiteWool || key == BuiltInBlocks.BlueWool;
+
+    private int StepGrassSpreadAndDecay(
+        Vec3d center,
+        Func<BlockPos, BlockState> getBlock,
+        Func<BlockPos, (byte Sky, byte Block)> getLight,
+        Action<BlockPos, BlockState> setBlock,
+        int sampleCount)
+    {
+        var mutations = 0;
+        var baseX = (int)Math.Floor(center.X);
+        var baseY = (int)Math.Floor(center.Y);
+        var baseZ = (int)Math.Floor(center.Z);
+
+        var grassDefault = _blocks.GetDefaultState(BuiltInBlocks.GrassBlock);
+        var dirtDefault = _blocks.GetDefaultState(BuiltInBlocks.Dirt);
+
+        for (var s = 0; s < sampleCount; s++)
+        {
+            var rx = baseX + (int)(NextRandom() % 33U) - 16;
+            var ry = Math.Clamp(baseY + (int)(NextRandom() % 17U) - 8, EngineConstants.WorldMinY + 1, EngineConstants.WorldMaxY - 2);
+            var rz = baseZ + (int)(NextRandom() % 33U) - 16;
+            var pos = new BlockPos(rx, ry, rz);
+
+            var state = getBlock(pos);
+            if (state.IsAir) continue;
+
+            var meta = _blocks.GetStateMetadata(state);
+            if (meta.BlockKey != BuiltInBlocks.GrassBlock) continue;
 
             var abovePos = pos.Offset(Direction.Up);
             var aboveMeta = _blocks.GetStateMetadata(getBlock(abovePos));
             if (aboveMeta.IsOpaque || aboveMeta.IsFluid)
             {
                 setBlock(pos, dirtDefault);
-                mutated++;
+                mutations++;
                 continue;
             }
 
-            var (skyAbove, blkAbove) = getLight(abovePos);
-            if (Math.Max(skyAbove, blkAbove) < 9)
+            var (sky, blk) = getLight(abovePos);
+            if (Math.Max(sky, blk) < 9) continue;
+
+            var tx = pos.X + (int)(NextRandom() % 3U) - 1;
+            var ty = Math.Clamp(pos.Y + (int)(NextRandom() % 5U) - 3, EngineConstants.WorldMinY + 1, EngineConstants.WorldMaxY - 2);
+            var tz = pos.Z + (int)(NextRandom() % 3U) - 1;
+            var target = new BlockPos(tx, ty, tz);
+
+            if (_blocks.GetStateMetadata(getBlock(target)).BlockKey != BuiltInBlocks.Dirt) continue;
+
+            var targetAbove = target.Offset(Direction.Up);
+            var targetAboveMeta = _blocks.GetStateMetadata(getBlock(targetAbove));
+            if (!targetAboveMeta.IsOpaque && !targetAboveMeta.IsFluid)
             {
-                continue;
-            }
-
-            for (var attempt = 0; attempt < 4; attempt++)
-            {
-                var tx = pos.X + ((int)(NextRandom() % 3U) - 1);
-                var ty = pos.Y + ((int)(NextRandom() % 5U) - 3);
-                var tz = pos.Z + ((int)(NextRandom() % 3U) - 1);
-                var target = new BlockPos(tx, ty, tz);
-                if (target.Y < EngineConstants.WorldMinY || target.Y >= EngineConstants.WorldMaxY - 1)
-                {
-                    continue;
-                }
-
-                if (_blocks.GetStateMetadata(getBlock(target)).BlockKey != BuiltInBlocks.Dirt)
-                {
-                    continue;
-                }
-
-                var targetAbove = target.Offset(Direction.Up);
-                var targetAboveMeta = _blocks.GetStateMetadata(getBlock(targetAbove));
                 var (tSky, tBlk) = getLight(targetAbove);
-                if (!targetAboveMeta.IsOpaque && !targetAboveMeta.IsFluid && Math.Max(tSky, tBlk) >= 4)
+                if (Math.Max(tSky, tBlk) >= 4)
                 {
                     setBlock(target, grassDefault);
-                    mutated++;
-                    break;
+                    mutations++;
                 }
             }
         }
 
-        return mutated;
-    }
-
-    private void EnqueueFrontierNeighbors(BlockPos pos, Func<BlockPos, BlockState> getBlock)
-    {
-        for (var dy = -1; dy <= 2; dy++)
-        {
-            var gp = new BlockPos(pos.X, pos.Y + dy, pos.Z);
-            if (gp.Y >= EngineConstants.WorldMinY && gp.Y < EngineConstants.WorldMaxY && IsGravityBlock(getBlock(gp)))
-            {
-                _ = _activeGravityBlocks.Add(gp);
-            }
-        }
-
-        _ = _activeFluidFrontier.Add(pos);
-        foreach (var dir in DirectionExtensions.All)
-        {
-            var np = pos.Offset(dir);
-            if (np.Y >= EngineConstants.WorldMinY && np.Y < EngineConstants.WorldMaxY)
-            {
-                _ = _activeFluidFrontier.Add(np);
-            }
-        }
+        return mutations;
     }
 
     private void CascadeUnsupportedAttachments(
-        BlockPos brokenOrChangedPos,
+        BlockPos changedPos,
         Func<BlockPos, BlockState> getBlock,
-        Action<BlockPos, BlockState> setBlock)
+        Action<BlockPos, BlockState> setBlock,
+        List<(BlockPos Pos, BlockState DetachedState)>? detachedBlocks)
     {
-        foreach (var dir in DirectionExtensions.All)
-        {
-            var neighbor = brokenOrChangedPos.Offset(dir);
-            if (neighbor.Y < EngineConstants.WorldMinY || neighbor.Y >= EngineConstants.WorldMaxY)
-            {
-                continue;
-            }
+        var queue = new Queue<BlockPos>();
+        queue.Enqueue(changedPos);
+        var safety = 0;
 
-            var ns = getBlock(neighbor);
-            if (!ns.IsAir && !BlockAttachmentAndShapeRules.IsStillSupported(_blocks, getBlock, neighbor, ns))
+        while (queue.Count > 0 && safety++ < 64)
+        {
+            var origin = queue.Dequeue();
+            foreach (var dir in DirectionExtensions.All)
             {
-                setBlock(neighbor, BlockState.Air);
+                var neighbor = origin.Offset(dir);
+                if (neighbor.Y < EngineConstants.WorldMinY || neighbor.Y >= EngineConstants.WorldMaxY) continue;
+
+                var ns = getBlock(neighbor);
+                if (!ns.IsAir && !BlockAttachmentAndShapeRules.IsStillSupported(_blocks, getBlock, neighbor, ns))
+                {
+                    detachedBlocks?.Add((neighbor, ns));
+                    setBlock(neighbor, BlockState.Air);
+                    queue.Enqueue(neighbor);
+                    EnqueueFrontierNeighbors(neighbor, getBlock);
+                }
             }
         }
     }
 
-    private bool IsGravityBlock(BlockState state)
+    private void EnqueueFrontierNeighbors(BlockPos center, Func<BlockPos, BlockState> getBlock)
     {
-        if (state.IsAir)
+        AddCandidate(center, getBlock);
+        foreach (var dir in DirectionExtensions.All)
         {
-            return false;
+            var n = center.Offset(dir);
+            if (n.Y >= EngineConstants.WorldMinY && n.Y < EngineConstants.WorldMaxY)
+            {
+                AddCandidate(n, getBlock);
+            }
         }
+    }
 
+    private void EnqueueFluidOnlyNeighbors(BlockPos center)
+    {
+        _ = _activeFluidFrontier.Add(center);
+        foreach (var dir in DirectionExtensions.All)
+        {
+            var n = center.Offset(dir);
+            if (n.Y >= EngineConstants.WorldMinY && n.Y < EngineConstants.WorldMaxY)
+            {
+                _ = _activeFluidFrontier.Add(n);
+            }
+        }
+    }
+
+    private void AddCandidate(BlockPos pos, Func<BlockPos, BlockState> getBlock)
+    {
+        _ = _activeFluidFrontier.Add(pos);
+        var st = getBlock(pos);
+        if (IsGravityAffected(st))
+        {
+            _ = _activeGravityBlocks.Add(pos);
+        }
+        else if (_blocks.GetStateMetadata(st).BlockKey == BuiltInBlocks.Fire)
+        {
+            _ = _activeFires.Add(pos);
+        }
+    }
+
+    private bool IsGravityAffected(BlockState state)
+    {
+        if (state.IsAir) return false;
         var key = _blocks.GetStateMetadata(state).BlockKey;
         return key == BuiltInBlocks.Sand || key == BuiltInBlocks.Gravel;
+    }
+
+    private bool CanGravityFallInto(BlockState below)
+    {
+        if (below.IsAir) return true;
+        var meta = _blocks.GetStateMetadata(below);
+        return meta.IsFluid || meta.BlockKey == BuiltInBlocks.Fire;
     }
 }

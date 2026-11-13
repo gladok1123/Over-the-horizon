@@ -90,6 +90,32 @@ internal static class UiSurvivalHudBuilder
             DrawRect(v, 0, 0, width, height, new Vector4(0.02f, 0.03f, 0.09f, sleepA));
             UiGeometryBuilder.DrawCenteredText(v, "Sleeping until dawn...", width * 0.5f, height * 0.44f, 2.1f, new Vector4(0.92f, 0.94f, 1.0f, sleepA), shadow: true);
         }
+
+        if (state.IsSpectatorMode && state.Mode == UiOverlayMode.InGame)
+        {
+            UiGeometryBuilder.DrawCenteredText(v, "SPECTATOR MODE (Noclip Flight)", width * 0.5f, 14.0f, 1.45f, new Vector4(0.75f, 0.88f, 1.0f, 0.86f), shadow: true);
+        }
+    }
+
+    public static void BuildStatusEffectBadges(List<TexturedUiVertex> v, float width, FrameOverlayState state)
+    {
+        if (state.StatusEffects is not { Count: > 0 } effects) return;
+
+        const float cardW = 168.0f;
+        const float cardH = 26.0f;
+        var x = width - cardW - 12.0f;
+        for (var i = 0; i < effects.Count; i++)
+        {
+            var eff = effects[i];
+            var y = 12.0f + (i * 31.0f);
+            DrawRect(v, x - 2.0f, y - 2.0f, cardW + 4.0f, cardH + 4.0f, new Vector4(eff.AccentColor.X, eff.AccentColor.Y, eff.AccentColor.Z, 0.85f));
+            DrawRect(v, x, y, cardW, cardH, new Vector4(0.08f, 0.09f, 0.12f, 0.86f));
+            DrawRect(v, x + 5.0f, y + 5.0f, 16.0f, 16.0f, new Vector4(eff.AccentColor.X, eff.AccentColor.Y, eff.AccentColor.Z, 0.95f));
+            var mins = eff.RemainingSeconds / 60;
+            var secs = eff.RemainingSeconds % 60;
+            var txt = $"{eff.Label} {mins}:{secs:D2}";
+            UiGeometryBuilder.DrawText(v, txt, x + 27.0f, y + 7.0f, 1.30f, Vector4.One, shadow: true);
+        }
     }
 
     public static void BuildSurvivalBarsAndMiningProgress(

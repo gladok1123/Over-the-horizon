@@ -12,8 +12,10 @@ namespace OverHorizon.Audio;
 /// </summary>
 public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
 {
-    private const int VoicePoolSize = 8;
-    private const double MaxAudibleDistanceSq = 48.0 * 48.0;
+    private const int VoicePoolSize = 20;
+    private const double DefaultMaxAudibleDistance = 16.0;
+    private const double MediumMaxAudibleDistance = 22.0;
+    private const double ExplosionMaxAudibleDistance = 48.0;
     private static readonly Lock ResolverSyncRoot = new();
 
     private readonly ILogger<OpenAlAudioSubsystem> _logger;
@@ -96,7 +98,7 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
             _context = context;
 
             al.GetError();
-            al.DistanceModel(DistanceModel.InverseDistanceClamped);
+            al.DistanceModel(DistanceModel.LinearDistanceClamped);
             al.SetListenerProperty(ListenerVector3.Position, 0.0f, 0.0f, 0.0f);
 
             UploadSoundBank(al);
@@ -149,7 +151,8 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
         var dy = worldPosition.Y - ListenerPosition.Y;
         var dz = worldPosition.Z - ListenerPosition.Z;
         var distSq = (dx * dx) + (dy * dy) + (dz * dz);
-        if (distSq > MaxAudibleDistanceSq)
+        var maxDist = ResolveMaxAudibleDistance(cue);
+        if (distSq > maxDist * maxDist)
         {
             return;
         }
@@ -161,14 +164,33 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
             return;
         }
 
+        var dist = Math.Sqrt(distSq);
+        var distanceFactor = dist <= 1.25
+            ? 1.0f
+            : MathF.Pow(Math.Clamp(1.0f - (float)((dist - 1.25) / (maxDist - 1.25)), 0.0f, 1.0f), 1.65f);
+        var attenuatedGain = Math.Clamp(gain * distanceFactor, 0.0f, 2.0f);
+        if (attenuatedGain <= 0.002f)
+        {
+            return;
+        }
+
         var source = SelectAvailableVoice(_al);
         _al.SourceStop(source);
         _al.SetSourceProperty(source, SourceInteger.Buffer, bufferId);
         _al.SetSourceProperty(source, SourceVector3.Position, (float)dx, (float)dy, (float)dz);
-        _al.SetSourceProperty(source, SourceFloat.Gain, Math.Clamp(gain, 0.0f, 2.0f));
+        _al.SetSourceProperty(source, SourceFloat.ReferenceDistance, 1.5f);
+        _al.SetSourceProperty(source, SourceFloat.MaxDistance, (float)maxDist);
+        _al.SetSourceProperty(source, SourceFloat.Gain, attenuatedGain);
         _al.SetSourceProperty(source, SourceFloat.Pitch, Math.Clamp(pitch, 0.5f, 2.0f));
         _al.SourcePlay(source);
     }
+
+    private static double ResolveMaxAudibleDistance(SoundCue cue) => cue switch
+    {
+        SoundCue.Explosion => ExplosionMaxAudibleDistance,
+        SoundCue.TntFuse or SoundCue.BowShoot or SoundCue.ArrowHit or SoundCue.PistonExtend or SoundCue.PistonRetract or SoundCue.ShieldBlock => MediumMaxAudibleDistance,
+        _ => DefaultMaxAudibleDistance,
+    };
 
     /// <inheritdoc />
     public void Dispose()

@@ -76,7 +76,7 @@ public static class BlockDropResolver
         ArgumentNullException.ThrowIfNull(items);
 
         if (blockKey == BuiltInBlocks.Air || blockKey == BuiltInBlocks.Bedrock || blockKey == BuiltInBlocks.Water ||
-            blockKey == BuiltInBlocks.Fire || blockKey == BuiltInBlocks.PistonHead)
+            blockKey == BuiltInBlocks.Fire || blockKey == BuiltInBlocks.PistonHead || blockKey == BuiltInBlocks.MonsterSpawner)
         {
             return ItemStack.Empty;
         }
@@ -212,6 +212,25 @@ public static class BlockDropResolver
         return MakeStack(items, blockKey, 1);
     }
 
+    /// <summary>Resolves the corresponding inventory item key for Middle-Click Pick Block on <paramref name="meta"/>.</summary>
+    public static ResourceKey ResolvePickBlockItemKey(BlockStateMetadata meta)
+    {
+        var key = meta.BlockKey;
+        if (key == BuiltInBlocks.RedstoneWire) return BuiltInItems.Redstone;
+        if (key == BuiltInBlocks.RedstoneTorchOff) return BuiltInBlocks.RedstoneTorch;
+        if (key == BuiltInBlocks.LitRedstoneLamp) return BuiltInBlocks.RedstoneLamp;
+        if (key == BuiltInBlocks.LitFurnace) return BuiltInBlocks.Furnace;
+        if (key == BuiltInBlocks.Farmland) return BuiltInBlocks.Dirt;
+        if (key == BuiltInBlocks.PistonHead)
+        {
+            return meta.Properties.TryGetValue("sticky", out var s) && string.Equals(s, "true", StringComparison.OrdinalIgnoreCase)
+                ? BuiltInBlocks.StickyPiston
+                : BuiltInBlocks.Piston;
+        }
+
+        return key;
+    }
+
     private static ItemStack MakeStack(IRegistry<ItemDefinition> items, ResourceKey key, int count)
     {
         var id = items.GetId(key);
@@ -221,7 +240,9 @@ public static class BlockDropResolver
     private static bool RequiresPickaxeForFastHarvest(ResourceKey key) =>
         key == BuiltInBlocks.Stone || key == BuiltInBlocks.Deepslate || key == BuiltInBlocks.CobbledDeepslate ||
         key == BuiltInBlocks.Cobblestone || key == BuiltInBlocks.MossyCobblestone ||
-        key == BuiltInBlocks.StoneBricks || key == BuiltInBlocks.Bricks || key == BuiltInBlocks.Sandstone ||
+        key == BuiltInBlocks.StoneBricks || key == BuiltInBlocks.MossyStoneBricks || key == BuiltInBlocks.Bricks ||
+        key == BuiltInBlocks.Sandstone || key == BuiltInBlocks.ChiseledSandstone || key == BuiltInBlocks.AmethystBlock ||
+        key == BuiltInBlocks.MonsterSpawner ||
         key == BuiltInBlocks.Furnace || key == BuiltInBlocks.LitFurnace || key == BuiltInBlocks.Lantern ||
         key == BuiltInBlocks.CoalOre || key == BuiltInBlocks.IronOre || key == BuiltInBlocks.GoldOre ||
         key == BuiltInBlocks.CopperOre || key == BuiltInBlocks.RedstoneOre || key == BuiltInBlocks.LapisOre ||

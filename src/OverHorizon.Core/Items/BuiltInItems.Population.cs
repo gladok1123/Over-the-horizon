@@ -30,12 +30,22 @@ public static partial class BuiltInItems
 
             var category = ClassifyBlockTab(block.Key);
             var stackSize = block.Key == BuiltInBlocks.RedBed ? 1 : 64;
+            var customDisplayName = string.Empty;
+            if (block.Key == BuiltInBlocks.RedstoneRepeater)
+            {
+                customDisplayName = "Redstone Repeater";
+            }
+            else if (block.Key == BuiltInBlocks.RedstoneComparator)
+            {
+                customDisplayName = "Redstone Comparator";
+            }
             _ = registry.Register(
                 block.Key,
                 new ItemDefinition(
                     block.Key,
                     MaxStackSize: stackSize,
                     PlacedBlockKey: block.Key,
+                    DisplayName: customDisplayName,
                     Category: category,
                     AttackDamage: 1.0f,
                     UseAction: ItemUseAction.PlaceBlock,
@@ -113,7 +123,7 @@ public static partial class BuiltInItems
         _ = registry.Register(FlintAndSteel, new ItemDefinition(FlintAndSteel, MaxStackSize: 1, DisplayName: "Flint and Steel", Category: ItemCategory.CombatAndTools, AttackDamage: 1.5f, UseAction: ItemUseAction.IgniteTnt));
         _ = registry.Register(Bucket, new ItemDefinition(Bucket, MaxStackSize: 16, DisplayName: "Bucket", Category: ItemCategory.FoodAndMaterials, UseAction: ItemUseAction.EmptyBucket));
         _ = registry.Register(WaterBucket, new ItemDefinition(WaterBucket, MaxStackSize: 1, DisplayName: "Water Bucket", Category: ItemCategory.FoodAndMaterials, UseAction: ItemUseAction.WaterBucket));
-        _ = registry.Register(Shield, new ItemDefinition(Shield, MaxStackSize: 1, DisplayName: "Shield", Category: ItemCategory.CombatAndTools, AttackDamage: 1.5f, ArmorDefense: 2));
+        _ = registry.Register(Shield, new ItemDefinition(Shield, MaxStackSize: 1, DisplayName: "Shield", Category: ItemCategory.CombatAndTools, AttackDamage: 1.5f, UseAction: ItemUseAction.RaiseShield, ArmorDefense: 2));
 
         RegisterArmor(registry, LeatherHelmet, "Leather Cap", defense: 1, slotOffset: 0);
         RegisterArmor(registry, LeatherChestplate, "Leather Tunic", defense: 3, slotOffset: 1);
@@ -148,6 +158,23 @@ public static partial class BuiltInItems
         _ = registry.Register(Minecart, new ItemDefinition(Minecart, MaxStackSize: 1, DisplayName: "Minecart", Category: ItemCategory.Redstone, UseAction: ItemUseAction.PlaceMinecart));
         _ = registry.Register(Bow, new ItemDefinition(Bow, MaxStackSize: 1, DisplayName: "Bow", Category: ItemCategory.CombatAndTools, AttackDamage: 2.0f, UseAction: ItemUseAction.DrawBow));
         _ = registry.Register(Arrow, new ItemDefinition(Arrow, MaxStackSize: 64, DisplayName: "Arrow", Category: ItemCategory.CombatAndTools));
+
+        RegisterMaterial(registry, Quartz, "Nether Quartz");
+        _ = registry.Register(BoneMeal, new ItemDefinition(BoneMeal, MaxStackSize: 64, DisplayName: "Bone Meal", Category: ItemCategory.FoodAndMaterials, UseAction: ItemUseAction.ApplyBoneMeal));
+
+        RegisterPotion(registry, SwiftnessPotion, "Potion of Swiftness");
+        RegisterPotion(registry, HealingPotion, "Potion of Healing");
+        RegisterPotion(registry, NightVisionPotion, "Potion of Night Vision");
+        RegisterPotion(registry, FireResistancePotion, "Potion of Fire Resistance");
+
+        RegisterSpawnEgg(registry, PigSpawnEgg, "Pig Spawn Egg");
+        RegisterSpawnEgg(registry, CowSpawnEgg, "Cow Spawn Egg");
+        RegisterSpawnEgg(registry, SheepSpawnEgg, "Sheep Spawn Egg");
+        RegisterSpawnEgg(registry, ChickenSpawnEgg, "Chicken Spawn Egg");
+        RegisterSpawnEgg(registry, ZombieSpawnEgg, "Zombie Spawn Egg");
+        RegisterSpawnEgg(registry, SkeletonSpawnEgg, "Skeleton Spawn Egg");
+        RegisterSpawnEgg(registry, CreeperSpawnEgg, "Creeper Spawn Egg");
+        RegisterSpawnEgg(registry, SpiderSpawnEgg, "Spider Spawn Egg");
     }
 
     /// <summary>Creates, populates, and freezes the default item registry.</summary>
@@ -164,6 +191,7 @@ public static partial class BuiltInItems
         if (key == BuiltInBlocks.RedstoneBlock || key == BuiltInBlocks.RedstoneTorch ||
             key == BuiltInBlocks.Lever || key == BuiltInBlocks.StoneButton ||
             key == BuiltInBlocks.StonePressurePlate || key == BuiltInBlocks.RedstoneRepeater ||
+            key == BuiltInBlocks.RedstoneComparator || key == BuiltInBlocks.OakTrapdoor ||
             key == BuiltInBlocks.RedstoneLamp || key == BuiltInBlocks.Piston ||
             key == BuiltInBlocks.StickyPiston || key == BuiltInBlocks.Tnt ||
             key == BuiltInBlocks.Rail || key == BuiltInBlocks.PoweredRail)
@@ -177,7 +205,7 @@ public static partial class BuiltInItems
             key == BuiltInBlocks.CoalOre || key == BuiltInBlocks.IronOre || key == BuiltInBlocks.GoldOre ||
             key == BuiltInBlocks.DiamondOre || key == BuiltInBlocks.CopperOre || key == BuiltInBlocks.LapisOre ||
             key == BuiltInBlocks.RedstoneOre || key == BuiltInBlocks.EmeraldOre || key == BuiltInBlocks.SnowBlock ||
-            key == BuiltInBlocks.Farmland || key == BuiltInBlocks.HayBlock)
+            key == BuiltInBlocks.Farmland || key == BuiltInBlocks.HayBlock || key == BuiltInBlocks.AmethystBlock)
         {
             return ItemCategory.NaturalBlocks;
         }
@@ -186,13 +214,19 @@ public static partial class BuiltInItems
             key == BuiltInBlocks.Chest || key == BuiltInBlocks.Barrel || key == BuiltInBlocks.Torch ||
             key == BuiltInBlocks.Lantern || key == BuiltInBlocks.Ladder || key == BuiltInBlocks.RedBed ||
             key == BuiltInBlocks.Cobweb || key == BuiltInBlocks.Bookshelf || key == BuiltInBlocks.Glowstone ||
-            key == BuiltInBlocks.Glass)
+            key == BuiltInBlocks.Glass || key == BuiltInBlocks.Composter || key == BuiltInBlocks.MonsterSpawner)
         {
             return ItemCategory.FunctionalBlocks;
         }
 
         return ItemCategory.BuildingBlocks;
     }
+
+    private static void RegisterPotion(MappedRegistry<ItemDefinition> reg, ResourceKey key, string name) =>
+        _ = reg.Register(key, new ItemDefinition(key, MaxStackSize: 16, DisplayName: name, Category: ItemCategory.FoodAndMaterials, UseAction: ItemUseAction.DrinkPotion));
+
+    private static void RegisterSpawnEgg(MappedRegistry<ItemDefinition> reg, ResourceKey key, string name) =>
+        _ = reg.Register(key, new ItemDefinition(key, MaxStackSize: 64, DisplayName: name, Category: ItemCategory.CombatAndTools, UseAction: ItemUseAction.SpawnMob));
 
     private static void RegisterMaterial(MappedRegistry<ItemDefinition> reg, ResourceKey key, string name) =>
         _ = reg.Register(key, new ItemDefinition(key, MaxStackSize: 64, DisplayName: name, Category: ItemCategory.FoodAndMaterials));

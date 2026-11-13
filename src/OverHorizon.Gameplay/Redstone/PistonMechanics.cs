@@ -42,7 +42,7 @@ internal static class PistonMechanics
 
                 var cs = getBlock(cursor);
                 var cMeta = blocks.GetStateMetadata(cs);
-                if (cs.IsAir || cMeta.IsFluid || cMeta.BlockKey == BuiltInBlocks.Fire)
+                if (cs.IsAir || cMeta.IsFluid || IsFragileCrushedByPiston(cMeta))
                 {
                     break;
                 }
@@ -66,6 +66,7 @@ internal static class PistonMechanics
                 var from = chain[i];
                 var to = from.Offset(pushDir);
                 setBlock(to, getBlock(from));
+                engine.NotifyBlockChanged(to);
             }
 
             var headState = blocks.WithProperty(
@@ -106,10 +107,14 @@ internal static class PistonMechanics
         }
     }
 
+    private static bool IsFragileCrushedByPiston(BlockStateMetadata meta) =>
+        !meta.IsSolid && meta.BlockKey != BuiltInBlocks.OakTrapdoor;
+
     private static bool IsPistonPushable(BlockStateMetadata meta) =>
         meta.Hardness >= 0.0f &&
         meta.BlockKey != BuiltInBlocks.Obsidian &&
         meta.BlockKey != BuiltInBlocks.Bedrock &&
+        meta.BlockKey != BuiltInBlocks.MonsterSpawner &&
         meta.BlockKey != BuiltInBlocks.PistonHead &&
         !(meta.BlockKey == BuiltInBlocks.Piston && IsExtended(meta)) &&
         !(meta.BlockKey == BuiltInBlocks.StickyPiston && IsExtended(meta));

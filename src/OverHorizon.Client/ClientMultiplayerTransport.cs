@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading.Channels;
 using OverHorizon.Networking.Client;
 using OverHorizon.Networking.Packets;
@@ -10,7 +11,8 @@ using OverHorizon.Networking.Primitives;
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Lock-free dual-channel async transport pump wrapping <see cref="JavaProtocolClient"/> for multiplayer client sessions.
+/// Lock-free dual-channel async transport pump wrapping <see cref="JavaProtocolClient"/> with instant,
+/// race-free socket shutdown on disconnect or return to Title Screen.
 /// </summary>
 internal sealed class ClientMultiplayerTransport : IAsyncDisposable
 {
@@ -33,7 +35,8 @@ internal sealed class ClientMultiplayerTransport : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         var addresses = await Dns.GetHostAddressesAsync(host, cancellationToken).ConfigureAwait(false);
-        var endpoint = new IPEndPoint(addresses[0], port);
+        var ip = addresses.FirstOrDefault(static a => a.AddressFamily == AddressFamily.InterNetwork) ?? addresses[0];
+        var endpoint = new IPEndPoint(ip, port);
         var client = await JavaProtocolClient.ConnectTcpAsync(endpoint, cancellationToken).ConfigureAwait(false);
         var login = await client.LoginAsync(username, cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -58,10 +61,18 @@ internal sealed class ClientMultiplayerTransport : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        var client = Interlocked.Exchange(ref _client, null);
         _outbound.Writer.TryComplete();
+        _inbound.Writer.TryComplete();
+
         if (_cts is not null)
         {
             await _cts.CancelAsync().ConfigureAwait(false);
+        }
+
+        if (client is not null)
+        {
+            await client.DisposeAsync().ConfigureAwait(false);
         }
 
         await AwaitQuietlyAsync(_readTask).ConfigureAwait(false);
@@ -69,28 +80,20 @@ internal sealed class ClientMultiplayerTransport : IAsyncDisposable
 
         _cts?.Dispose();
         _cts = null;
-
-        if (_client is not null)
-        {
-            await _client.DisposeAsync().ConfigureAwait(false);
-            _client = null;
-        }
+        _readTask = null;
+        _writeTask = null;
     }
 
     private static async ValueTask AwaitQuietlyAsync(Task? task)
     {
-        if (task is null)
-        {
-            return;
-        }
-
+        if (task is null) return;
         try
         {
             await task.ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException or ObjectDisposedException or ProtocolException)
         {
-            // Normal shutdown cancellation.
+            // Expected during disconnect.
         }
     }
 
@@ -110,7 +113,7 @@ internal sealed class ClientMultiplayerTransport : IAsyncDisposable
                 _ = _inbound.Writer.TryWrite(packet);
             }
         }
-        catch (Exception ex) when (ex is OperationCanceledException or IOException or ProtocolException)
+        catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException or ObjectDisposedException or ProtocolException)
         {
             _inbound.Writer.TryComplete();
         }
@@ -125,7 +128,7 @@ internal sealed class ClientMultiplayerTransport : IAsyncDisposable
                 await client.SendPlayPacketAsync(packet, ct).ConfigureAwait(false);
             }
         }
-        catch (Exception ex) when (ex is OperationCanceledException or IOException or ProtocolException)
+        catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException or ObjectDisposedException or ProtocolException)
         {
             // Connection closed.
         }

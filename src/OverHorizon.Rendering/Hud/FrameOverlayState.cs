@@ -5,7 +5,7 @@ namespace OverHorizon.Rendering.Hud;
 
 /// <summary>
 /// Per-frame dynamic 3D world overlays, <c>0..15</c> hand &amp; offhand viewmodels, dynamic torch lighting,
-/// 3D mobs &amp; primed TNT, day/night sky state, container GUI state, and 2D menu state passed to <see cref="IRenderSubsystem"/>.
+/// 3D mobs, dropped items, falling blocks, particles, status effects, and 2D menu state passed to <see cref="IRenderSubsystem"/>.
 /// </summary>
 public sealed record FrameOverlayState(
     BlockPos? TargetedBlock,
@@ -84,4 +84,13 @@ public sealed record FrameOverlayState(
     bool HeldIsBow = false,
     float BowChargeNormalized = 0.0f,
     float ChunkFogDistance = 160.0f,
-    float SleepFadeAlpha = 0.0f);
+    float SleepFadeAlpha = 0.0f,
+    float OffhandSwingProgress = 0.0f,
+    bool IsBlockingShield = false,
+    float ShieldRaiseNormalized = 0.0f,
+    float CameraSkyLightNormalized = 1.0f,
+    IReadOnlyList<DroppedItemVisual>? DroppedItems = null,
+    IReadOnlyList<FallingBlockVisual>? FallingBlocks = null,
+    IReadOnlyList<WorldParticleVisual>? Particles = null,
+    IReadOnlyList<HudStatusEffectVisual>? StatusEffects = null,
+    bool IsSpectatorMode = false);
