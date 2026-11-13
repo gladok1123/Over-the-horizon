@@ -111,7 +111,7 @@ public sealed partial class WorldMobManager
             return;
         }
 
-        if (mob.Type is MobType.Zombie or MobType.Skeleton && skyBrightness >= 0.78f)
+        if (mob.Type is MobType.Zombie or MobType.Skeleton && skyBrightness >= 0.65f)
         {
             var headPos = new Vec3d(mob.FeetPosition.X, mob.FeetPosition.Y + 1.5, mob.FeetPosition.Z).ToBlockPos();
             if (probe(headPos).SkyLight >= 15)

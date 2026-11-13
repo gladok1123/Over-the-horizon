@@ -295,7 +295,7 @@ public sealed class V6MechanicsRedstoneWorldsAndUiTests
             var shadedZombie = mobs.SpawnMob(MobType.Zombie, new Vec3d(2.5, 64.0, 2.5));
             var initialHp = sunlitZombie.Health;
 
-            for (var s = 0; s < 10; s++)
+            for (var s = 0; s < 12; s++)
             {
                 _ = mobs.Step(
                     cache,
