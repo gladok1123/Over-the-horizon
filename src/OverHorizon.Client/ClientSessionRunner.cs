@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using OverHorizon.Audio;
 using OverHorizon.Core.Biomes;
 using OverHorizon.Core.Blocks;
+using OverHorizon.Core.Items;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
 using OverHorizon.Gameplay;

@@ -24,9 +24,19 @@ public static partial class WorldMob3DMesher
         for (var i = 0; i < avatars.Count; i++)
         {
             var a = avatars[i];
+            var poseOffsetY = 0.0f;
+            if (a.IsRidingMinecart)
+            {
+                poseOffsetY = 0.30f;
+            }
+            else if (a.IsSneaking)
+            {
+                poseOffsetY = 0.14f;
+            }
+
             var relFeet = new Vector3(
                 (float)(a.FeetPosition.X - cameraPos.X),
-                (float)(a.FeetPosition.Y - cameraPos.Y),
+                (float)(a.FeetPosition.Y - cameraPos.Y) - poseOffsetY,
                 (float)(a.FeetPosition.Z - cameraPos.Z));
             if (relFeet.LengthSquared() > 128.0f * 128.0f) continue;
 

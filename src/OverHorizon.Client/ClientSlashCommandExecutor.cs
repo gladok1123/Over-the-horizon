@@ -287,7 +287,7 @@ internal static class ClientSlashCommandExecutor
             return;
         }
 
-        var ok = worldBridge.ApplyLocalBlockChangeWithCascade(new BlockPos(x, y, z), def.DefaultState, dropDetachedItemsToInventory: null);
+        var ok = worldBridge.ApplyLocalBlockChangeWithCascade(new BlockPos(x, y, z), def.DefaultState, spawnDetachedItemDrops: false);
         chatHistory.AddMessage(ok ? $"[System] Set block at ({x}, {y}, {z}) to {bKey}." : "[System] Target chunk not loaded.");
     }
 }

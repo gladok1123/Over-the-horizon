@@ -234,7 +234,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
     public void StepWorldParticlesAndFuseAudio(ClientPlayerController player, float dt)
     {
         _mpDropSpinClock += dt;
-        Particles.Step(dt, _worldCache);
+        Particles.Step(dt);
 
         _particleTickTimer += dt;
         if (_particleTickTimer >= 0.09)
@@ -315,7 +315,8 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         var carts = Minecarts.Minecarts;
         for (var i = 0; i < carts.Count; i++)
         {
-            var spd = carts[i].HorizontalSpeed;
+            var vel = carts[i].Velocity;
+            var spd = Math.Sqrt((vel.X * vel.X) + (vel.Z * vel.Z));
             if (spd > 0.35 && carts[i].FeetPosition.DistanceTo(player.Camera.Position) < 22.0)
             {
                 var gain = Math.Clamp((float)(spd / 8.0) * 0.48f, 0.12f, 0.52f) * player.MasterVolume;

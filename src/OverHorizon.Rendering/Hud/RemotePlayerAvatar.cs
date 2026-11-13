@@ -24,7 +24,10 @@ public readonly record struct RemotePlayerAvatar(
     bool LeftHandSwing = false,
     int MainHandSpriteTile = -1,
     bool MainHandIsShield = false,
+    bool MainHandIsBow = false,
     bool MainHandIsBlock3D = false,
     int MainHandBlockTile = -1,
     bool OffhandIsShield = false,
-    int OffhandSpriteTile = -1);
+    int OffhandSpriteTile = -1,
+    bool IsSneaking = false,
+    bool IsRidingMinecart = false);

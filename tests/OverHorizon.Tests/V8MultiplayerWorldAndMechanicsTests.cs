@@ -308,7 +308,7 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
         var particles = new ParticleSystem();
         particles.EmitExplosion(new Vec3d(5, 66, 5));
         particles.Count.Should().BeGreaterThan(20);
-        particles.Step(0.05f, cache);
+        particles.Step(0.05f);
 
         var effects = new StatusEffectTracker();
         effects.ApplyEffect(StatusEffectType.Swiftness, 30.0f);

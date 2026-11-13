@@ -86,7 +86,9 @@ public sealed partial class ClientSessionRunner
         var savedFeet = _player.FeetPosition;
         var savedYaw = _player.Camera.YawDegrees;
         var savedPitch = _player.Camera.PitchDegrees;
-        var worldDir = _activeWorldMeta?.DirectoryPath ?? Path.Combine(Directory.GetCurrentDirectory(), "saves", "lan_world");
+        var worldDir = !string.IsNullOrEmpty(_activeWorldMeta?.FolderPath)
+            ? _activeWorldMeta.FolderPath
+            : Path.Combine(Directory.GetCurrentDirectory(), "saves", "lan_world");
         var worldSeed = _activeWorldMeta?.Seed ?? _currentSeed;
 
         var oldSavedWorld = _ownedSavedWorld;
@@ -432,7 +434,7 @@ public sealed partial class ClientSessionRunner
             if (_player.LastSwingWasOffhand) flags |= 8;
             if (_player.IsSneaking) flags |= 16;
 
-            var mainId = _player.Hotbar.SurvivalInventory.SelectedStack.ItemId;
+            var mainId = _player.Hotbar.SurvivalInventory.GetSlot(_player.Hotbar.SelectedIndex).ItemId;
             var offId = _player.Hotbar.SurvivalInventory.OffhandItem.ItemId;
             var bowByte = (byte)Math.Clamp((int)MathF.Round(_player.BowChargeNormalized * 255.0f), 0, 255);
             _transport.EnqueueOutbound(new PlayerEquipmentAndModePacket(

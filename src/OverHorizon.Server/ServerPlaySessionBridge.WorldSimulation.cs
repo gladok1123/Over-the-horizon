@@ -7,6 +7,7 @@ using OverHorizon.Gameplay;
 using OverHorizon.Gameplay.Mobs;
 using OverHorizon.Gameplay.Redstone;
 using OverHorizon.Gameplay.Survival;
+using OverHorizon.Networking.Packets;
 using OverHorizon.Networking.Packets.Clientbound;
 using OverHorizon.Networking.Packets.Serverbound;
 using OverHorizon.Networking.Sessions;
