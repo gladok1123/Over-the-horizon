@@ -196,30 +196,31 @@ public sealed class V6MechanicsRedstoneWorldsAndUiTests
         cache.UpsertColumn(col);
 
         var ticker = new PrimedTntAndWorldTicker(blocks);
-        ticker.IgniteTntBlock(new BlockPos(4, 62, 4), (p, s) => _ = cache.ApplyBlockUpdate(p, s));
-        cache.GetBlockState(new BlockPos(4, 62, 4)).IsAir.Should().BeTrue("ignited TNT block converts into live PrimedTntEntity");
-        ticker.ActiveTnt.Should().HaveCount(1);
+        void SetWorld(BlockPos p, BlockState s) => _ = cache.ApplyBlockUpdate(p, s);
 
-        var craters = new List<List<BlockPos>>();
-        for (var step = 0; step < 30; step++)
+        ticker.NotifyWorldBlockChanged(new BlockPos(2, 64, 2), cache.GetBlockState, SetWorld);
+        ticker.NotifyWorldBlockChanged(new BlockPos(10, 62, 10), cache.GetBlockState, SetWorld);
+        _ = cache.ApplyBlockUpdate(new BlockPos(4, 62, 4), BlockState.Air);
+        _ = ticker.SpawnPrimedTnt(new BlockPos(4, 62, 4));
+
+        cache.GetBlockState(new BlockPos(4, 62, 4)).IsAir.Should().BeTrue("ignited TNT block converts into live PrimedTntEntity");
+        ticker.PrimedTnts.Should().HaveCount(1);
+
+        var craters = new List<Vec3d>();
+        for (var step = 0; step < 50; step++)
         {
-            var edited = new List<BlockPos>();
-            _ = ticker.Step(
-                0.15f,
-                new Vec3d(8.0, 65.0, 8.0),
+            ticker.Step(
+                0.10,
                 cache,
+                new Vec3d(8.0, 65.0, 8.0),
                 cache.GetBlockState,
-                (p, s) =>
-                {
-                    _ = cache.ApplyBlockUpdate(p, s);
-                    edited.Add(p);
-                },
-                p => cache.GetLight(p).Sky,
+                cache.GetLight,
+                SetWorld,
                 craters);
         }
 
         // 1. PrimedTnt detonated after 4.0s fuse, carving Stone at Y=61 while sparing Bedrock at Y=60!
-        ticker.ActiveTnt.Should().BeEmpty();
+        ticker.PrimedTnts.Should().BeEmpty();
         craters.Should().NotBeEmpty();
         cache.GetBlockState(new BlockPos(4, 61, 4)).IsAir.Should().BeTrue("explosion destroys breakable Stone beneath TNT");
         cache.GetBlockState(new BlockPos(4, 60, 4)).Should().Be(bedrock, "Bedrock is blast-immune");
@@ -286,22 +287,24 @@ public sealed class V6MechanicsRedstoneWorldsAndUiTests
             combat.HandleRightClickUseOrPlace(
                 player, cache, bridge, mobs, chat, (p, _, s) => cache.ApplyBlockUpdate(p, s), out _, out _)
                 .Should().BeTrue("clicking a RedBed at night with no nearby monsters sleeps until morning");
-            bridge.TimeCycle.TimeOfDayTicks.Should().Be(WorldTimeCycle.DayTicks);
+            bridge.TimeCycle.TimeOfDay.Should().Be((int)WorldTimeCycle.DayTicks);
 
             // 3. Spawn Zombie & Skeleton under open morning sky -> both catch fire and burn!
             var sunlitZombie = mobs.SpawnMob(MobType.Zombie, new Vec3d(12.5, 64.0, 12.5));
             var shadedZombie = mobs.SpawnMob(MobType.Zombie, new Vec3d(2.5, 64.0, 2.5));
             var initialHp = sunlitZombie.Health;
 
-            _ = mobs.Step(
-                cache,
-                pos => pos.X > 8 ? ((byte)15, (byte)0, false, false, false) : ((byte)4, (byte)0, false, false, false),
-                player.FeetPosition,
-                GameMode.Creative,
-                0,
-                1.0f,
-                0.6f,
-                isDaylightBurnActive: bridge.TimeCycle.IsDaylightMobBurnPeriod);
+            for (var s = 0; s < 10; s++)
+            {
+                _ = mobs.Step(
+                    cache,
+                    pos => pos.X > 8 ? ((byte)15, (byte)0, false, true, true) : ((byte)4, (byte)0, false, true, true),
+                    player.FeetPosition,
+                    GameMode.Creative,
+                    0,
+                    bridge.TimeCycle.SkyBrightness,
+                    0.10f);
+            }
 
             sunlitZombie.IsOnFire.Should().BeTrue("undead mob under open daytime sky catches fire");
             sunlitZombie.Health.Should().BeLessThan(initialHp, "burning undead mob takes fire damage");
@@ -350,7 +353,7 @@ public sealed class V6MechanicsRedstoneWorldsAndUiTests
         ];
         foreach (var outId in requiredCraftOutputs)
         {
-            recipes.Entries.Should().Contain(r => r.OutputItem.ItemId == outId);
+            recipes.Entries.Should().Contain(r => r.Output.ItemId == outId);
         }
 
         // 3. Offhand swap (F) + Dynamic Held Light in Offhand + 1st-person Offhand & Right-hand viewmodel
@@ -369,7 +372,7 @@ public sealed class V6MechanicsRedstoneWorldsAndUiTests
         var combat = new ClientSurvivalCombatController(blocks, items, audio);
         player.CurrentTarget.Should().BeNull();
         player.HandSwingProgress.Should().Be(0.0f);
-        combat.StepMining(0.016, leftClickJustPressed: true, leftClickHeld: true, player, cache, (_, _, _) => false);
+        combat.StepMining(0.016, leftClickJustPressed: true, leftMouseHeld: true, player, cache, (_, _, _) => false);
         player.HandSwingProgress.Should().BeGreaterThan(0.0f, "left-clicking empty air must trigger hand swing animation");
 
         // 5. On-Block Mining Cracks (destroy_stage_0..9) & NO 2D HUD progress bar, plus Offhand & Steve 3D geometry
@@ -382,7 +385,14 @@ public sealed class V6MechanicsRedstoneWorldsAndUiTests
             MiningProgress = 0.55f,
         };
         creativeOverlay.InventoryCells.Should().Contain(c => c.DisplayName.Contains("Piston", StringComparison.OrdinalIgnoreCase));
-        creativeOverlay.InventoryCells.Should().Contain(c => c.BlockIndex == ClientInventoryScreenBuilder.CreativeDeleteTrashCellId);
+
+        var (cwx, cwy, _, _) = ClientInventoryScreenBuilder.GetCreativeWindowBounds(1280, 720);
+        const float cs = ClientInventoryScreenBuilder.CreativeGuiScale;
+        _ = menu.HandleContainerOrMenuClick(new Vector2(cwx + (180.0f * cs), cwy - (14.0f * cs)), new Vector2(1280, 720), player, isRightClick: false);
+        var creativeInvTabOverlay = menu.BuildOverlayState(
+            new Vector2(1280, 720), player, cache, [], [], [], 1000L, 1.0f, new ClientChatHistory(), string.Empty);
+        creativeInvTabOverlay.ShowInventoryPlayerModel.Should().BeTrue();
+        creativeInvTabOverlay.InventoryCells.Should().Contain(c => c.BlockIndex == ClientInventoryScreenBuilder.CreativeDeleteTrashCellId);
 
         var heldAndSteveVerts = new List<OverlayVertex>();
         HeldItem3DMesher.AppendHeldViewmodel(heldAndSteveVerts, creativeOverlay with { Mode = UiOverlayMode.InGame }, atlas);

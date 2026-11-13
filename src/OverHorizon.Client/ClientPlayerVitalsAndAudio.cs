@@ -1,6 +1,7 @@
 using OverHorizon.Audio;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
+using OverHorizon.Core.Registry;
 using OverHorizon.Gameplay;
 
 namespace OverHorizon.Client;

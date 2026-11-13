@@ -122,7 +122,7 @@ public sealed class ServerTickLoopService : BackgroundService
                     _playBridge.WorldTime.AdvanceSeconds(1.0 / _options.TicksPerSecond);
                     if (_networkServer is not null && (tickNumber % 100) == 0)
                     {
-                        _networkServer.BroadcastPlayPacket(
+                        _networkServer.BroadcastToPlaySessions(
                             new Networking.Packets.Clientbound.WorldTimeUpdatePacket(_playBridge.WorldTime.TotalTicks));
                     }
                 }

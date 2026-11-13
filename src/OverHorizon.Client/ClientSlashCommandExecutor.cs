@@ -179,7 +179,7 @@ internal static class ClientSlashCommandExecutor
             count = Math.Clamp(parsedCnt, 1, 64);
         }
 
-        var id = items.GetId(def);
+        var id = (ushort)Math.Max(0, items.GetId(itemKey));
         _ = player.Hotbar.SurvivalInventory.AddItem(new ItemStack(id, count), items);
         player.Hotbar.RefreshSlotVisuals(player.Mode);
         audio.PlayPositional(SoundCue.ItemPop, player.Camera.Position, gain: 0.55f * player.MasterVolume);

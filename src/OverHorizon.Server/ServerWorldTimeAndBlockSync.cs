@@ -46,17 +46,15 @@ internal static class ServerWorldTimeAndBlockSync
             var cur = checkQueue.Dequeue();
             for (var i = 0; i < SixNeighbors.Length; i++)
             {
-                var nPos = cur.Neighbor(SixNeighbors[i]);
+                var nPos = cur.Offset(SixNeighbors[i]);
                 var nState = world.GetBlockState(nPos);
                 if (nState.IsAir) continue;
-                if (!BlockAttachmentAndShapeRules.IsStillSupported(blocks, nPos, nState, world.GetBlockState))
+                if (!BlockAttachmentAndShapeRules.IsStillSupported(blocks, world.GetBlockState, nPos, nState) &&
+                    world.SetBlockState(nPos, BlockState.Air, tickNumber))
                 {
-                    if (world.SetBlockState(nPos, BlockState.Air, tickNumber))
-                    {
-                        changed.Add((nPos, BlockState.Air.Id));
-                        redstone.NotifyBlockChanged(nPos);
-                        checkQueue.Enqueue(nPos);
-                    }
+                    changed.Add((nPos, BlockState.Air.Id));
+                    redstone.NotifyBlockChanged(nPos);
+                    checkQueue.Enqueue(nPos);
                 }
             }
         }

@@ -152,27 +152,25 @@ internal sealed class ClientWorldSyncAndMobBridge
             var cur = checkQueue.Dequeue();
             for (var i = 0; i < SixNeighbors.Length; i++)
             {
-                var nPos = cur.Neighbor(SixNeighbors[i]);
+                var nPos = cur.Offset(SixNeighbors[i]);
                 var nState = _localWorld.GetBlockState(nPos);
                 if (nState.IsAir) continue;
 
-                if (!BlockAttachmentAndShapeRules.IsStillSupported(_blocks, nPos, nState, _localWorld.GetBlockState))
+                var nKey = _blocks.GetStateMetadata(nState).BlockKey;
+                if (!BlockAttachmentAndShapeRules.IsStillSupported(_blocks, _localWorld.GetBlockState, nPos, nState) &&
+                    _localWorld.SetBlockState(nPos, BlockState.Air))
                 {
-                    var nKey = _blocks.GetStateMetadata(nState).BlockKey;
-                    if (_localWorld.SetBlockState(nPos, BlockState.Air))
-                    {
-                        TrackEditedBlock(nPos);
-                        Redstone.NotifyBlockChanged(nPos);
-                        WorldTicker.NotifyWorldBlockChanged(nPos, _localWorld.GetBlockState, RecordWorldSet);
-                        checkQueue.Enqueue(nPos);
+                    TrackEditedBlock(nPos);
+                    Redstone.NotifyBlockChanged(nPos);
+                    WorldTicker.NotifyWorldBlockChanged(nPos, _localWorld.GetBlockState, RecordWorldSet);
+                    checkQueue.Enqueue(nPos);
 
-                        if (dropDetachedItemsToInventory is not null)
+                    if (dropDetachedItemsToInventory is not null)
+                    {
+                        var drop = BlockDropResolver.ResolveDrop(nKey, heldTool: null, _items, _dropSeq++);
+                        if (!drop.IsEmpty)
                         {
-                            var drop = BlockDropResolver.ResolveDrop(nKey, heldTool: null, _items, _dropSeq++);
-                            if (!drop.IsEmpty)
-                            {
-                                _ = dropDetachedItemsToInventory.AddItem(drop, _items);
-                            }
+                            _ = dropDetachedItemsToInventory.AddItem(drop, _items);
                         }
                     }
                 }

@@ -174,6 +174,14 @@ public sealed class ClientPlayerController
     /// <summary>Triggers the first-person block/sword/empty-hand swing animation.</summary>
     public void TriggerHandSwing() => _handSwingTimer = HandSwingDurationSeconds;
 
+    /// <summary>Swaps the currently selected main-hand slot with the offhand slot (<c>F</c> key).</summary>
+    public bool SwapOffhand()
+    {
+        if (IsDead) return false;
+        Hotbar.SwapMainHandAndOffhand();
+        return true;
+    }
+
     /// <summary>Applies Survival damage (mitigated by equipped Armor + Shield defense points) and triggers red hurt feedback.</summary>
     public bool ApplyDamage(float amount, IAudioSubsystem? audio = null, bool bypassArmor = false, SoundCue customCue = SoundCue.PlayerHurt)
     {

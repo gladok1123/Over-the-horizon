@@ -122,6 +122,9 @@ public sealed partial class ClientHotbar
     public byte SelectedHeldLightEmission =>
         (byte)Math.Max(SelectedItem?.HeldLightEmission ?? 0, OffhandItem?.HeldLightEmission ?? 0);
 
+    /// <summary>Gets the combined <c>0..15</c> dynamic light level across both main-hand and offhand slots.</summary>
+    public byte CombinedHeldLightEmission => SelectedHeldLightEmission;
+
     /// <summary>Gets the <c>16x16</c> atlas tile index for the top face of the held block.</summary>
     public int SelectedTopTile => GetFaceTile(SelectedItem, Direction.Up);
 

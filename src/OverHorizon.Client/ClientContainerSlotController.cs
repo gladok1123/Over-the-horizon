@@ -1,6 +1,7 @@
 using OverHorizon.Core.Items;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
+using OverHorizon.Gameplay;
 using OverHorizon.Gameplay.Crafting;
 using OverHorizon.Gameplay.Inventory;
 using OverHorizon.Gameplay.Smelting;
@@ -44,7 +45,13 @@ internal sealed class ClientContainerSlotController
             return;
         }
 
-        var itemId = _items.GetId(itemDef);
+        var rawId = _items.GetId(entry.Key);
+        if (rawId <= 0)
+        {
+            return;
+        }
+
+        var itemId = (ushort)rawId;
         var count = fullStack ? itemDef.MaxStackSize : 1;
         if (_cursorStack.IsEmpty)
         {
