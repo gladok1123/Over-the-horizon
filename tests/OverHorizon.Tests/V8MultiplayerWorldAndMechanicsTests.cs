@@ -428,6 +428,7 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
 
             await using var alice = await JavaProtocolClient.ConnectTcpAsync(endpoint, CancellationToken.None).ConfigureAwait(false);
             var aliceLogin = await alice.LoginAsync("Alice", cancellationToken: CancellationToken.None).ConfigureAwait(false);
+            aliceLogin.Username.Should().Be("Alice");
 
             await using var bob = await JavaProtocolClient.ConnectTcpAsync(endpoint, CancellationToken.None).ConfigureAwait(false);
             var bobLogin = await bob.LoginAsync("Bob", cancellationToken: CancellationToken.None).ConfigureAwait(false);

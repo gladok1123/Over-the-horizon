@@ -20,7 +20,6 @@ internal sealed partial class MineshaftStructureGenerator
     private readonly BlockState _oakFence;
     private readonly BlockState _cobblestone;
     private readonly BlockState _mossyCobble;
-    private readonly BlockState _torchNorth;
     private readonly BlockState _torchSouth;
     private readonly BlockState _torchEast;
     private readonly BlockState _torchWest;
@@ -45,7 +44,6 @@ internal sealed partial class MineshaftStructureGenerator
         _mossyCobble = blocks.GetDefaultState(BuiltInBlocks.MossyCobblestone);
 
         var baseTorch = blocks.GetDefaultState(BuiltInBlocks.Torch);
-        _torchNorth = blocks.WithProperty(baseTorch, "facing", "north");
         _torchSouth = blocks.WithProperty(baseTorch, "facing", "south");
         _torchEast = blocks.WithProperty(baseTorch, "facing", "east");
         _torchWest = blocks.WithProperty(baseTorch, "facing", "west");
@@ -162,7 +160,6 @@ internal sealed partial class MineshaftStructureGenerator
 
                 var isEdgeX = Math.Abs(wx - hubX) == 5;
                 var isEdgeZ = Math.Abs(wz - hubZ) == 5;
-                var isCorridorDoorway = (Math.Abs(wx - hubX) <= 1 && isEdgeZ) || (Math.Abs(wz - hubZ) <= 1 && isEdgeX);
                 var isCenterHole = isUpper && Math.Abs(wx - hubX) <= 2 && Math.Abs(wz - hubZ) <= 2;
 
                 if (!isCenterHole)
@@ -184,11 +181,6 @@ internal sealed partial class MineshaftStructureGenerator
                     else if (y == floorY + 5 && (isEdgeX || isEdgeZ || Math.Abs(wx - hubX) == 3 || Math.Abs(wz - hubZ) == 3))
                     {
                         _ = chunk.SetBlockStateRaw(lx, y, lz, isEdgeX || isEdgeZ ? _oakLog : _oakPlanks);
-                    }
-                    else if ((isEdgeX || isEdgeZ) && !isCorridorDoorway && y <= floorY + 4)
-                    {
-                        // Leave open colonnade arches with corner cobblestone trim
-                        ClearIfNotWaterSource(chunk, lx, y, lz);
                     }
                     else
                     {

@@ -131,22 +131,6 @@ internal static partial class ShapedBlockMesher
         }
     }
 
-    private static bool ConnectsRedstone(IBlockRegistry blocks, in ChunkNeighborhood nb, int x, int wy, int z)
-    {
-        var k = blocks.GetStateMetadata(nb.GetBlockState(x, wy, z)).BlockKey;
-        if (IsRedstoneNode(k)) return true;
-        if (IsRedstoneNode(blocks.GetStateMetadata(nb.GetBlockState(x, wy + 1, z)).BlockKey)) return true;
-        return IsRedstoneNode(blocks.GetStateMetadata(nb.GetBlockState(x, wy - 1, z)).BlockKey);
-    }
-
-    private static bool IsRedstoneNode(OverHorizon.Core.Registry.ResourceKey k) =>
-        k == BuiltInBlocks.RedstoneWire || k == BuiltInBlocks.RedstoneBlock || k == BuiltInBlocks.RedstoneTorch ||
-        k == BuiltInBlocks.RedstoneTorchOff || k == BuiltInBlocks.Lever || k == BuiltInBlocks.StoneButton ||
-        k == BuiltInBlocks.StonePressurePlate || k == BuiltInBlocks.RedstoneRepeater || k == BuiltInBlocks.RedstoneComparator ||
-        k == BuiltInBlocks.Piston || k == BuiltInBlocks.StickyPiston || k == BuiltInBlocks.RedstoneLamp ||
-        k == BuiltInBlocks.LitRedstoneLamp || k == BuiltInBlocks.Tnt || k == BuiltInBlocks.PoweredRail ||
-        k == BuiltInBlocks.OakTrapdoor;
-
     private static void EmitTiltedPost(
         List<ChunkVertex> verts,
         List<uint> indices,
