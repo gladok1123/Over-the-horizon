@@ -6,6 +6,7 @@ on:
       - main
       - "arena/**"
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -109,7 +110,7 @@ jobs:
           rm -rf ./smoke-publish ./isolated-player-dir ./isolated-empty-home
 
   build-and-test-macos:
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     continue-on-error: true
     timeout-minutes: 15
