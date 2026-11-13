@@ -13,36 +13,36 @@ internal sealed class MineshaftStructureGenerator
     private const int RegionSizeBlocks = 112; // 7x7 chunks per mineshaft region
 
     private readonly long _seed;
-    private readonly BlockStateId _air;
-    private readonly BlockStateId _water;
-    private readonly BlockStateId _oakPlanks;
-    private readonly BlockStateId _oakLog;
-    private readonly BlockStateId _oakFence;
-    private readonly BlockStateId _cobblestone;
-    private readonly BlockStateId _torch;
-    private readonly BlockStateId _lantern;
-    private readonly BlockStateId _rail;
-    private readonly BlockStateId _cobweb;
-    private readonly BlockStateId _chest;
-    private readonly BlockStateId _barrel;
-    private readonly BlockStateId _ladder;
+    private readonly BlockState _air;
+    private readonly BlockState _water;
+    private readonly BlockState _oakPlanks;
+    private readonly BlockState _oakLog;
+    private readonly BlockState _oakFence;
+    private readonly BlockState _cobblestone;
+    private readonly BlockState _torch;
+    private readonly BlockState _lantern;
+    private readonly BlockState _rail;
+    private readonly BlockState _cobweb;
+    private readonly BlockState _chest;
+    private readonly BlockState _barrel;
+    private readonly BlockState _ladder;
 
     public MineshaftStructureGenerator(long seed, IBlockRegistry blocks)
     {
         _seed = seed;
-        _air = BlockStateId.Air;
-        _water = blocks.GetByKey(BuiltInBlocks.Water).DefaultState;
-        _oakPlanks = blocks.GetByKey(BuiltInBlocks.OakPlanks).DefaultState;
-        _oakLog = blocks.GetByKey(BuiltInBlocks.OakLog).DefaultState;
-        _oakFence = blocks.GetByKey(BuiltInBlocks.OakFence).DefaultState;
-        _cobblestone = blocks.GetByKey(BuiltInBlocks.Cobblestone).DefaultState;
-        _torch = blocks.GetByKey(BuiltInBlocks.Torch).DefaultState;
-        _lantern = blocks.GetByKey(BuiltInBlocks.Lantern).DefaultState;
-        _rail = blocks.GetByKey(BuiltInBlocks.Rail).DefaultState;
-        _cobweb = blocks.GetByKey(BuiltInBlocks.Cobweb).DefaultState;
-        _chest = blocks.GetByKey(BuiltInBlocks.Chest).DefaultState;
-        _barrel = blocks.GetByKey(BuiltInBlocks.Barrel).DefaultState;
-        _ladder = blocks.GetByKey(BuiltInBlocks.Ladder).DefaultState;
+        _air = BlockState.Air;
+        _water = blocks.GetDefaultState(BuiltInBlocks.Water);
+        _oakPlanks = blocks.GetDefaultState(BuiltInBlocks.OakPlanks);
+        _oakLog = blocks.GetDefaultState(BuiltInBlocks.OakLog);
+        _oakFence = blocks.GetDefaultState(BuiltInBlocks.OakFence);
+        _cobblestone = blocks.GetDefaultState(BuiltInBlocks.Cobblestone);
+        _torch = blocks.GetDefaultState(BuiltInBlocks.Torch);
+        _lantern = blocks.GetDefaultState(BuiltInBlocks.Lantern);
+        _rail = blocks.GetDefaultState(BuiltInBlocks.Rail);
+        _cobweb = blocks.GetDefaultState(BuiltInBlocks.Cobweb);
+        _chest = blocks.GetDefaultState(BuiltInBlocks.Chest);
+        _barrel = blocks.GetDefaultState(BuiltInBlocks.Barrel);
+        _ladder = blocks.GetDefaultState(BuiltInBlocks.Ladder);
     }
 
     /// <summary>Returns <see langword="true"/> when <paramref name="worldX"/>/<paramref name="worldZ"/> falls inside a vertical surface access shaft.</summary>
@@ -123,18 +123,18 @@ internal sealed class MineshaftStructureGenerator
                 if (!isCenterHole)
                 {
                     var floorBlock = ((wx + wz) & 1) == 0 ? _cobblestone : _oakPlanks;
-                    chunk.SetBlockState(lx, floorY, lz, floorBlock);
+                    _ = chunk.SetBlockStateRaw(lx, floorY, lz, floorBlock);
                 }
 
                 for (var y = floorY + 1; y <= floorY + 5; y++)
                 {
                     if (isEdgeX && isEdgeZ)
                     {
-                        chunk.SetBlockState(lx, y, lz, _oakLog);
+                        _ = chunk.SetBlockStateRaw(lx, y, lz, _oakLog);
                     }
                     else if (y == floorY + 5 && (isEdgeX || isEdgeZ))
                     {
-                        chunk.SetBlockState(lx, y, lz, _oakLog);
+                        _ = chunk.SetBlockStateRaw(lx, y, lz, _oakLog);
                     }
                     else
                     {
@@ -144,16 +144,16 @@ internal sealed class MineshaftStructureGenerator
 
                 if (Math.Abs(wx - hubX) == 3 && Math.Abs(wz - hubZ) == 3)
                 {
-                    chunk.SetBlockState(lx, floorY + 4, lz, _lantern);
+                    _ = chunk.SetBlockStateRaw(lx, floorY + 4, lz, _lantern);
                 }
 
                 if (!isUpper && wx == hubX - 4 && wz == hubZ - 4)
                 {
-                    chunk.SetBlockState(lx, floorY + 1, lz, _chest);
+                    _ = chunk.SetBlockStateRaw(lx, floorY + 1, lz, _chest);
                 }
                 else if (!isUpper && wx == hubX + 4 && wz == hubZ - 4)
                 {
-                    chunk.SetBlockState(lx, floorY + 1, lz, _barrel);
+                    _ = chunk.SetBlockStateRaw(lx, floorY + 1, lz, _barrel);
                 }
             }
         }
@@ -179,7 +179,7 @@ internal sealed class MineshaftStructureGenerator
                     continue;
                 }
 
-                chunk.SetBlockState(lx, stepY, lz, _oakPlanks);
+                _ = chunk.SetBlockStateRaw(lx, stepY, lz, _oakPlanks);
                 for (var clearY = stepY + 1; clearY <= stepY + 3; clearY++)
                 {
                     ClearIfNotWaterSource(chunk, lx, clearY, lz);
@@ -229,32 +229,32 @@ internal sealed class MineshaftStructureGenerator
                 {
                     if (isCorner)
                     {
-                        chunk.SetBlockState(lx, y, lz, _oakLog);
+                        _ = chunk.SetBlockStateRaw(lx, y, lz, _oakLog);
                     }
                     else if (isOuter)
                     {
                         if (y <= topSurface || (y % 4 == 0))
                         {
-                            chunk.SetBlockState(lx, y, lz, _oakPlanks);
+                            _ = chunk.SetBlockStateRaw(lx, y, lz, _oakPlanks);
                         }
                     }
                     else
                     {
-                        chunk.SetBlockState(lx, y, lz, _air);
+                        _ = chunk.SetBlockStateRaw(lx, y, lz, _air);
                         if (dx == 0 && dz == -1 && y <= maxShaftY - 1)
                         {
-                            chunk.SetBlockState(lx, y, lz, _ladder);
+                            _ = chunk.SetBlockStateRaw(lx, y, lz, _ladder);
                         }
                         else if (dx == 1 && dz == 1 && (y - lowerY) % 8 == 4)
                         {
-                            chunk.SetBlockState(lx, y, lz, _torch);
+                            _ = chunk.SetBlockStateRaw(lx, y, lz, _torch);
                         }
                     }
                 }
 
                 if (Math.Abs(dx) <= 1 && Math.Abs(dz) <= 1)
                 {
-                    chunk.SetBlockState(lx, lowerY, lz, _oakPlanks);
+                    _ = chunk.SetBlockStateRaw(lx, lowerY, lz, _oakPlanks);
                 }
             }
         }
@@ -295,27 +295,27 @@ internal sealed class MineshaftStructureGenerator
                 {
                     if (dz != 0)
                     {
-                        chunk.SetBlockState(lx, floorY + 1, lz, _oakFence);
-                        chunk.SetBlockState(lx, floorY + 2, lz, _oakFence);
+                        _ = chunk.SetBlockStateRaw(lx, floorY + 1, lz, _oakFence);
+                        _ = chunk.SetBlockStateRaw(lx, floorY + 2, lz, _oakFence);
                     }
 
-                    chunk.SetBlockState(lx, floorY + 3, lz, _oakPlanks);
+                    _ = chunk.SetBlockStateRaw(lx, floorY + 3, lz, _oakPlanks);
                     if (dz == 0 && FloorMod(wx, 10) == 0)
                     {
-                        chunk.SetBlockState(lx, floorY + 2, lz, _torch);
+                        _ = chunk.SetBlockStateRaw(lx, floorY + 2, lz, _torch);
                     }
                 }
                 else if (dz == 0 && (h & 7UL) != 0)
                 {
-                    chunk.SetBlockState(lx, floorY + 1, lz, _rail);
+                    _ = chunk.SetBlockStateRaw(lx, floorY + 1, lz, _rail);
                 }
                 else if (dz != 0 && (h & 31UL) == 1)
                 {
-                    chunk.SetBlockState(lx, floorY + 3, lz, _cobweb);
+                    _ = chunk.SetBlockStateRaw(lx, floorY + 3, lz, _cobweb);
                 }
                 else if (dz == 1 && (h & 127UL) == 3)
                 {
-                    chunk.SetBlockState(lx, floorY + 1, lz, (h & 128UL) == 0 ? _chest : _barrel);
+                    _ = chunk.SetBlockStateRaw(lx, floorY + 1, lz, (h & 128UL) == 0 ? _chest : _barrel);
                 }
             }
         }
@@ -356,23 +356,23 @@ internal sealed class MineshaftStructureGenerator
                 {
                     if (dx != 0)
                     {
-                        chunk.SetBlockState(lx, floorY + 1, lz, _oakFence);
-                        chunk.SetBlockState(lx, floorY + 2, lz, _oakFence);
+                        _ = chunk.SetBlockStateRaw(lx, floorY + 1, lz, _oakFence);
+                        _ = chunk.SetBlockStateRaw(lx, floorY + 2, lz, _oakFence);
                     }
 
-                    chunk.SetBlockState(lx, floorY + 3, lz, _oakPlanks);
+                    _ = chunk.SetBlockStateRaw(lx, floorY + 3, lz, _oakPlanks);
                     if (dx == 0 && FloorMod(wz, 10) == 0)
                     {
-                        chunk.SetBlockState(lx, floorY + 2, lz, _torch);
+                        _ = chunk.SetBlockStateRaw(lx, floorY + 2, lz, _torch);
                     }
                 }
                 else if (dx == 0 && (h & 7UL) != 0)
                 {
-                    chunk.SetBlockState(lx, floorY + 1, lz, _rail);
+                    _ = chunk.SetBlockStateRaw(lx, floorY + 1, lz, _rail);
                 }
                 else if (dx != 0 && (h & 31UL) == 2)
                 {
-                    chunk.SetBlockState(lx, floorY + 3, lz, _cobweb);
+                    _ = chunk.SetBlockStateRaw(lx, floorY + 3, lz, _cobweb);
                 }
             }
         }
@@ -383,7 +383,7 @@ internal sealed class MineshaftStructureGenerator
         var current = chunk.GetBlockState(lx, floorY, lz);
         if (current.IsAir || current == _water || isArchPost)
         {
-            chunk.SetBlockState(lx, floorY, lz, _oakPlanks);
+            _ = chunk.SetBlockStateRaw(lx, floorY, lz, _oakPlanks);
             if (isArchPost)
             {
                 // Drop suspended trestle bridge support pier down through open caverns!
@@ -395,7 +395,7 @@ internal sealed class MineshaftStructureGenerator
                         break;
                     }
 
-                    chunk.SetBlockState(lx, py, lz, _oakFence);
+                    _ = chunk.SetBlockStateRaw(lx, py, lz, _oakFence);
                 }
             }
         }
@@ -405,7 +405,7 @@ internal sealed class MineshaftStructureGenerator
     {
         if (chunk.GetBlockState(lx, y, lz) != _water)
         {
-            chunk.SetBlockState(lx, y, lz, _air);
+            _ = chunk.SetBlockStateRaw(lx, y, lz, _air);
         }
     }
 

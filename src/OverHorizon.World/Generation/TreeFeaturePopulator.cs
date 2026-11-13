@@ -1,4 +1,6 @@
+using OverHorizon.Core.Biomes;
 using OverHorizon.Core.Blocks;
+using OverHorizon.Core.Registry;
 using OverHorizon.World.Storage;
 
 namespace OverHorizon.World.Generation;
@@ -12,32 +14,31 @@ internal sealed class TreeFeaturePopulator
     private const int CellSize = 7;
 
     private readonly long _seed;
-    private readonly BlockStateId _dirt;
-    private readonly BlockStateId _grass;
-    private readonly BlockStateId _oakLog;
-    private readonly BlockStateId _oakLeaves;
-    private readonly BlockStateId _birchLog;
-    private readonly BlockStateId _birchLeaves;
+    private readonly BlockState _dirt;
+    private readonly BlockState _grass;
+    private readonly BlockState _oakLog;
+    private readonly BlockState _oakLeaves;
+    private readonly BlockState _birchLog;
+    private readonly BlockState _birchLeaves;
 
     public TreeFeaturePopulator(long seed, IBlockRegistry blocks)
     {
         _seed = seed;
-        _dirt = blocks.GetByKey(BuiltInBlocks.Dirt).DefaultState;
-        _grass = blocks.GetByKey(BuiltInBlocks.GrassBlock).DefaultState;
-        _oakLog = blocks.GetByKey(BuiltInBlocks.OakLog).DefaultState;
-        _oakLeaves = blocks.GetByKey(BuiltInBlocks.OakLeaves).DefaultState;
-        _birchLog = blocks.GetByKey(BuiltInBlocks.BirchLog).DefaultState;
-        _birchLeaves = blocks.GetByKey(BuiltInBlocks.BirchLeaves).DefaultState;
+        _dirt = blocks.GetDefaultState(BuiltInBlocks.Dirt);
+        _grass = blocks.GetDefaultState(BuiltInBlocks.GrassBlock);
+        _oakLog = blocks.GetDefaultState(BuiltInBlocks.OakLog);
+        _oakLeaves = blocks.GetDefaultState(BuiltInBlocks.OakLeaves);
+        _birchLog = blocks.GetDefaultState(BuiltInBlocks.BirchLog);
+        _birchLeaves = blocks.GetDefaultState(BuiltInBlocks.BirchLeaves);
     }
 
-    public void PopulateChunk(ChunkColumn chunk, Func<int, int, (bool Valid, int GroundY, BiomeKind Biome)> groundQuery)
+    public void PopulateChunk(ChunkColumn chunk, Func<int, int, (bool Valid, int GroundY, ResourceKey BiomeKey)> groundQuery)
     {
         var chunkMinX = chunk.Position.X << 4;
         var chunkMinZ = chunk.Position.Z << 4;
         var chunkMaxX = chunkMinX + 15;
         var chunkMaxZ = chunkMinZ + 15;
 
-        // Inspect all 7x7 cells within a 3-block canopy halo so canopies cross chunk seams seamlessly!
         var minCellX = FloorDiv(chunkMinX - 3, CellSize);
         var maxCellX = FloorDiv(chunkMaxX + 3, CellSize);
         var minCellZ = FloorDiv(chunkMinZ - 3, CellSize);
@@ -57,7 +58,6 @@ internal sealed class TreeFeaturePopulator
                     continue;
                 }
 
-                // Extra safety when trunk itself is inside this chunk: verify ground block is genuine grass/dirt and space above is clear!
                 var trunkLx = treeX - chunkMinX;
                 var trunkLz = treeZ - chunkMinZ;
                 if ((uint)trunkLx < 16U && (uint)trunkLz < 16U)
@@ -83,7 +83,7 @@ internal sealed class TreeFeaturePopulator
         long seed,
         int cellX,
         int cellZ,
-        Func<int, int, (bool Valid, int GroundY, BiomeKind Biome)> groundQuery,
+        Func<int, int, (bool Valid, int GroundY, ResourceKey BiomeKey)> groundQuery,
         out int treeX,
         out int treeZ,
         out int groundY,
@@ -92,8 +92,6 @@ internal sealed class TreeFeaturePopulator
         out ulong rng)
     {
         rng = Hash(seed, cellX, cellZ);
-
-        // Keep 1-block inner padding inside each 7x7 cell so adjacent-cell trees are ALWAYS >= 3 blocks apart (trunks never touch!)
         treeX = (cellX * CellSize) + 1 + (int)(rng % 5UL);
         treeZ = (cellZ * CellSize) + 1 + (int)((rng >> 4) % 5UL);
         trunkHeight = 5;
@@ -105,34 +103,23 @@ internal sealed class TreeFeaturePopulator
         {
             return false;
         }
-        var biome = sample.Biome;
 
-        // Biome-appropriate density: lush forests, scattered plains groves, sparse lower mountain pines/oaks, barren deserts/oceans
+        var biomeKey = sample.BiomeKey;
         var spawnRoll = (int)((rng >> 8) % 100UL);
-        var threshold = biome switch
-        {
-            BiomeKind.Forest => 62,
-            BiomeKind.Plains => 10,
-            BiomeKind.Mountains when groundY < 86 => 16,
-            _ => 0,
-        };
+        var threshold = biomeKey == BuiltInBiomes.Forest ? 62
+            : biomeKey == BuiltInBiomes.Plains ? 14
+            : 0;
 
         if (spawnRoll >= threshold)
         {
             return false;
         }
 
-        isBirch = biome switch
-        {
-            BiomeKind.Forest => ((rng >> 16) % 4UL) == 0,
-            BiomeKind.Plains => ((rng >> 16) % 3UL) == 0,
-            _ => false,
-        };
+        isBirch = biomeKey == BuiltInBiomes.Forest
+            ? ((rng >> 16) % 4UL) == 0
+            : ((rng >> 16) % 3UL) == 0;
 
-        trunkHeight = isBirch
-            ? 5 + (int)((rng >> 20) % 3UL) // 5..7 slender birch
-            : 5 + (int)((rng >> 20) % 3UL); // 5..7 classic oak
-
+        trunkHeight = 5 + (int)((rng >> 20) % 3UL);
         return true;
     }
 
@@ -151,7 +138,6 @@ internal sealed class TreeFeaturePopulator
         var leafState = isBirch ? _birchLeaves : _oakLeaves;
         var topY = groundY + trunkHeight;
 
-        // 1. Place rounded 4-layer foliage crown FIRST (only into Air)
         for (var layer = -2; layer <= 1; layer++)
         {
             var y = topY + layer;
@@ -177,7 +163,6 @@ internal sealed class TreeFeaturePopulator
                         continue;
                     }
 
-                    // Authentic Minecraft corner trimming: trim top crown corners and randomly round lower canopy corners!
                     var isCorner = Math.Abs(dx) == radius && Math.Abs(dz) == radius;
                     if (isCorner)
                     {
@@ -190,7 +175,7 @@ internal sealed class TreeFeaturePopulator
                         }
                         else
                         {
-                            var cornerBit = (int)(((dx + 2) * 3) + dz + 2 + ((layer + 2) * 7));
+                            var cornerBit = ((dx + 2) * 3) + dz + 2 + ((layer + 2) * 7);
                             if (((rng >> (24 + (cornerBit & 15))) & 1UL) == 0)
                             {
                                 continue;
@@ -200,25 +185,24 @@ internal sealed class TreeFeaturePopulator
 
                     if (chunk.GetBlockState(lx, y, lz).IsAir)
                     {
-                        chunk.SetBlockState(lx, y, lz, leafState);
+                        _ = chunk.SetBlockStateRaw(lx, y, lz, leafState);
                     }
                 }
             }
         }
 
-        // 2. Place solid vertical log trunk & convert grass root under trunk to dirt
         var trunkLx = treeX - chunkMinX;
         var trunkLz = treeZ - chunkMinZ;
         if ((uint)trunkLx < 16U && (uint)trunkLz < 16U)
         {
-            chunk.SetBlockState(trunkLx, groundY, trunkLz, _dirt);
+            _ = chunk.SetBlockStateRaw(trunkLx, groundY, trunkLz, _dirt);
             for (var h = 1; h <= trunkHeight; h++)
             {
                 var y = groundY + h;
                 var existing = chunk.GetBlockState(trunkLx, y, trunkLz);
                 if (existing.IsAir || existing == _oakLeaves || existing == _birchLeaves)
                 {
-                    chunk.SetBlockState(trunkLx, y, trunkLz, logState);
+                    _ = chunk.SetBlockStateRaw(trunkLx, y, trunkLz, logState);
                 }
             }
         }

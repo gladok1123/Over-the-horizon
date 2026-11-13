@@ -10,32 +10,32 @@ namespace OverHorizon.World.Generation;
 internal sealed class OreVeinPopulator
 {
     private readonly long _seed;
-    private readonly BlockStateId _stone;
-    private readonly BlockStateId _deepslate;
-    private readonly BlockStateId _coalOre;
-    private readonly BlockStateId _copperOre;
-    private readonly BlockStateId _ironOre;
-    private readonly BlockStateId _goldOre;
-    private readonly BlockStateId _redstoneOre;
-    private readonly BlockStateId _lapisOre;
-    private readonly BlockStateId _diamondOre;
-    private readonly BlockStateId _emeraldOre;
-    private readonly BlockStateId _gravel;
+    private readonly BlockState _stone;
+    private readonly BlockState _deepslate;
+    private readonly BlockState _coalOre;
+    private readonly BlockState _copperOre;
+    private readonly BlockState _ironOre;
+    private readonly BlockState _goldOre;
+    private readonly BlockState _redstoneOre;
+    private readonly BlockState _lapisOre;
+    private readonly BlockState _diamondOre;
+    private readonly BlockState _emeraldOre;
+    private readonly BlockState _gravel;
 
     public OreVeinPopulator(long seed, IBlockRegistry blocks)
     {
         _seed = seed;
-        _stone = blocks.GetByKey(BuiltInBlocks.Stone).DefaultState;
-        _deepslate = blocks.GetByKey(BuiltInBlocks.Deepslate).DefaultState;
-        _coalOre = blocks.GetByKey(BuiltInBlocks.CoalOre).DefaultState;
-        _copperOre = blocks.GetByKey(BuiltInBlocks.CopperOre).DefaultState;
-        _ironOre = blocks.GetByKey(BuiltInBlocks.IronOre).DefaultState;
-        _goldOre = blocks.GetByKey(BuiltInBlocks.GoldOre).DefaultState;
-        _redstoneOre = blocks.GetByKey(BuiltInBlocks.RedstoneOre).DefaultState;
-        _lapisOre = blocks.GetByKey(BuiltInBlocks.LapisOre).DefaultState;
-        _diamondOre = blocks.GetByKey(BuiltInBlocks.DiamondOre).DefaultState;
-        _emeraldOre = blocks.GetByKey(BuiltInBlocks.EmeraldOre).DefaultState;
-        _gravel = blocks.GetByKey(BuiltInBlocks.Gravel).DefaultState;
+        _stone = blocks.GetDefaultState(BuiltInBlocks.Stone);
+        _deepslate = blocks.GetDefaultState(BuiltInBlocks.Deepslate);
+        _coalOre = blocks.GetDefaultState(BuiltInBlocks.CoalOre);
+        _copperOre = blocks.GetDefaultState(BuiltInBlocks.CopperOre);
+        _ironOre = blocks.GetDefaultState(BuiltInBlocks.IronOre);
+        _goldOre = blocks.GetDefaultState(BuiltInBlocks.GoldOre);
+        _redstoneOre = blocks.GetDefaultState(BuiltInBlocks.RedstoneOre);
+        _lapisOre = blocks.GetDefaultState(BuiltInBlocks.LapisOre);
+        _diamondOre = blocks.GetDefaultState(BuiltInBlocks.DiamondOre);
+        _emeraldOre = blocks.GetDefaultState(BuiltInBlocks.EmeraldOre);
+        _gravel = blocks.GetDefaultState(BuiltInBlocks.Gravel);
     }
 
     public void PopulateChunk(ChunkColumn chunk)
@@ -59,7 +59,7 @@ internal sealed class OreVeinPopulator
         int cx,
         int cz,
         int salt,
-        BlockStateId oreState,
+        BlockState oreState,
         int veinsPerChunk,
         int minY,
         int maxY,
@@ -86,7 +86,7 @@ internal sealed class OreVeinPopulator
         int x,
         int y,
         int z,
-        BlockStateId oreState,
+        BlockState oreState,
         int steps,
         ulong rngState)
     {
@@ -134,7 +134,7 @@ internal sealed class OreVeinPopulator
         }
     }
 
-    private void TryReplaceRock(ChunkColumn chunk, int lx, int y, int lz, BlockStateId oreState)
+    private void TryReplaceRock(ChunkColumn chunk, int lx, int y, int lz, BlockState oreState)
     {
         if ((uint)lx >= 16U || (uint)lz >= 16U || y <= EngineConstants.WorldMinY + 1 || y >= EngineConstants.WorldMaxY)
         {
@@ -144,7 +144,7 @@ internal sealed class OreVeinPopulator
         var existing = chunk.GetBlockState(lx, y, lz);
         if (existing == _stone || existing == _deepslate)
         {
-            chunk.SetBlockState(lx, y, lz, oreState);
+            _ = chunk.SetBlockStateRaw(lx, y, lz, oreState);
         }
     }
 

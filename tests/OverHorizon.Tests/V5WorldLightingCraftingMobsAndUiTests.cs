@@ -1,7 +1,7 @@
 using System.Numerics;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using OverHorizon.Audio.Backends;
+using OverHorizon.Audio;
 using OverHorizon.Client;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Items;
@@ -115,12 +115,13 @@ public sealed class V5WorldLightingCraftingMobsAndUiTests
         _ = col.SetBlockState(8, 64, 4, blocks.GetDefaultState(BuiltInBlocks.OakFence), blocks);
         _ = col.SetBlockState(9, 64, 4, blocks.GetDefaultState(BuiltInBlocks.OakFence), blocks);
         _ = col.SetBlockState(11, 64, 4, blocks.GetDefaultState(BuiltInBlocks.Cobweb), blocks);
-        LightingEngine.RefreshChunkLight(col, blocks);
+        col.RecomputeHeightmaps(blocks);
+        LightingEngine.InitializeChunkLight(col, blocks);
 
         col.GetBlockLight(4, 64, 4).Should().Be(14, "placed Torch emits block light 14");
         col.GetBlockLight(5, 64, 4).Should().Be(13, "block light attenuates 1 level per block");
 
-        var effInDarkCaveWithHeldTorch = LightingEngine.ComputeEffectiveLightLevel(skyLight: 0, blockLight: 2, dynamicHeldLight: 14, skyBrightness: 1.0f);
+        var effInDarkCaveWithHeldTorch = LightingEngine.ComputeEffectiveLightLevel(skyLight: 0, blockLight: 2, dynamicLight: 14, skyBrightness: 1.0f);
         effInDarkCaveWithHeldTorch.Should().Be(14);
         LightingEngine.LightLevelToBrightness(15).Should().BeApproximately(1.0f, 0.001f);
         LightingEngine.LightLevelToBrightness(0).Should().BeGreaterThan(0.02f).And.BeLessThan(0.10f);
@@ -150,8 +151,8 @@ public sealed class V5WorldLightingCraftingMobsAndUiTests
     {
         var registries = CoreRegistries.CreateDefault();
         var items = registries.Items;
-        var recipes = registries.Recipes;
-        recipes.Count.Should().BeGreaterThanOrEqualTo(60);
+        var recipes = BuiltInRecipes.CreateFrozen(items);
+        recipes.Entries.Count.Should().BeGreaterThanOrEqualTo(60);
 
         // 1. 2x2 Torch crafting (Coal over Stick -> 4 Torches)
         var grid2x2 = new CraftingGrid(2, 2);
@@ -246,7 +247,7 @@ public sealed class V5WorldLightingCraftingMobsAndUiTests
 
         survivalDmg.Should().BeGreaterThan(0.0f);
 
-        var dirToSheep = new Vec3f((float)(sheep.FeetPosition.X - 8.5), 0.0f, (float)(sheep.FeetPosition.Z - 8.5)).Normalized();
+        var dirToSheep = Vector3.Normalize(new Vector3((float)(sheep.FeetPosition.X - 8.5), 0.0f, (float)(sheep.FeetPosition.Z - 8.5)));
         mobs.TryShearAlongRay(new Vec3d(8.5, 64.6, 8.5), dirToSheep, 4.0, registries.Items, out var wool).Should().BeTrue();
         wool.ItemId.Should().Be((ushort)registries.Items.GetId(BuiltInBlocks.WhiteWool));
         sheep.IsSheared.Should().BeTrue();
@@ -256,7 +257,7 @@ public sealed class V5WorldLightingCraftingMobsAndUiTests
         for (var swing = 0; swing < 4; swing++)
         {
             zombie.InvulnerabilityTimer = 0.0f;
-            _ = mobs.TryAttackAlongRay(eye, new Vec3f(0.0f, 0.0f, 1.0f), 4.0, weaponDamage: 8.0f, isCriticalStrike: true, registries.Items, out _, out drops);
+            _ = mobs.TryAttackAlongRay(eye, new Vector3(0.0f, 0.0f, 1.0f), 4.0, weaponDamage: 8.0f, isCriticalStrike: true, registries.Items, out _, out drops);
             if (zombie.IsDead) break;
         }
 
@@ -265,7 +266,7 @@ public sealed class V5WorldLightingCraftingMobsAndUiTests
     }
 
     [Fact]
-    public void Held3DViewmodels3DMobsGuiAtlasCreativeFlightAnd64ChunkTicketStreaming_WorkCleanly()
+    public async Task Held3DViewmodels3DMobsGuiAtlasCreativeFlightAnd64ChunkTicketStreaming_WorkCleanlyAsync()
     {
         var registries = CoreRegistries.CreateDefault();
         var blocks = registries.Blocks;
@@ -326,9 +327,9 @@ public sealed class V5WorldLightingCraftingMobsAndUiTests
         var parsed64 = ClientBootstrap.ParseOptions(["--view-distance", "64"]);
         parsed64.ViewDistanceChunks.Should().Be(64);
 
-        using var manager = new ChunkManager(registries, new OverworldGenerator(77L, registries), new InMemoryChunkStorage());
+        await using var manager = new ChunkManager(registries, new OverworldGenerator(77L, registries), new InMemoryChunkStorage(registries));
         manager.UpsertTicket(new ChunkTicket(1L, ChunkTicketType.Player, new ChunkPos(0, 0), Radius: 64));
-        var loadedFirstBatch = manager.ProcessTicketsAsync(maxChunksToLoad: 9, CancellationToken.None).AsTask().GetAwaiter().GetResult();
+        var loadedFirstBatch = await manager.ProcessTicketsAsync(maxChunksToLoad: 9, CancellationToken.None);
         loadedFirstBatch.Should().Be(9, "64-chunk ticket streams closest inner rings first without stalling");
     }
 }

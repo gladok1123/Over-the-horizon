@@ -1,6 +1,8 @@
 using OverHorizon.Core;
+using OverHorizon.Core.Biomes;
 using OverHorizon.Core.Blocks;
-using OverHorizon.Core.Math;
+using OverHorizon.Core.Registry;
+using OverHorizon.Shared.Random;
 using OverHorizon.World.Lighting;
 using OverHorizon.World.Storage;
 
@@ -8,83 +10,86 @@ namespace OverHorizon.World.Generation;
 
 /// <summary>
 /// Deterministic multi-octave Overworld chunk generator featuring continentalness, mountain ridges,
-/// deepslate strata, surface-connected 3D caves, stratified mineral ore veins, massive multi-chunk
+/// deepslate strata, surface-connected 3D caves, stratified mineral ore veins, multi-chunk
 /// structural abandoned mineshafts, and cross-chunk Oak &amp; Birch forests.
 /// </summary>
 public sealed class OverworldGenerator : IWorldGenerator
 {
-    /// <summary>Default sea level Y coordinate.</summary>
-    public const int SeaLevel = 62;
+    /// <summary>Default ocean surface Y coordinate.</summary>
+    public const int SeaLevel = 63;
 
-    private readonly IBlockRegistry _blocks;
-    private readonly SimplexNoise2D _continentalNoise;
+    private readonly CoreRegistries _registries;
+    private readonly BiomeSampler _biomeSampler;
     private readonly SimplexNoise2D _erosionNoise;
     private readonly SimplexNoise2D _ridgeNoise;
     private readonly PerlinNoise _densityNoise3D;
     private readonly PerlinNoise _caveNoiseA;
     private readonly PerlinNoise _caveNoiseB;
-    private readonly BiomeSampler _biomeSampler;
     private readonly OreVeinPopulator _orePopulator;
     private readonly MineshaftStructureGenerator _mineshaftGenerator;
     private readonly TreeFeaturePopulator _treePopulator;
 
-    private readonly BlockStateId _air;
-    private readonly BlockStateId _bedrock;
-    private readonly BlockStateId _stone;
-    private readonly BlockStateId _deepslate;
-    private readonly BlockStateId _dirt;
-    private readonly BlockStateId _grass;
-    private readonly BlockStateId _grassSnowy;
-    private readonly BlockStateId _sand;
-    private readonly BlockStateId _sandstone;
-    private readonly BlockStateId _water;
+    private readonly BlockState _air;
+    private readonly BlockState _bedrock;
+    private readonly BlockState _stone;
+    private readonly BlockState _deepslate;
+    private readonly BlockState _dirt;
+    private readonly BlockState _grass;
+    private readonly BlockState _snowBlock;
+    private readonly BlockState _sand;
+    private readonly BlockState _sandstone;
+    private readonly BlockState _water;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="OverworldGenerator"/> class.
     /// </summary>
-    public OverworldGenerator(long seed, IBlockRegistry blocks)
+    /// <param name="worldSeed">64-bit world seed.</param>
+    /// <param name="registries">Frozen domain registries.</param>
+    public OverworldGenerator(long worldSeed, CoreRegistries registries)
     {
-        ArgumentNullException.ThrowIfNull(blocks);
+        ArgumentNullException.ThrowIfNull(registries);
 
-        Seed = seed;
-        _blocks = blocks;
+        WorldSeed = worldSeed;
+        _registries = registries;
+        _biomeSampler = new BiomeSampler(worldSeed, registries.Biomes);
 
-        _continentalNoise = new SimplexNoise2D(seed ^ 0x1A2B3C4D5E6F0001L);
-        _erosionNoise = new SimplexNoise2D(seed ^ 0x2B3C4D5E6F700002L);
-        _ridgeNoise = new SimplexNoise2D(seed ^ 0x3C4D5E6F70810003L);
-        _densityNoise3D = new PerlinNoise(seed ^ 0x4D5E6F7081920004L);
-        _caveNoiseA = new PerlinNoise(seed ^ 0x5E6F708192A30005L);
-        _caveNoiseB = new PerlinNoise(seed ^ 0x6F708192A3B40006L);
-        _biomeSampler = new BiomeSampler(seed);
-        _orePopulator = new OreVeinPopulator(seed, blocks);
-        _mineshaftGenerator = new MineshaftStructureGenerator(seed, blocks);
-        _treePopulator = new TreeFeaturePopulator(seed, blocks);
+        var seed = unchecked((ulong)worldSeed);
+        _erosionNoise = new SimplexNoise2D(SplitMix64.Mix(seed ^ 0xA11CE002UL));
+        _ridgeNoise = new SimplexNoise2D(SplitMix64.Mix(seed ^ 0xA11CE003UL));
+        _densityNoise3D = new PerlinNoise(SplitMix64.Mix(seed ^ 0xB22DF004UL));
+        _caveNoiseA = new PerlinNoise(SplitMix64.Mix(seed ^ 0xC33E0005UL));
+        _caveNoiseB = new PerlinNoise(SplitMix64.Mix(seed ^ 0xD44F1006UL));
 
-        _air = BlockStateId.Air;
-        _bedrock = blocks.GetByKey(BuiltInBlocks.Bedrock).DefaultState;
-        _stone = blocks.GetByKey(BuiltInBlocks.Stone).DefaultState;
-        _deepslate = blocks.GetByKey(BuiltInBlocks.Deepslate).DefaultState;
-        _dirt = blocks.GetByKey(BuiltInBlocks.Dirt).DefaultState;
-        var grassDef = blocks.GetByKey(BuiltInBlocks.GrassBlock);
-        _grass = grassDef.GetState(("snowy", "false"));
-        _grassSnowy = grassDef.GetState(("snowy", "true"));
-        _sand = blocks.GetByKey(BuiltInBlocks.Sand).DefaultState;
-        _sandstone = blocks.GetByKey(BuiltInBlocks.Sandstone).DefaultState;
-        _water = blocks.GetByKey(BuiltInBlocks.Water).GetState(("level", "0"));
+        var blocks = registries.Blocks;
+        _orePopulator = new OreVeinPopulator(worldSeed, blocks);
+        _mineshaftGenerator = new MineshaftStructureGenerator(worldSeed, blocks);
+        _treePopulator = new TreeFeaturePopulator(worldSeed, blocks);
+
+        _air = BlockState.Air;
+        _bedrock = blocks.GetDefaultState(BuiltInBlocks.Bedrock);
+        _stone = blocks.GetDefaultState(BuiltInBlocks.Stone);
+        _deepslate = blocks.GetDefaultState(BuiltInBlocks.Deepslate);
+        _dirt = blocks.GetDefaultState(BuiltInBlocks.Dirt);
+        _grass = blocks.GetDefaultState(BuiltInBlocks.GrassBlock);
+        _snowBlock = blocks.GetDefaultState(BuiltInBlocks.SnowBlock);
+        _sand = blocks.GetDefaultState(BuiltInBlocks.Sand);
+        _sandstone = blocks.GetDefaultState(BuiltInBlocks.Sandstone);
+        _water = blocks.GetDefaultState(BuiltInBlocks.Water);
     }
 
     /// <inheritdoc />
-    public long Seed { get; }
+    public long WorldSeed { get; }
 
     /// <inheritdoc />
-    public ChunkColumn GenerateChunk(ChunkPos position)
+    public void GenerateChunk(ChunkColumn chunk)
     {
-        var chunk = new ChunkColumn(position);
-        var chunkWorldX = position.MinBlockX;
-        var chunkWorldZ = position.MinBlockZ;
+        ArgumentNullException.ThrowIfNull(chunk);
+
+        var chunkWorldX = chunk.Position.MinBlockX;
+        var chunkWorldZ = chunk.Position.MinBlockZ;
 
         Span<int> baseSurface = stackalloc int[256];
-        Span<BiomeKind> biomes = stackalloc BiomeKind[256];
+        Span<ushort> columnBiomes = stackalloc ushort[256];
 
         for (var lz = 0; lz < 16; lz++)
         {
@@ -93,40 +98,55 @@ public sealed class OverworldGenerator : IWorldGenerator
                 var wx = chunkWorldX + lx;
                 var wz = chunkWorldZ + lz;
                 var idx = (lz << 4) | lx;
-                baseSurface[idx] = ComputeColumnBaseHeight(wx, wz, out var biome);
-                biomes[idx] = biome;
+                baseSurface[idx] = ComputeColumnBaseHeight(wx, wz, out var biomeId);
+                columnBiomes[idx] = biomeId;
+            }
+        }
+
+        for (var s = 0; s < ChunkColumn.SectionCount; s++)
+        {
+            var sec = chunk.GetSection(s);
+            for (var qz = 0; qz < 4; qz++)
+            {
+                for (var qx = 0; qx < 4; qx++)
+                {
+                    var sampleBiome = columnBiomes[((qz * 4) << 4) | (qx * 4)];
+                    for (var qy = 0; qy < 4; qy++)
+                    {
+                        sec.SetBiomeId(qx, qy, qz, sampleBiome);
+                    }
+                }
             }
         }
 
         PopulateBaseTerrainAndCaves(chunk, chunkWorldX, chunkWorldZ, baseSurface);
-        ApplySurfaceStrata(chunk, chunkWorldX, chunkWorldZ, biomes);
+        ApplySurfaceStrata(chunk, chunkWorldX, chunkWorldZ, columnBiomes);
         _orePopulator.PopulateChunk(chunk);
         _mineshaftGenerator.PopulateChunk(chunk, SampleRawSurfaceHeight);
         _treePopulator.PopulateChunk(chunk, SampleTreeGround);
 
-        chunk.RecomputeHeightmaps(_blocks);
-        LightingEngine.InitializeChunkLight(chunk, _blocks);
-        chunk.ClearDirty();
-        return chunk;
+        chunk.RecomputeHeightmaps(_registries.Blocks);
+        LightingEngine.InitializeChunkLight(chunk, _registries.Blocks);
+        chunk.MarkClean();
     }
 
     private int SampleRawSurfaceHeight(int worldX, int worldZ) =>
         ComputeColumnBaseHeight(worldX, worldZ, out _);
 
-    private (bool Valid, int GroundY, BiomeKind Biome) SampleTreeGround(int worldX, int worldZ)
+    private (bool Valid, int GroundY, ResourceKey BiomeKey) SampleTreeGround(int worldX, int worldZ)
     {
-        var baseH = ComputeColumnBaseHeight(worldX, worldZ, out var biome);
-        if (biome == BiomeKind.Ocean || biome == BiomeKind.Desert)
+        var baseH = ComputeColumnBaseHeight(worldX, worldZ, out var biomeId);
+        var biomeKey = _biomeSampler.GetBiome(biomeId).Key;
+        if (biomeKey == BuiltInBiomes.Ocean || biomeKey == BuiltInBiomes.Desert)
         {
-            return (false, baseH, biome);
+            return (false, baseH, biomeKey);
         }
 
         if (_mineshaftGenerator.IsVerticalAccessShaftColumn(worldX, worldZ))
         {
-            return (false, baseH, biome);
+            return (false, baseH, biomeKey);
         }
 
-        // Find exact deterministic solid terrain surface at (worldX, worldZ), accounting for 3D density overhangs & surface caves
         var topY = Math.Min(EngineConstants.WorldMaxY - 12, baseH + 16);
         var minSearchY = Math.Max(SeaLevel + 2, baseH - 12);
         for (var y = topY; y >= minSearchY; y--)
@@ -136,54 +156,37 @@ public sealed class OverworldGenerator : IWorldGenerator
                 continue;
             }
 
-            if (IsCaveCarved(worldX, y, worldZ, baseH))
+            if (IsCaveCarved(worldX, y, worldZ, baseH) || y >= 92)
             {
-                return (false, y, biome);
+                return (false, y, biomeKey);
             }
 
-            if (biome == BiomeKind.Mountains && y >= 88)
-            {
-                return (false, y, biome);
-            }
-
-            return (true, y, biome);
+            return (true, y, biomeKey);
         }
 
-        return (false, baseH, biome);
+        return (false, baseH, biomeKey);
     }
 
-    private int ComputeColumnBaseHeight(int wx, int wz, out BiomeKind biome)
+    private int ComputeColumnBaseHeight(int wx, int wz, out ushort biomeId)
     {
-        var continental = _continentalNoise.Fbm(wx * 0.0022, wz * 0.0022, octaves: 4);
-        var erosion = _erosionNoise.Fbm(wx * 0.0045, wz * 0.0045, octaves: 3);
-        var ridgeRaw = _ridgeNoise.Fbm(wx * 0.006, wz * 0.006, octaves: 4);
+        biomeId = _biomeSampler.SampleBiomeId(wx, wz);
+        var continental = _biomeSampler.SampleContinentalness(wx, wz);
+        var erosion = _erosionNoise.SampleFractal2D(wx * 0.0045, wz * 0.0045, octaves: 3);
+        var ridgeRaw = _ridgeNoise.SampleFractal2D(wx * 0.006, wz * 0.006, octaves: 4);
         var peaks = 1.0 - Math.Abs(ridgeRaw);
         peaks *= peaks;
 
-        var elevation = 64.0 + (continental * 26.0) - (erosion * 10.0) + (peaks * Math.Max(0.0, continental + 0.15) * 42.0);
-        var height = Math.Clamp((int)Math.Round(elevation), -40, 180);
-        biome = _biomeSampler.Sample(wx, wz, continental);
-        return height;
+        var elevation = 65.0 + (continental * 26.0) - (erosion * 9.0) + (peaks * Math.Max(0.0, continental + 0.15) * 38.0);
+        return Math.Clamp((int)Math.Round(elevation), 36, 150);
     }
 
     private bool IsTerrainSolidBeforeCaves(int wx, int y, int wz, int targetSurfaceY)
     {
-        if (y <= EngineConstants.WorldMinY + 4)
-        {
-            return true;
-        }
+        if (y <= EngineConstants.WorldMinY + 4) return true;
+        if (y > targetSurfaceY + 14) return false;
+        if (y < targetSurfaceY - 10) return true;
 
-        if (y > targetSurfaceY + 14)
-        {
-            return false;
-        }
-
-        if (y < targetSurfaceY - 10)
-        {
-            return true;
-        }
-
-        var densityOffset = _densityNoise3D.Fbm(wx * 0.035, y * 0.045, wz * 0.035, octaves: 3) * 8.5;
+        var densityOffset = _densityNoise3D.SampleFractal3D(wx * 0.035, y * 0.045, wz * 0.035, octaves: 3) * 8.5;
         return (targetSurfaceY - y + densityOffset) > 0.0;
     }
 
@@ -194,17 +197,17 @@ public sealed class OverworldGenerator : IWorldGenerator
             return false;
         }
 
-        // Keep oceans watertight while allowing dramatic dry hillside & forest cave mouths!
         if (surfaceY <= SeaLevel + 2 && y >= surfaceY - 5)
         {
             return false;
         }
 
-        var ca = _caveNoiseA.Sample(wx * 0.038, y * 0.048, wz * 0.038);
-        var cb = _caveNoiseB.Sample(wx * 0.038, y * 0.048, wz * 0.038);
+        var ca = _caveNoiseA.Sample3D(wx * 0.038, y * 0.048, wz * 0.038);
+        var cb = _caveNoiseB.Sample3D(wx * 0.038, y * 0.048, wz * 0.038);
         var spaghetti = (ca * ca) + (cb * cb);
-        var threshold = y > 52 ? 0.0095 : 0.0135;
-        return spaghetti < threshold;
+        var cheese = _densityNoise3D.Sample3D(wx * 0.022 + 97.3, y * 0.032 - 41.7, wz * 0.022 + 63.1);
+        var threshold = y > 52 ? 0.0105 : 0.0145;
+        return spaghetti < threshold || (y < 36 && cheese > 0.56);
     }
 
     private void PopulateBaseTerrainAndCaves(
@@ -224,9 +227,9 @@ public sealed class OverworldGenerator : IWorldGenerator
 
                 for (var y = EngineConstants.WorldMinY; y <= maxConsiderY; y++)
                 {
-                    if (y == EngineConstants.WorldMinY || (y < EngineConstants.WorldMinY + 4 && ((wx * 31 + wz * 17 + y * 13) & 3) == 0))
+                    if (y == EngineConstants.WorldMinY || (y < EngineConstants.WorldMinY + 4 && (((wx * 31) + (wz * 17) + (y * 13)) & 3) == 0))
                     {
-                        chunk.SetBlockState(lx, y, lz, _bedrock);
+                        _ = chunk.SetBlockStateRaw(lx, y, lz, _bedrock);
                         continue;
                     }
 
@@ -237,30 +240,30 @@ public sealed class OverworldGenerator : IWorldGenerator
                             continue;
                         }
 
-                        var isDeep = y < 4 || (y < 10 && ((wx * 19 + wz * 23 + y * 7) & 3) <= (9 - y) / 2);
-                        chunk.SetBlockState(lx, y, lz, isDeep ? _deepslate : _stone);
+                        var isDeep = y < 4 || (y < 10 && (((wx * 19) + (wz * 23) + (y * 7)) & 3) <= (9 - y) / 2);
+                        _ = chunk.SetBlockStateRaw(lx, y, lz, isDeep ? _deepslate : _stone);
                     }
                     else if (y <= SeaLevel)
                     {
-                        chunk.SetBlockState(lx, y, lz, _water);
+                        _ = chunk.SetBlockStateRaw(lx, y, lz, _water);
                     }
                 }
             }
         }
     }
 
-    private void ApplySurfaceStrata(ChunkColumn chunk, int chunkWorldX, int chunkWorldZ, ReadOnlySpan<BiomeKind> biomes)
+    private void ApplySurfaceStrata(ChunkColumn chunk, int chunkWorldX, int chunkWorldZ, ReadOnlySpan<ushort> columnBiomes)
     {
         for (var lz = 0; lz < 16; lz++)
         {
             for (var lx = 0; lx < 16; lx++)
             {
-                var biome = biomes[(lz << 4) | lx];
+                var biomeKey = _biomeSampler.GetBiome(columnBiomes[(lz << 4) | lx]).Key;
                 var wx = chunkWorldX + lx;
                 var wz = chunkWorldZ + lz;
                 var depthRemaining = 0;
 
-                for (var y = EngineConstants.WorldMaxY - 1; y >= EngineConstants.WorldMinY + 5; y--)
+                for (var y = 175; y >= EngineConstants.WorldMinY + 5; y--)
                 {
                     var current = chunk.GetBlockState(lx, y, lz);
                     if (current.IsAir || current == _water)
@@ -276,24 +279,24 @@ public sealed class OverworldGenerator : IWorldGenerator
 
                     if (depthRemaining == 0)
                     {
-                        var above = y + 1 < EngineConstants.WorldMaxY ? chunk.GetBlockState(lx, y + 1, lz) : _air;
+                        var above = chunk.GetBlockState(lx, y + 1, lz);
                         var underWater = above == _water;
-                        if (underWater || biome == BiomeKind.Desert || (y <= SeaLevel + 1 && !_mineshaftGenerator.IsVerticalAccessShaftColumn(wx, wz)))
+                        if (underWater || biomeKey == BuiltInBiomes.Desert || (y <= SeaLevel + 1 && !_mineshaftGenerator.IsVerticalAccessShaftColumn(wx, wz)))
                         {
-                            chunk.SetBlockState(lx, y, lz, _sand);
+                            _ = chunk.SetBlockStateRaw(lx, y, lz, _sand);
                             depthRemaining = 3;
                         }
                         else
                         {
-                            var topBlock = biome == BiomeKind.Mountains && y >= 88 ? _grassSnowy : _grass;
-                            chunk.SetBlockState(lx, y, lz, topBlock);
+                            var topBlock = y >= 102 ? _snowBlock : _grass;
+                            _ = chunk.SetBlockStateRaw(lx, y, lz, topBlock);
                             depthRemaining = 3;
                         }
                     }
                     else
                     {
-                        var subBlock = biome == BiomeKind.Desert ? (depthRemaining == 1 ? _sandstone : _sand) : _dirt;
-                        chunk.SetBlockState(lx, y, lz, subBlock);
+                        var subBlock = biomeKey == BuiltInBiomes.Desert ? (depthRemaining == 1 ? _sandstone : _sand) : _dirt;
+                        _ = chunk.SetBlockStateRaw(lx, y, lz, subBlock);
                         depthRemaining--;
                     }
                 }

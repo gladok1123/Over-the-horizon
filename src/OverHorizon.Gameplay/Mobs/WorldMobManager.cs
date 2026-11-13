@@ -1,3 +1,4 @@
+using System.Numerics;
 using OverHorizon.Core.Items;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
@@ -101,7 +102,7 @@ public sealed class WorldMobManager
     /// </summary>
     public bool TryAttackAlongRay(
         Vec3d rayOrigin,
-        Vec3f rayDirection,
+        Vector3 rayDirection,
         double maxReach,
         float weaponDamage,
         bool isCriticalStrike,
@@ -171,7 +172,7 @@ public sealed class WorldMobManager
     /// <summary>Shears a targeted <see cref="MobType.Sheep"/> within reach, yielding <c>1..3</c> White Wool.</summary>
     public bool TryShearAlongRay(
         Vec3d rayOrigin,
-        Vec3f rayDirection,
+        Vector3 rayDirection,
         double maxReach,
         IRegistry<ItemDefinition> items,
         out ItemStack woolDrop)
@@ -436,7 +437,7 @@ public sealed class WorldMobManager
         }
     }
 
-    private static bool TryIntersectRayBox(Vec3d origin, Vec3f dir, double maxDist, BoundingBox box, out double hitT)
+    private static bool TryIntersectRayBox(Vec3d origin, Vector3 dir, double maxDist, BoundingBox box, out double hitT)
     {
         hitT = 0.0;
         var tMin = 0.0;
