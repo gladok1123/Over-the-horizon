@@ -33,96 +33,92 @@ public static partial class WorldMob3DMesher
         RemotePlayerAvatar a)
     {
         const int c = EntityTextureAtlasGenerator.CellSteve;
+        var poseOffsetY = 0.0f;
+        if (a.IsRidingMinecart)
         {
-            var poseOffsetY = 0.0f;
-            if (a.IsRidingMinecart)
-            {
-                poseOffsetY = 0.30f;
-            }
-            else if (a.IsSneaking)
-            {
-                poseOffsetY = 0.14f;
-            }
-
-            var relFeet = new Vector3(
-                (float)(a.FeetPosition.X - cameraPos.X),
-                (float)(a.FeetPosition.Y - cameraPos.Y) - poseOffsetY,
-                (float)(a.FeetPosition.Z - cameraPos.Z));
-            if (relFeet.LengthSquared() > 128.0f * 128.0f) return;
-
-            var yawRad = a.YawDegrees * (MathF.PI / 180.0f);
-            // Fix inverted head pitch: positive PitchDegrees (look up) requires negative X-rotation so +Z nose tilts +Y!
-            var headPitchRad = -Math.Clamp(a.PitchDegrees, -89.0f, 89.0f) * (MathF.PI / 180.0f);
-            var root = Matrix4x4.CreateRotationY(-yawRad + MathF.PI) * Matrix4x4.CreateTranslation(relFeet);
-            var light = Math.Clamp(a.LightBrightness, 0.06f, 1.0f);
-            var tint = ComputeTint(light, a.HurtFlash, 0.0f, onFire: false);
-
-            var headXform = Matrix4x4.CreateRotationX(headPitchRad) *
-                            Matrix4x4.CreateTranslation(0.0f, 1.50f, 0.0f) *
-                            root;
-
-            if (a.IsSpectator)
-            {
-                var ghostTint = new Vector4(tint.X, tint.Y, tint.Z, 0.45f);
-                EntityBoxUvBuilder.EmitEntityBox(dst, c, 0, 0, 8, 8, 8, new Vector3(-0.25f, 0.0f, -0.25f), new Vector3(0.50f, 0.50f, 0.50f), headXform, ghostTint);
-                EntityBoxUvBuilder.EmitEntityBox(dst, c, 32, 0, 8, 8, 8, new Vector3(-0.268f, -0.018f, -0.268f), new Vector3(0.536f, 0.536f, 0.536f), headXform, ghostTint);
-                return;
-            }
-
-            var walkSwing = MathF.Sin(a.WalkPhase) * 0.55f;
-            var atkSin = a.HandSwingProgress > 0.001f ? MathF.Sin(MathF.Sqrt(Math.Clamp(a.HandSwingProgress, 0.0f, 1.0f)) * MathF.PI) : 0.0f;
-
-            // Right arm is at X = -0.375f; Left arm (Offhand) is at X = +0.375f
-            var rightArmPitch = -walkSwing - (a.LeftHandSwing ? 0.0f : atkSin * 1.35f);
-            var leftArmPitch = walkSwing - (a.LeftHandSwing ? atkSin * 1.35f : 0.0f);
-            var rightArmInwardYaw = 0.0f;
-            var leftArmInwardYaw = 0.0f;
-
-            if (a.IsDrawingBow)
-            {
-                rightArmPitch = -1.45f + (headPitchRad * 0.85f);
-                leftArmPitch = -1.40f + (headPitchRad * 0.85f);
-                rightArmInwardYaw = -0.12f;
-                leftArmInwardYaw = 0.32f;
-            }
-            else if (a.IsBlockingShield)
-            {
-                if (a.MainHandIsShield || !a.OffhandIsShield)
-                {
-                    rightArmPitch = -0.95f;
-                    rightArmInwardYaw = -0.52f;
-                }
-                else
-                {
-                    leftArmPitch = -0.95f;
-                    leftArmInwardYaw = 0.52f;
-                }
-            }
-            else if (a.MainHandSpriteTile >= 0 || a.MainHandBlockTile >= 0 || a.MainHandIsShield)
-            {
-                rightArmPitch -= 0.28f;
-            }
-
-            EntityBoxUvBuilder.EmitEntityBox(dst, c, 0, 16, 4, 12, 4, new Vector3(-0.125f, -0.75f, -0.125f), new Vector3(0.25f, 0.75f, 0.25f), Limb(root, new Vector3(-0.125f, 0.75f, 0.0f), walkSwing), tint);
-            EntityBoxUvBuilder.EmitEntityBox(dst, c, 16, 48, 4, 12, 4, new Vector3(-0.125f, -0.75f, -0.125f), new Vector3(0.25f, 0.75f, 0.25f), Limb(root, new Vector3(0.125f, 0.75f, 0.0f), -walkSwing), tint);
-            EntityBoxUvBuilder.EmitEntityBox(dst, c, 16, 16, 8, 12, 4, new Vector3(-0.25f, 0.75f, -0.125f), new Vector3(0.50f, 0.75f, 0.25f), root, tint);
-
-            var rightArmXform = Matrix4x4.CreateRotationX(rightArmPitch) * Matrix4x4.CreateRotationY(rightArmInwardYaw) * Matrix4x4.CreateTranslation(-0.375f, 1.50f, 0.0f) * root;
-            var leftArmXform = Matrix4x4.CreateRotationX(leftArmPitch) * Matrix4x4.CreateRotationY(leftArmInwardYaw) * Matrix4x4.CreateTranslation(0.375f, 1.50f, 0.0f) * root;
-
-            EntityBoxUvBuilder.EmitEntityBox(dst, c, 40, 16, 4, 12, 4, new Vector3(-0.125f, -0.75f, -0.125f), new Vector3(0.25f, 0.75f, 0.25f), rightArmXform, tint);
-            EntityBoxUvBuilder.EmitEntityBox(dst, c, 32, 48, 4, 12, 4, new Vector3(-0.125f, -0.75f, -0.125f), new Vector3(0.25f, 0.75f, 0.25f), leftArmXform, tint);
-            EntityBoxUvBuilder.EmitEntityBox(dst, c, 0, 0, 8, 8, 8, new Vector3(-0.25f, 0.0f, -0.25f), new Vector3(0.50f, 0.50f, 0.50f), headXform, tint);
-            EntityBoxUvBuilder.EmitEntityBox(dst, c, 32, 0, 8, 8, 8, new Vector3(-0.268f, -0.018f, -0.268f), new Vector3(0.536f, 0.536f, 0.536f), headXform, tint);
-
-            if (a.Armor.HasAny)
-            {
-                AppendRemoteArmorWithCustomArms(dst, root, headXform, rightArmXform, leftArmXform, walkSwing, tint, a.Armor);
-            }
-
-            AppendThirdPersonHandAttachment(dst, rightArmXform, isLeftArm: false, a.MainHandIsShield, a.IsBlockingShield && (a.MainHandIsShield || !a.OffhandIsShield), a.MainHandIsBlock3D, a.MainHandBlockTile, a.MainHandSpriteTile, tint);
-            AppendThirdPersonHandAttachment(dst, leftArmXform, isLeftArm: true, a.OffhandIsShield, a.IsBlockingShield && !a.MainHandIsShield && a.OffhandIsShield, false, -1, a.OffhandSpriteTile, tint);
+            poseOffsetY = 0.30f;
         }
+        else if (a.IsSneaking)
+        {
+            poseOffsetY = 0.14f;
+        }
+
+        var relFeet = new Vector3(
+            (float)(a.FeetPosition.X - cameraPos.X),
+            (float)(a.FeetPosition.Y - cameraPos.Y) - poseOffsetY,
+            (float)(a.FeetPosition.Z - cameraPos.Z));
+        if (relFeet.LengthSquared() > 128.0f * 128.0f) return;
+
+        var yawRad = a.YawDegrees * (MathF.PI / 180.0f);
+        var headPitchRad = -Math.Clamp(a.PitchDegrees, -89.0f, 89.0f) * (MathF.PI / 180.0f);
+        var root = Matrix4x4.CreateRotationY(-yawRad + MathF.PI) * Matrix4x4.CreateTranslation(relFeet);
+        var light = Math.Clamp(a.LightBrightness, 0.06f, 1.0f);
+        var tint = ComputeTint(light, a.HurtFlash, 0.0f, onFire: false);
+
+        var headXform = Matrix4x4.CreateRotationX(headPitchRad) *
+                        Matrix4x4.CreateTranslation(0.0f, 1.50f, 0.0f) *
+                        root;
+
+        if (a.IsSpectator)
+        {
+            var ghostTint = new Vector4(tint.X, tint.Y, tint.Z, 0.45f);
+            EntityBoxUvBuilder.EmitEntityBox(dst, c, 0, 0, 8, 8, 8, new Vector3(-0.25f, 0.0f, -0.25f), new Vector3(0.50f, 0.50f, 0.50f), headXform, ghostTint);
+            EntityBoxUvBuilder.EmitEntityBox(dst, c, 32, 0, 8, 8, 8, new Vector3(-0.268f, -0.018f, -0.268f), new Vector3(0.536f, 0.536f, 0.536f), headXform, ghostTint);
+            return;
+        }
+
+        var walkSwing = MathF.Sin(a.WalkPhase) * 0.55f;
+        var atkSin = a.HandSwingProgress > 0.001f ? MathF.Sin(MathF.Sqrt(Math.Clamp(a.HandSwingProgress, 0.0f, 1.0f)) * MathF.PI) : 0.0f;
+
+        var rightArmPitch = -walkSwing - (a.LeftHandSwing ? 0.0f : atkSin * 1.35f);
+        var leftArmPitch = walkSwing - (a.LeftHandSwing ? atkSin * 1.35f : 0.0f);
+        var rightArmInwardYaw = 0.0f;
+        var leftArmInwardYaw = 0.0f;
+
+        if (a.IsDrawingBow)
+        {
+            rightArmPitch = -1.45f + (headPitchRad * 0.85f);
+            leftArmPitch = -1.40f + (headPitchRad * 0.85f);
+            rightArmInwardYaw = -0.12f;
+            leftArmInwardYaw = 0.32f;
+        }
+        else if (a.IsBlockingShield)
+        {
+            if (a.MainHandIsShield || !a.OffhandIsShield)
+            {
+                rightArmPitch = -0.95f;
+                rightArmInwardYaw = -0.52f;
+            }
+            else
+            {
+                leftArmPitch = -0.95f;
+                leftArmInwardYaw = 0.52f;
+            }
+        }
+        else if (a.MainHandSpriteTile >= 0 || a.MainHandBlockTile >= 0 || a.MainHandIsShield)
+        {
+            rightArmPitch -= 0.28f;
+        }
+
+        EntityBoxUvBuilder.EmitEntityBox(dst, c, 0, 16, 4, 12, 4, new Vector3(-0.125f, -0.75f, -0.125f), new Vector3(0.25f, 0.75f, 0.25f), Limb(root, new Vector3(-0.125f, 0.75f, 0.0f), walkSwing), tint);
+        EntityBoxUvBuilder.EmitEntityBox(dst, c, 16, 48, 4, 12, 4, new Vector3(-0.125f, -0.75f, -0.125f), new Vector3(0.25f, 0.75f, 0.25f), Limb(root, new Vector3(0.125f, 0.75f, 0.0f), -walkSwing), tint);
+        EntityBoxUvBuilder.EmitEntityBox(dst, c, 16, 16, 8, 12, 4, new Vector3(-0.25f, 0.75f, -0.125f), new Vector3(0.50f, 0.75f, 0.25f), root, tint);
+
+        var rightArmXform = Matrix4x4.CreateRotationX(rightArmPitch) * Matrix4x4.CreateRotationY(rightArmInwardYaw) * Matrix4x4.CreateTranslation(-0.375f, 1.50f, 0.0f) * root;
+        var leftArmXform = Matrix4x4.CreateRotationX(leftArmPitch) * Matrix4x4.CreateRotationY(leftArmInwardYaw) * Matrix4x4.CreateTranslation(0.375f, 1.50f, 0.0f) * root;
+
+        EntityBoxUvBuilder.EmitEntityBox(dst, c, 40, 16, 4, 12, 4, new Vector3(-0.125f, -0.75f, -0.125f), new Vector3(0.25f, 0.75f, 0.25f), rightArmXform, tint);
+        EntityBoxUvBuilder.EmitEntityBox(dst, c, 32, 48, 4, 12, 4, new Vector3(-0.125f, -0.75f, -0.125f), new Vector3(0.25f, 0.75f, 0.25f), leftArmXform, tint);
+        EntityBoxUvBuilder.EmitEntityBox(dst, c, 0, 0, 8, 8, 8, new Vector3(-0.25f, 0.0f, -0.25f), new Vector3(0.50f, 0.50f, 0.50f), headXform, tint);
+        EntityBoxUvBuilder.EmitEntityBox(dst, c, 32, 0, 8, 8, 8, new Vector3(-0.268f, -0.018f, -0.268f), new Vector3(0.536f, 0.536f, 0.536f), headXform, tint);
+
+        if (a.Armor.HasAny)
+        {
+            AppendRemoteArmorWithCustomArms(dst, root, headXform, rightArmXform, leftArmXform, walkSwing, tint, a.Armor);
+        }
+
+        AppendThirdPersonHandAttachment(dst, rightArmXform, isLeftArm: false, a.MainHandIsShield, a.IsBlockingShield && (a.MainHandIsShield || !a.OffhandIsShield), a.MainHandIsBlock3D, a.MainHandBlockTile, a.MainHandSpriteTile, tint);
+        AppendThirdPersonHandAttachment(dst, leftArmXform, isLeftArm: true, a.OffhandIsShield, a.IsBlockingShield && !a.MainHandIsShield && a.OffhandIsShield, false, -1, a.OffhandSpriteTile, tint);
     }
 
     /// <summary>Appends spinning, bobbing 3D dropped item entities onto the world overlay mesh.</summary>

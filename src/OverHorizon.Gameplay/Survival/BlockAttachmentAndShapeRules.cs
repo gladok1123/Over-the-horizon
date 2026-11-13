@@ -110,15 +110,17 @@ public static partial class BlockAttachmentAndShapeRules
             var facing = GetFacing(meta, "north");
             var isOpen = meta.Properties.TryGetValue("open", out var ov) && string.Equals(ov, "true", StringComparison.OrdinalIgnoreCase);
             var rightHinge = meta.Properties.TryGetValue("hinge", out var hg) && string.Equals(hg, "right", StringComparison.OrdinalIgnoreCase);
-            var edge = !isOpen
-                ? facing
-                : facing switch
+            var edge = facing;
+            if (isOpen)
+            {
+                edge = facing switch
                 {
                     "north" => rightHinge ? "east" : "west",
                     "south" => rightHinge ? "west" : "east",
                     "west" => rightHinge ? "north" : "south",
                     _ => rightHinge ? "south" : "north",
                 };
+            }
 
             localBounds = edge switch
             {

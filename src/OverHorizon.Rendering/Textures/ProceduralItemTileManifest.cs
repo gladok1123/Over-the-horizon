@@ -10,6 +10,9 @@ namespace OverHorizon.Rendering.Textures;
 /// </summary>
 internal static class ProceduralItemTileManifest
 {
+    /// <summary>Sprite tile index for unpulled bow (<c>bow</c>).</summary>
+    public const ushort TileBow = 218;
+
     /// <summary>Sprite tile index for bow draw stage 0 (<c>bow_pulling_0</c>).</summary>
     public const ushort TileBowPulling0 = 220;
 

@@ -327,7 +327,7 @@ public sealed partial class PrimedTntAndWorldTicker
             if (meta.BlockKey == BuiltInBlocks.BuddingAmethyst)
             {
                 var dirs = DirectionExtensions.All;
-                var growDir = dirs[NextRandom() % (uint)dirs.Length];
+                var growDir = dirs[(int)(NextRandom() % (uint)dirs.Length)];
                 var crystalPos = pos.Offset(growDir);
                 if (crystalPos.Y >= EngineConstants.WorldMinY && crystalPos.Y < EngineConstants.WorldMaxY && getBlock(crystalPos).IsAir)
                 {

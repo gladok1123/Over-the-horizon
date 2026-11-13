@@ -15,8 +15,7 @@ internal sealed partial class SilkOpenGlOverlayRenderer
         var frac = (((worldTimeTicks % 24000L) + 24000L) % 24000L) / 24000.0f;
         var angle = (frac - 0.25f) * MathF.Tau;
         const float radius = 220.0f;
-        // At Noon (worldTimeTicks = 6000, frac = 0.25, angle = 0), Cos(0) = +1 puts the Sun overhead at zenith (+Y);
-        // at Midnight (18000, angle = pi), Cos(pi) = -1 puts the Moon overhead at zenith!
+        // Noon (ticks 6000) places the Sun at zenith (+Y) and Midnight (ticks 18000) places the Moon at zenith.
         var sunDir = Vector3.Normalize(new Vector3(-MathF.Sin(angle), MathF.Cos(angle), -0.14f));
         var moonDir = -sunDir;
 

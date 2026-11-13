@@ -380,8 +380,7 @@ internal static partial class ShapedBlockMesher
         }
         else
         {
-            var moist = meta.Properties.TryGetValue("moisture", out var mv) && string.Equals(mv, "7", StringComparison.Ordinal);
-            topTile = moist ? ProceduralAtlasGenerator.TileFarmlandTopWet : ProceduralAtlasGenerator.TileFarmlandTopDry;
+            topTile = ProceduralAtlasGenerator.TileFarmland;
             sideTile = ProceduralAtlasGenerator.TileDirt;
         }
 
