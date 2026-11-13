@@ -97,18 +97,18 @@ public static partial class WorldMob3DMesher
         Vector3 b,
         Vector3 c,
         Vector3 d,
-        float px0,
-        float py0,
-        float px1,
-        float py1,
+        float uMin,
+        float vMin,
+        float uMax,
+        float vMax,
         Vector4 tint)
     {
-        var p0 = Vector3.Transform(a, m);
-        var p1 = Vector3.Transform(b, m);
-        var p2 = Vector3.Transform(c, m);
-        var p3 = Vector3.Transform(d, m);
-        EntityBoxUvBuilder.EmitEntityFace(dst, cell, p0, p1, p2, p3, px0, py0, px1, py1, tint);
-        EntityBoxUvBuilder.EmitEntityFace(dst, cell, p1, p0, p3, p2, px1, py0, px0, py1, tint * new Vector4(0.92f, 0.92f, 0.92f, 1.0f));
+        var v0 = Vector3.Transform(a, m);
+        var v1 = Vector3.Transform(b, m);
+        var v2 = Vector3.Transform(c, m);
+        var v3 = Vector3.Transform(d, m);
+        EntityBoxUvBuilder.EmitEntityFace(dst, cell, v0, v1, v2, v3, uMin, vMin, uMax, vMax, tint);
+        EntityBoxUvBuilder.EmitEntityFace(dst, cell, v1, v0, v3, v2, uMax, vMin, uMin, vMax, tint * new Vector4(0.92f, 0.92f, 0.92f, 1.0f));
     }
 
     private static void AppendPlayerArmorLayers(

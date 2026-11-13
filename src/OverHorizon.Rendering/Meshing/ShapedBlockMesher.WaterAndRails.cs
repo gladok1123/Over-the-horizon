@@ -259,23 +259,23 @@ internal static partial class ShapedBlockMesher
     private static void EmitQuadWithUv(
         List<ChunkVertex> verts,
         List<uint> indices,
-        Vector3 p0,
-        Vector3 p1,
-        Vector3 p2,
-        Vector3 p3,
-        Vector2 uv0,
-        Vector2 uv1,
-        Vector2 uv2,
-        Vector2 uv3,
+        Vector3 v0,
+        Vector3 v1,
+        Vector3 v2,
+        Vector3 v3,
+        Vector2 t0,
+        Vector2 t1,
+        Vector2 t2,
+        Vector2 t3,
         ushort tile,
         float shade,
         float packedLight,
         bool doubleSided)
     {
-        EmitQuad(verts, indices, p0, p1, p2, p3, uv0, uv1, uv2, uv3, tile, shade, packedLight);
+        EmitQuad(verts, indices, v0, v1, v2, v3, t0, t1, t2, t3, tile, shade, packedLight);
         if (doubleSided)
         {
-            EmitQuad(verts, indices, p1, p0, p3, p2, uv1, uv0, uv3, uv2, tile, shade * 0.90f, packedLight);
+            EmitQuad(verts, indices, v1, v0, v3, v2, t1, t0, t3, t2, tile, shade * 0.90f, packedLight);
         }
     }
 }

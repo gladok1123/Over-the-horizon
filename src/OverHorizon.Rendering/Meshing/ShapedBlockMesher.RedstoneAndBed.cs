@@ -250,18 +250,18 @@ internal static partial class ShapedBlockMesher
         var uvTR = new Vector2(1.0f, 0.0f);
         var uvTL = new Vector2(0.0f, 0.0f);
 
-        ushort Pick(string dir)
-        {
-            if (dir == facing) return frontTile;
-            return IsOpposite(dir, facing) ? backTile : sideTile;
-        }
+        EmitQuad(verts, indices, new Vector3(a.X, a.Y, b.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(a.X, b.Y, b.Z), uvBL, uvBR, uvTR, uvTL, PickPistonFaceTile("south", facing, frontTile, backTile, sideTile), 0.84f, packedLight);
+        EmitQuad(verts, indices, new Vector3(b.X, a.Y, a.Z), new Vector3(a.X, a.Y, a.Z), new Vector3(a.X, b.Y, a.Z), new Vector3(b.X, b.Y, a.Z), uvBL, uvBR, uvTR, uvTL, PickPistonFaceTile("north", facing, frontTile, backTile, sideTile), 0.84f, packedLight);
+        EmitQuad(verts, indices, new Vector3(b.X, a.Y, b.Z), new Vector3(b.X, a.Y, a.Z), new Vector3(b.X, b.Y, a.Z), new Vector3(b.X, b.Y, b.Z), uvBL, uvBR, uvTR, uvTL, PickPistonFaceTile("east", facing, frontTile, backTile, sideTile), 0.72f, packedLight);
+        EmitQuad(verts, indices, new Vector3(a.X, a.Y, a.Z), new Vector3(a.X, a.Y, b.Z), new Vector3(a.X, b.Y, b.Z), new Vector3(a.X, b.Y, a.Z), uvBL, uvBR, uvTR, uvTL, PickPistonFaceTile("west", facing, frontTile, backTile, sideTile), 0.72f, packedLight);
+        EmitQuad(verts, indices, new Vector3(a.X, b.Y, a.Z), new Vector3(a.X, b.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(b.X, b.Y, a.Z), uvTL, uvBL, uvBR, uvTR, PickPistonFaceTile("up", facing, frontTile, backTile, sideTile), 1.0f, packedLight);
+        EmitQuad(verts, indices, new Vector3(a.X, a.Y, a.Z), new Vector3(b.X, a.Y, a.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(a.X, a.Y, b.Z), uvBL, uvBR, uvTR, uvTL, PickPistonFaceTile("down", facing, frontTile, backTile, sideTile), 0.55f, packedLight);
+    }
 
-        EmitQuad(verts, indices, new Vector3(a.X, a.Y, b.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(a.X, b.Y, b.Z), uvBL, uvBR, uvTR, uvTL, Pick("south"), 0.84f, packedLight);
-        EmitQuad(verts, indices, new Vector3(b.X, a.Y, a.Z), new Vector3(a.X, a.Y, a.Z), new Vector3(a.X, b.Y, a.Z), new Vector3(b.X, b.Y, a.Z), uvBL, uvBR, uvTR, uvTL, Pick("north"), 0.84f, packedLight);
-        EmitQuad(verts, indices, new Vector3(b.X, a.Y, b.Z), new Vector3(b.X, a.Y, a.Z), new Vector3(b.X, b.Y, a.Z), new Vector3(b.X, b.Y, b.Z), uvBL, uvBR, uvTR, uvTL, Pick("east"), 0.72f, packedLight);
-        EmitQuad(verts, indices, new Vector3(a.X, a.Y, a.Z), new Vector3(a.X, a.Y, b.Z), new Vector3(a.X, b.Y, b.Z), new Vector3(a.X, b.Y, a.Z), uvBL, uvBR, uvTR, uvTL, Pick("west"), 0.72f, packedLight);
-        EmitQuad(verts, indices, new Vector3(a.X, b.Y, a.Z), new Vector3(a.X, b.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(b.X, b.Y, a.Z), uvTL, uvBL, uvBR, uvTR, Pick("up"), 1.0f, packedLight);
-        EmitQuad(verts, indices, new Vector3(a.X, a.Y, a.Z), new Vector3(b.X, a.Y, a.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(a.X, a.Y, b.Z), uvBL, uvBR, uvTR, uvTL, Pick("down"), 0.55f, packedLight);
+    private static ushort PickPistonFaceTile(string dir, string facing, ushort frontTile, ushort backTile, ushort sideTile)
+    {
+        if (dir == facing) return frontTile;
+        return IsOpposite(dir, facing) ? backTile : sideTile;
     }
 
     private static bool IsOpposite(string a, string b) =>
