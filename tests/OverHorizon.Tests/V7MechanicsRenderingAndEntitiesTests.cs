@@ -57,14 +57,10 @@ public sealed class V7MechanicsRenderingAndEntitiesTests
         _ = col.SetBlockState(2, 64, 2, stone, blocks);
         _ = col.SetBlockState(2, 65, 2, blocks.GetDefaultState(BuiltInBlocks.Lantern), blocks);
         _ = col.SetBlockState(4, 66, 2, hangingLantern, blocks);
-        var extSticky = blocks.GetAllStates(BuiltInBlocks.StickyPiston)
-            .First(m => m.Properties["facing"] == "north" && m.Properties["extended"] == "true").State;
-        var stickyHead = blocks.GetAllStates(BuiltInBlocks.PistonHead)
-            .First(m => m.Properties["facing"] == "north" && m.Properties["type"] == "sticky").State;
-        var bedFoot = blocks.GetAllStates(BuiltInBlocks.RedBed)
-            .First(m => m.Properties["facing"] == "north" && m.Properties["part"] == "foot").State;
-        var bedHead = blocks.GetAllStates(BuiltInBlocks.RedBed)
-            .First(m => m.Properties["facing"] == "north" && m.Properties["part"] == "head").State;
+        var extSticky = blocks.WithProperty(blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.StickyPiston), "facing", "north"), "extended", "true");
+        var stickyHead = blocks.WithProperty(blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.PistonHead), "facing", "north"), "type", "sticky");
+        var bedFoot = blocks.WithProperty(blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.RedBed), "facing", "north"), "part", "foot");
+        var bedHead = blocks.WithProperty(blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.RedBed), "facing", "north"), "part", "head");
 
         _ = col.SetBlockState(6, 65, 2, extSticky, blocks);
         _ = col.SetBlockState(6, 65, 1, stickyHead, blocks);
@@ -101,8 +97,8 @@ public sealed class V7MechanicsRenderingAndEntitiesTests
 
         // Sloped flowing water (level 1 -> level 2) emits smooth corner-averaged translucent geometry
         var col = new ChunkColumn(new ChunkPos(0, 0));
-        var water1 = blocks.TryGetStateWithProperty(BuiltInBlocks.Water, "level", "1", out var w1) ? w1 : blocks.GetDefaultState(BuiltInBlocks.Water);
-        var water2 = blocks.TryGetStateWithProperty(BuiltInBlocks.Water, "level", "2", out var w2) ? w2 : blocks.GetDefaultState(BuiltInBlocks.Water);
+        var water1 = blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.Water), "level", "1");
+        var water2 = blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.Water), "level", "2");
         _ = col.SetBlockState(4, 64, 4, water1, blocks);
         _ = col.SetBlockState(5, 64, 4, water2, blocks);
 
@@ -121,7 +117,7 @@ public sealed class V7MechanicsRenderingAndEntitiesTests
         var highChicken = mobs.SpawnMob(MobType.Chicken, new Vec3d(-2.5, 72.0, 2.5));
         _ = mobs.SpawnMob(MobType.Skeleton, new Vec3d(0.5, 64.0, -8.5));
 
-        var landingEvents = new List<(Vec3d Position, MobType Type, float FallDamage, bool Died)>();
+        var landingEvents = new List<(MobType Type, Vec3d Position, bool Died, float FallDamage)>();
         var skeletonArrows = new List<(Vec3d Origin, Vec3d Velocity)>();
 
         for (var tick = 0; tick < 55; tick++)
@@ -239,7 +235,7 @@ public sealed class V7MechanicsRenderingAndEntitiesTests
 
         // 1. Corner auto-join: Rail at (0,64,1) + Rail at (1,64,0) -> Rail placed at (0,64,0) resolves to south_east corner!
         world[new BlockPos(0, 64, 1)] = blocks.GetDefaultState(BuiltInBlocks.Rail);
-        world[new BlockPos(1, 64, 0)] = blocks.TryGetStateWithProperty(BuiltInBlocks.Rail, "shape", "east_west", out var ew) ? ew : blocks.GetDefaultState(BuiltInBlocks.Rail);
+        world[new BlockPos(1, 64, 0)] = blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.Rail), "shape", "east_west");
         var corner = RailPlacementRules.ResolveRailState(blocks, Get, BuiltInBlocks.Rail, new BlockPos(0, 64, 0), Vector3.UnitZ);
         blocks.GetStateMetadata(corner).Properties["shape"].Should().Be("south_east");
 
@@ -247,8 +243,10 @@ public sealed class V7MechanicsRenderingAndEntitiesTests
         world[new BlockPos(2, 64, 0)] = blocks.GetDefaultState(BuiltInBlocks.RedstoneBlock);
         for (var x = 3; x <= 8; x++)
         {
-            world[new BlockPos(x, 64, 0)] = blocks.GetAllStates(BuiltInBlocks.PoweredRail)
-                .First(m => m.Properties["shape"] == "east_west" && m.Properties["powered"] == "false").State;
+            world[new BlockPos(x, 64, 0)] = blocks.WithProperty(
+                blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.PoweredRail), "shape", "east_west"),
+                "powered",
+                "false");
         }
 
         var redstone = new RedstoneEngine(blocks);
@@ -298,8 +296,8 @@ public sealed class V7MechanicsRenderingAndEntitiesTests
         armoredSteve.Count.Should().BeGreaterThan(bareSteve.Count, "equipped Diamond Armor appends 3D helmet, chestplate+pauldrons, leggings, and boots");
 
         var entityVerts = new List<OverlayVertex>();
-        WorldMob3DMesher.AppendMinecart(entityVerts, Vec3d.Zero, new MinecartVisual(1, new Vec3d(0.5, 64.0, -3.0), 90.0f, 0.0f, 0.0f));
-        WorldMob3DMesher.AppendArrowProjectile(entityVerts, Vec3d.Zero, new ArrowProjectileVisual(2, new Vec3d(0.5, 65.0, -4.0), 0.0f, -10.0f, 0.2f, 1.0f, true));
+        WorldMob3DMesher.AppendMinecarts(entityVerts, Vec3d.Zero, [new MinecartVisual(1, new Vec3d(0.5, 64.0, -3.0), 90.0f, 0.0f, 0.0f)]);
+        WorldMob3DMesher.AppendArrows(entityVerts, Vec3d.Zero, [new ArrowProjectileVisual(2, new Vec3d(0.5, 65.0, -4.0), 0.0f, -10.0f, 0.2f, 1.0f, true)]);
         entityVerts.Count.Should().BeGreaterThan(180, "3D Minecart tub + 3D crossed-quad ballistic Arrow emit world geometry");
 
         // 2. Protruding empty hand + Creative Inventory <-> Hotbar synchronization + FarPlane >= 640 (no sky/cloud clipping!)
