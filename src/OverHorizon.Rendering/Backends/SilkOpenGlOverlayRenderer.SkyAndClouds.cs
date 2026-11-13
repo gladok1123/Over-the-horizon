@@ -10,7 +10,7 @@ namespace OverHorizon.Rendering.Backends;
 /// </summary>
 internal sealed partial class SilkOpenGlOverlayRenderer
 {
-    private static void AppendCelestialBodies(List<OverlayVertex> dst, long worldTimeTicks, double cameraY)
+    internal static void AppendCelestialBodies(List<OverlayVertex> dst, long worldTimeTicks, double cameraY)
     {
         var frac = (((worldTimeTicks % 24000L) + 24000L) % 24000L) / 24000.0f;
         var angle = (frac - 0.25f) * MathF.Tau;
@@ -73,7 +73,7 @@ internal sealed partial class SilkOpenGlOverlayRenderer
         }
     }
 
-    private static void AppendWorldClouds(List<OverlayVertex> dst, Vec3d cameraPos, long worldTimeTicks, float driftOffset)
+    internal static void AppendWorldClouds(List<OverlayVertex> dst, Vec3d cameraPos, long worldTimeTicks, float driftOffset)
     {
         var frac = (((worldTimeTicks % 24000L) + 24000L) % 24000L) / 24000.0f;
         var sunY = -MathF.Sin((frac - 0.25f) * MathF.Tau);

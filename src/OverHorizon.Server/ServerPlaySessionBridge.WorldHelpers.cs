@@ -83,7 +83,7 @@ public sealed partial class ServerPlaySessionBridge
                 primaryTarget.LastPosition,
                 primaryTarget.GameMode,
                 primaryTarget.GetArmorDefensePoints(),
-                WorldTime.DaylightFactor,
+                WorldTime.SkyBrightness,
                 (float)dtSeconds,
                 creeperBlasts,
                 (origin, vel) => _ = _arrows.SpawnSkeletonArrow(origin, vel),
@@ -375,9 +375,9 @@ public sealed partial class ServerPlaySessionBridge
 
     private (byte SkyLight, byte BlockLight, bool IsGrassTop, bool IsSolidGround, bool IsClearSpace) ProbeServerSpawnSite(BlockPos feetPos)
     {
-        var below = _world.GetBlockState(feetPos.Below());
+        var below = _world.GetBlockState(feetPos.Offset(Direction.Down));
         var feet = _world.GetBlockState(feetPos);
-        var head = _world.GetBlockState(feetPos.Above());
+        var head = _world.GetBlockState(feetPos.Offset(Direction.Up));
         var belowMeta = _registries.Blocks.GetStateMetadata(below);
         return (15, 0, belowMeta.BlockKey == BuiltInBlocks.GrassBlock, belowMeta.IsSolid, feet.IsAir && head.IsAir);
     }

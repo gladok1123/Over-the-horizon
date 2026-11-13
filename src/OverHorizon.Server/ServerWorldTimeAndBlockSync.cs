@@ -43,7 +43,15 @@ internal static class ServerWorldTimeAndBlockSync
             (primaryPos, primaryState.Id),
         };
 
-        tntTicker?.NotifyWorldBlockChanged(primaryPos, primaryState, world.GetBlockState);
+        void SetWorldAndRecord(BlockPos p, BlockState s)
+        {
+            if (world.SetBlockState(p, s, tickNumber))
+            {
+                changed.Add((p, s.Id));
+            }
+        }
+
+        tntTicker?.NotifyWorldBlockChanged(primaryPos, world.GetBlockState, SetWorldAndRecord);
 
         // 1. Detach any unsupported neighbor blocks and spawn 3D item drops
         var checkQueue = new Queue<BlockPos>();
@@ -62,7 +70,7 @@ internal static class ServerWorldTimeAndBlockSync
                     changed.Add((nPos, BlockState.Air.Id));
                     SpawnDropForDetachedBlock(registries, droppedItems, nPos, nState);
                     redstone.NotifyBlockChanged(nPos);
-                    tntTicker?.NotifyWorldBlockChanged(nPos, BlockState.Air, world.GetBlockState);
+                    tntTicker?.NotifyWorldBlockChanged(nPos, world.GetBlockState, SetWorldAndRecord);
                     checkQueue.Enqueue(nPos);
                 }
             }
@@ -79,7 +87,7 @@ internal static class ServerWorldTimeAndBlockSync
                 if (world.SetBlockState(pos, st, tickNumber))
                 {
                     changed.Add((pos, st.Id));
-                    tntTicker?.NotifyWorldBlockChanged(pos, st, world.GetBlockState);
+                    tntTicker?.NotifyWorldBlockChanged(pos, world.GetBlockState, SetWorldAndRecord);
                 }
             },
             ignited,

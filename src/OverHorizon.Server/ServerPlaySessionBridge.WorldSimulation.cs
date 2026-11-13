@@ -41,6 +41,14 @@ public sealed partial class ServerPlaySessionBridge
         var blockChanges = new List<(BlockPos Position, ushort BlockStateId)>();
         var ignitedTnts = new List<BlockPos>();
         var redstoneSounds = new List<(BlockPos Pos, RedstoneSoundKind Sound)>();
+        void RecordServerBlockSet(BlockPos p, BlockState s)
+        {
+            if (_world.SetBlockState(p, s, tickNumber))
+            {
+                blockChanges.Add((p, s.Id));
+            }
+        }
+
         _redstone.Step(
             dtSeconds,
             playerFeetList.ToArray(),
@@ -50,7 +58,7 @@ public sealed partial class ServerPlaySessionBridge
                 if (_world.SetBlockState(pos, st, tickNumber))
                 {
                     blockChanges.Add((pos, st.Id));
-                    _tntAndWorld.NotifyWorldBlockChanged(pos, st, _world.GetBlockState);
+                    _tntAndWorld.NotifyWorldBlockChanged(pos, _world.GetBlockState, RecordServerBlockSet);
                 }
             },
             ignitedTnts,

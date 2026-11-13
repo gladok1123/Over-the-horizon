@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Numerics;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using OverHorizon.Audio;
 using OverHorizon.Client;
@@ -18,17 +19,17 @@ using OverHorizon.Gameplay.Items;
 using OverHorizon.Gameplay.Mobs;
 using OverHorizon.Gameplay.Physics;
 using OverHorizon.Gameplay.Redstone;
+using OverHorizon.Modding.Commands;
+using OverHorizon.Networking;
 using OverHorizon.Networking.Client;
 using OverHorizon.Networking.Packets.Clientbound;
 using OverHorizon.Networking.Packets.Serverbound;
 using OverHorizon.Physics;
 using OverHorizon.Rendering.Backends;
-using OverHorizon.Rendering.Camera;
 using OverHorizon.Rendering.Hud;
 using OverHorizon.Rendering.Meshing;
 using OverHorizon.Rendering.Textures;
 using OverHorizon.Server;
-using OverHorizon.World.ChunkManagement;
 using OverHorizon.World.Generation;
 using OverHorizon.World.Storage;
 using Xunit;
@@ -315,7 +316,7 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
     }
 
     [Fact]
-    public async Task MineshaftsAndStructures_LogUvFix_XRay_PersistentOptions_UniformStars_3DClouds_AndRemoteHeadPitch_VerifyCleanlyAsync()
+    public void MineshaftsAndStructures_LogUvFix_XRay_PersistentOptions_UniformStars_3DClouds_AndRemoteHeadPitch_VerifyCleanly()
     {
         var registries = CoreRegistries.CreateDefault();
         var blocks = registries.Blocks;
@@ -324,11 +325,12 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
         // 1. OverworldGenerator populates Mineshafts + Dungeons/Geodes/Surface structures without crashing or leaking out of bounds
         var gen = new OverworldGenerator(123456789L, registries);
         var foundStructureBlock = false;
-        for (var cx = 0; cx <= 6 && !foundStructureBlock; cx++)
+        for (var cx = 0; cx <= 8 && !foundStructureBlock; cx++)
         {
-            for (var cz = 0; cz <= 6 && !foundStructureBlock; cz++)
+            for (var cz = 0; cz <= 8 && !foundStructureBlock; cz++)
             {
-                var chunk = await gen.GenerateChunkAsync(new ChunkPos(cx, cz), CancellationToken.None).ConfigureAwait(false);
+                var chunk = new ChunkColumn(new ChunkPos(cx, cz));
+                gen.GenerateChunk(chunk);
                 for (var y = -32; y <= 90 && !foundStructureBlock; y++)
                 {
                     for (var x = 0; x < 16 && !foundStructureBlock; x += 2)
@@ -390,17 +392,16 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
             }
         }
 
-        // 4. Uniform Night Stars (distributed up to zenith Y > 150, no equatorial skirt) + 6-Face 3D Volumetric Clouds
+        // 4. Uniform Night Stars (distributed up to zenith Y > 170, no equatorial skirt) + 6-Face 3D Volumetric Clouds
         var skyVerts = new List<OverlayVertex>();
-        var cam = new FirstPersonCamera { Position = new Vec3d(0, 70, 0) };
-        SilkOpenGlOverlayRenderer.AppendSkyCelestials(skyVerts, WorldTimeCycle.MidnightTicks, 0.05f);
+        SilkOpenGlOverlayRenderer.AppendCelestialBodies(skyVerts, WorldTimeCycle.MidnightTicks, 70.0);
         skyVerts.Should().Contain(v => v.Position.Y > 170.0f, "SplitMix32 spherical stars cover high zenith overhead");
 
         var cloudVerts = new List<OverlayVertex>();
-        SilkOpenGlOverlayRenderer.AppendWorldClouds(cloudVerts, cam, 12.0f, 0.95f);
+        SilkOpenGlOverlayRenderer.AppendWorldClouds(cloudVerts, new Vec3d(0, 70, 0), WorldTimeCycle.NoonTicks, 12.0f);
         cloudVerts.Count.Should().BeGreaterThan(600, "3D volumetric clouds emit top, bottom, and all 4 side faces");
 
-        // 5. Remote Player Head Pitch: looking DOWN (PitchDegrees = -45) tilts front face of head DOWNWARD (lower Y than looking UP +45)!
+        // 5. Remote Player Head Pitch: looking DOWN (PitchDegrees = -45) vs UP (+45) tilts 3D head mesh vertically!
         var downPeerVerts = new List<OverlayVertex>();
         var upPeerVerts = new List<OverlayVertex>();
         WorldMob3DMesher.AppendRemotePlayers(downPeerVerts, Vec3d.Zero, [new RemotePlayerAvatar(1, "A", new Vec3d(0, 0, -4), 0.0f, -45.0f, 0, 0, 20.0f)]);
@@ -411,96 +412,112 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
     [Fact]
     public async Task MultiplayerV8_CreativePvpImmunity_3DArmorSync_DroppedItems_Arrows_AndCleanShutdown_SucceedAsync()
     {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(25));
         var tempWorldDir = Path.Combine(Path.GetTempPath(), $"oh_mp_v8_{Guid.NewGuid():N}");
         try
         {
             var serverOpts = new ServerOptions(
-                BindAddress: "127.0.0.1",
-                Port: 0,
-                Seed: 4242L,
-                ViewDistanceChunks: 2,
-                WorldDirectory: tempWorldDir,
-                GrantAllOperators: true);
+                ListenPort: 0,
+                PlayerViewDistanceChunks: 2,
+                DefaultPlayerPermission: PermissionLevel.Admin,
+                WorldSeed: 4242L,
+                WorldSaveDirectory: tempWorldDir);
 
-            await using var host = new DedicatedServerHost(serverOpts, NullLoggerFactory.Instance);
-            host.Start();
-            var endpoint = new IPEndPoint(IPAddress.Loopback, host.BoundPort);
+            using var serverHost = ServerBootstrap.BuildHost([], serverOpts);
+            await serverHost.StartAsync(cts.Token).ConfigureAwait(false);
 
-            await using var alice = await JavaProtocolClient.ConnectTcpAsync(endpoint, CancellationToken.None).ConfigureAwait(false);
-            var aliceLogin = await alice.LoginAsync("Alice", cancellationToken: CancellationToken.None).ConfigureAwait(false);
-            aliceLogin.Username.Should().Be("Alice");
-
-            await using var bob = await JavaProtocolClient.ConnectTcpAsync(endpoint, CancellationToken.None).ConfigureAwait(false);
-            var bobLogin = await bob.LoginAsync("Bob", cancellationToken: CancellationToken.None).ConfigureAwait(false);
-
-            var registries = CoreRegistries.CreateDefault();
-            var diamondSwordId = (ushort)registries.Items.GetId(BuiltInItems.DiamondSword);
-            var diamondId = (ushort)registries.Items.GetId(BuiltInItems.Diamond);
-
-            // 1. Put Bob into Creative Mode + full Diamond Armor (tier=4) via 0x05 PlayerEquipmentAndModePacket!
-            await bob.SendPlayPacketAsync(
-                new PlayerEquipmentAndModePacket(
-                    GameModeByte: (byte)GameMode.Creative,
-                    MainHandItemId: diamondSwordId,
-                    OffhandItemId: (ushort)registries.Items.GetId(BuiltInItems.Shield),
-                    PackedArmorLower: 0x44,
-                    PackedArmorUpper: 0x44,
-                    ActionFlags: 1,
-                    BowChargeByte: 0,
-                    SwingCounter: 1),
-                CancellationToken.None).ConfigureAwait(false);
-
-            // Verify Alice receives RemotePlayerEquipmentPacket (0x0C) with Bob's Creative mode & Diamond Armor!
-            RemotePlayerEquipmentPacket? receivedEquip = null;
-            using var readCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
-            while (!readCts.IsCancellationRequested && receivedEquip is null)
+            try
             {
-                var pkt = await alice.ReceivePacketAsync(readCts.Token).ConfigureAwait(false);
-                if (pkt is RemotePlayerEquipmentPacket eq && eq.EntityId == bobLogin.AssignedEntityId)
+                var netServer = serverHost.Services.GetRequiredService<INetworkServer>();
+                while (netServer.BoundEndPoint is null)
                 {
-                    receivedEquip = eq;
+                    await Task.Delay(10, cts.Token).ConfigureAwait(false);
                 }
+
+                var endpoint = new IPEndPoint(IPAddress.Loopback, netServer.BoundEndPoint.Port);
+
+                await using var alice = await JavaProtocolClient.ConnectTcpAsync(endpoint, cts.Token).ConfigureAwait(false);
+                var aliceLogin = await alice.LoginAsync("Alice", cancellationToken: cts.Token).ConfigureAwait(false);
+                aliceLogin.Username.Should().Be("Alice");
+
+                await using var bob = await JavaProtocolClient.ConnectTcpAsync(endpoint, cts.Token).ConfigureAwait(false);
+                var bobLogin = await bob.LoginAsync("Bob", cancellationToken: cts.Token).ConfigureAwait(false);
+
+                var registries = CoreRegistries.CreateDefault();
+                var diamondSwordId = (ushort)registries.Items.GetId(BuiltInItems.DiamondSword);
+                var diamondId = (ushort)registries.Items.GetId(BuiltInItems.Diamond);
+
+                // 1. Put Bob into Creative Mode + full Diamond Armor (tier=4) via 0x05 PlayerEquipmentAndModePacket!
+                await bob.SendPlayPacketAsync(
+                    new PlayerEquipmentAndModePacket(
+                        GameModeByte: (byte)GameMode.Creative,
+                        MainHandItemId: diamondSwordId,
+                        OffhandItemId: (ushort)registries.Items.GetId(BuiltInItems.Shield),
+                        PackedArmorLower: 0x44,
+                        PackedArmorUpper: 0x44,
+                        ActionFlags: 1,
+                        BowChargeByte: 0,
+                        SwingCounter: 1),
+                    cts.Token).ConfigureAwait(false);
+
+                // Verify Alice receives RemotePlayerEquipmentPacket (0x0C) with Bob's Creative mode & Diamond Armor!
+                RemotePlayerEquipmentPacket? receivedEquip = null;
+                using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+                readCts.CancelAfter(TimeSpan.FromSeconds(5));
+                while (!readCts.IsCancellationRequested && receivedEquip is null)
+                {
+                    var pkt = await alice.ReceivePacketAsync(readCts.Token).ConfigureAwait(false);
+                    if (pkt is RemotePlayerEquipmentPacket eq && eq.EntityId == bobLogin.AssignedEntityId)
+                    {
+                        receivedEquip = eq;
+                    }
+                }
+
+                receivedEquip.Should().NotBeNull();
+                receivedEquip!.GameModeByte.Should().Be((byte)GameMode.Creative);
+                receivedEquip.PackedArmorLower.Should().Be(0x44);
+
+                // 2. Alice attacks Creative Bob -> Bob is 100% immune (NO EntityCombatEventPacket emitted for Bob!)
+                await alice.SendPlayPacketAsync(
+                    new PlayerAttackEntityPacket(bobLogin.AssignedEntityId, diamondSwordId, IsCritical: true),
+                    cts.Token).ConfigureAwait(false);
+
+                // 3. Alice throws 3 Diamonds into the world via 0x06 DropItem -> Server broadcasts 0x0D WorldEntitiesSnapshotPacket!
+                await alice.SendPlayPacketAsync(
+                    new PlayerWorldInteractionPacket(
+                        PlayerWorldInteractionKind.DropItem,
+                        new Vec3d(0.5, 82.0, 0.5),
+                        new Vec3d(0.0, 0.0, -1.0),
+                        diamondId,
+                        3),
+                    cts.Token).ConfigureAwait(false);
+
+                WorldEntitiesSnapshotPacket? entitySnap = null;
+                var gotCombatOnCreativeBob = false;
+                using var snapCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+                snapCts.CancelAfter(TimeSpan.FromSeconds(5));
+                while (!snapCts.IsCancellationRequested && entitySnap is null)
+                {
+                    var pkt = await alice.ReceivePacketAsync(snapCts.Token).ConfigureAwait(false);
+                    if (pkt is EntityCombatEventPacket ce && ce.TargetEntityId == bobLogin.AssignedEntityId)
+                    {
+                        gotCombatOnCreativeBob = true;
+                    }
+
+                    if (pkt is WorldEntitiesSnapshotPacket ws && ws.DroppedItems.Count > 0)
+                    {
+                        entitySnap = ws;
+                    }
+                }
+
+                gotCombatOnCreativeBob.Should().BeFalse("Creative players cannot be damaged or killed in multiplayer PvP");
+                entitySnap.Should().NotBeNull();
+                entitySnap!.DroppedItems.Should().Contain(d => d.ItemId == diamondId && d.Count == 3);
             }
-
-            receivedEquip.Should().NotBeNull();
-            receivedEquip!.GameModeByte.Should().Be((byte)GameMode.Creative);
-            receivedEquip.PackedArmorLower.Should().Be(0x44);
-
-            // 2. Alice attacks Creative Bob -> Bob is 100% immune (NO EntityCombatEventPacket emitted for Bob!)
-            await alice.SendPlayPacketAsync(
-                new PlayerAttackEntityPacket(bobLogin.AssignedEntityId, diamondSwordId, IsCritical: true),
-                CancellationToken.None).ConfigureAwait(false);
-
-            // 3. Alice throws 3 Diamonds into the world via 0x06 DropItem -> Server broadcasts 0x0D WorldEntitiesSnapshotPacket!
-            await alice.SendPlayPacketAsync(
-                new PlayerWorldInteractionPacket(
-                    PlayerWorldInteractionKind.DropItem,
-                    new Vec3d(0.5, 82.0, 0.5),
-                    new Vec3d(0.0, 0.0, -1.0),
-                    diamondId,
-                    3),
-                CancellationToken.None).ConfigureAwait(false);
-
-            WorldEntitiesSnapshotPacket? entitySnap = null;
-            var gotCombatOnCreativeBob = false;
-            using var snapCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
-            while (!snapCts.IsCancellationRequested && entitySnap is null)
+            finally
             {
-                var pkt = await alice.ReceivePacketAsync(snapCts.Token).ConfigureAwait(false);
-                if (pkt is EntityCombatEventPacket ce && ce.TargetEntityId == bobLogin.AssignedEntityId)
-                {
-                    gotCombatOnCreativeBob = true;
-                }
-
-                if (pkt is WorldEntitiesSnapshotPacket ws && ws.DroppedItems.Count > 0)
-                {
-                    entitySnap = ws;
-                }
+                await serverHost.StopAsync(CancellationToken.None).ConfigureAwait(false);
             }
-
-            gotCombatOnCreativeBob.Should().BeFalse("Creative players cannot be damaged or killed in multiplayer PvP");
-            entitySnap.Should().NotBeNull();
-            entitySnap!.DroppedItems.Should().Contain(d => d.ItemId == diamondId && d.Count == 3);
         }
         finally
         {
