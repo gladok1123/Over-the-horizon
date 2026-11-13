@@ -434,7 +434,7 @@ public sealed partial class ClientSessionRunner
             if (_player.LastSwingWasOffhand) flags |= 8;
             if (_player.IsSneaking) flags |= 16;
 
-            var mainId = _player.Hotbar.SurvivalInventory.GetSlot(_player.Hotbar.SelectedIndex).ItemId;
+            var mainId = _player.Hotbar.SurvivalInventory.GetSlot(_player.Hotbar.SelectedSlot).ItemId;
             var offId = _player.Hotbar.SurvivalInventory.OffhandItem.ItemId;
             var bowByte = (byte)Math.Clamp((int)MathF.Round(_player.BowChargeNormalized * 255.0f), 0, 255);
             _transport.EnqueueOutbound(new PlayerEquipmentAndModePacket(

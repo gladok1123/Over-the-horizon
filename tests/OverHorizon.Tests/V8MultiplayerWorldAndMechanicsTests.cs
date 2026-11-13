@@ -70,9 +70,10 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
         var repPos = new BlockPos(0, 64, 0);
         var repLampPos = new BlockPos(0, 64, -1);
 
-        var repDelay3 = blocks.GetState(
-            BuiltInBlocks.RedstoneRepeater,
-            new Dictionary<string, string> { ["facing"] = "south", ["delay"] = "3", ["powered"] = "false", ["locked"] = "false" });
+        var repDelay3 = blocks.WithProperty(
+            blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.RedstoneRepeater), "facing", "south"),
+            "delay",
+            "3");
         Set(repInputPos, blocks.GetDefaultState(BuiltInBlocks.RedstoneBlock));
         Set(repPos, repDelay3);
         Set(repLampPos, blocks.GetDefaultState(BuiltInBlocks.RedstoneLamp));
@@ -97,8 +98,8 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
         var compSideWire = new BlockPos(4, 64, 0);
         var compOutWire = new BlockPos(5, 64, -1);
 
-        Set(compRear, blocks.GetState(BuiltInBlocks.Composter, new Dictionary<string, string> { ["level"] = "7" }));
-        Set(compPos, blocks.GetState(BuiltInBlocks.RedstoneComparator, new Dictionary<string, string> { ["facing"] = "south", ["mode"] = "compare", ["powered"] = "false" }));
+        Set(compRear, blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.Composter), "level", "7"));
+        Set(compPos, blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.RedstoneComparator), "facing", "south"));
         Set(compOutWire, blocks.GetDefaultState(BuiltInBlocks.RedstoneWire));
 
         redstone.NotifyBlockChanged(compPos);

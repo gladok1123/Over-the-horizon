@@ -227,7 +227,6 @@ internal sealed partial class ClientMenuController
             OffhandBottomTile = player.Hotbar.OffhandBottomTile,
             OffhandItemSpriteTile = player.Hotbar.OffhandItemTile,
             OffhandCount = player.Hotbar.OffhandCount,
-            OffhandSwingProgress = player.OffhandSwingProgress,
             IsBlockingShield = player.IsBlockingShield,
             ShieldRaiseNormalized = player.ShieldRaiseNormalized,
             HeldLightBrightness = handBright,

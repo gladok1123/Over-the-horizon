@@ -95,8 +95,8 @@ public sealed class ClientWorldCache : IVoxelSelectionReader
     public uint GetColumnGeneration(ChunkPos pos) =>
         _columnGenerations.TryGetValue(pos, out var gen) ? gen : 0U;
 
-    private uint BumpGeneration(ChunkPos pos) =>
-        _columnGenerations.AddOrUpdate(pos, 1U, static (_, prev) => unchecked(prev + 1U));
+    private void BumpGeneration(ChunkPos pos) =>
+        _ = _columnGenerations.AddOrUpdate(pos, 1U, static (_, prev) => unchecked(prev + 1U));
 
     /// <summary>Installs or replaces a full <see cref="ChunkColumn"/> received from multiplayer streaming.</summary>
     public void UpsertColumn(ChunkColumn column)

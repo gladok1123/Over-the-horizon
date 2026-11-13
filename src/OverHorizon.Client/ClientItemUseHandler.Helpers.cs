@@ -33,7 +33,7 @@ internal sealed partial class ClientItemUseHandler
         var carts = bridge.BuildMinecartVisuals(isMultiplayer: true);
         for (var i = 0; i < carts.Count; i++)
         {
-            var cCenter = carts[i].FeetPosition + new Vec3d(0.0, 0.4, 0.0);
+            var cCenter = carts[i].Position + new Vec3d(0.0, 0.4, 0.0);
             var toC = cCenter - eye;
             var proj = (toC.X * dir.X) + (toC.Y * dir.Y) + (toC.Z * dir.Z);
             if (proj > 0.0 && proj <= maxReach && (cCenter - (eye + (dir * proj))).LengthSquared <= 0.70)

@@ -92,9 +92,9 @@ internal sealed partial class ClientMenuController
     public string CreativeSearchQuery { get; set; } = string.Empty;
     public string StatusMessage { get; set; } = string.Empty;
     public int ActiveViewDistance { get; private set; }
-    public float FovDegrees { get; private set; } = 78.0f;
-    public bool VSyncEnabled { get; private set; } = true;
-    public bool CloudsEnabled { get; private set; } = true;
+    public float FovDegrees { get; private set; }
+    public bool VSyncEnabled { get; private set; }
+    public bool CloudsEnabled { get; private set; }
     public int ParticlesMode { get; private set; }
     public bool XRayEnabled { get; private set; }
     public bool XRayDirtyRemeshRequested { get; set; }
@@ -241,7 +241,10 @@ internal sealed partial class ClientMenuController
     public void AppendTypedCharacter(char ch)
     {
         if (char.IsControl(ch)) return;
-        if (Mode == UiOverlayMode.ChatInput && ChatDraft.Length < 120) ChatDraft += ch;
+        if (Mode == UiOverlayMode.ChatInput && ChatDraft.Length < 120)
+        {
+            ChatDraft += ch;
+        }
         else if (Mode == UiOverlayMode.BlockInventory && _creativeTabIndex != 6 && CreativeSearchQuery.Length < 22)
         {
             CreativeSearchQuery += ch;
@@ -267,7 +270,10 @@ internal sealed partial class ClientMenuController
 
     public void HandleBackspace()
     {
-        if (Mode == UiOverlayMode.ChatInput && ChatDraft.Length > 0) ChatDraft = ChatDraft[..^1];
+        if (Mode == UiOverlayMode.ChatInput && ChatDraft.Length > 0)
+        {
+            ChatDraft = ChatDraft[..^1];
+        }
         else if (Mode == UiOverlayMode.BlockInventory && CreativeSearchQuery.Length > 0)
         {
             CreativeSearchQuery = CreativeSearchQuery[..^1];

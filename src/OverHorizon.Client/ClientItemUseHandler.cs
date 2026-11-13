@@ -180,7 +180,7 @@ internal sealed partial class ClientItemUseHandler
         {
             useCooldown = 0.22;
             player.TriggerHandSwing(isOffhand: false);
-            var emptyState = _blocks.GetState(BuiltInBlocks.Composter, new Dictionary<string, string> { ["level"] = "0" });
+            var emptyState = _blocks.WithProperty(_blocks.GetDefaultState(BuiltInBlocks.Composter), "level", "0");
             _ = applyWorldBlockChange(pos, Direction.Up, emptyState);
             var bmId = _items.GetId(BuiltInItems.BoneMeal);
             if (!transport.IsConnected && bmId > 0)
@@ -198,12 +198,12 @@ internal sealed partial class ClientItemUseHandler
         }
 
         var held = player.Hotbar.SelectedItem;
-        if (held is null || (!IsCompostable(held.Key))) return false;
+        if (held is null || !IsCompostable(held.Key)) return false;
 
         useCooldown = 0.18;
         player.TriggerHandSwing(isOffhand: false);
         var nextLevel = level == 7 ? 8 : level + 1;
-        var nextState = _blocks.GetState(BuiltInBlocks.Composter, new Dictionary<string, string> { ["level"] = nextLevel.ToString(CultureInfo.InvariantCulture) });
+        var nextState = _blocks.WithProperty(_blocks.GetDefaultState(BuiltInBlocks.Composter), "level", nextLevel.ToString(CultureInfo.InvariantCulture));
         _ = applyWorldBlockChange(pos, Direction.Up, nextState);
         ConsumeOneFromSlotInSurvival(player, player.Hotbar.SelectedSlot);
         _audio.PlayPositional(SoundCue.ComposterReady, center, gain: 0.75f * player.MasterVolume, pitch: nextLevel == 8 ? 1.08f : 0.88f);
