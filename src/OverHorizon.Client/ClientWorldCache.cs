@@ -423,13 +423,13 @@ public sealed partial class ClientWorldCache : IVoxelSelectionReader
     }
 
     /// <inheritdoc />
-    public bool TryGetCollisionBox(BlockPos pos, out BoundingBox worldBox)
+    public bool TryGetCollisionBox(BlockPos pos, out BoundingBox box)
     {
-        worldBox = default;
+        box = default;
         if (pos.Y < EngineConstants.WorldMinY || pos.Y >= EngineConstants.WorldMaxY) return false;
         if (!_publishedSnapshots.TryGetValue(pos.ToChunkPos(), out var snap)) return false;
         var state = snap.GetBlockState(pos.SectionLocalX, pos.Y, pos.SectionLocalZ);
-        return _collisionShapes.TryGetWorldBox(state, pos, out worldBox);
+        return _collisionShapes.TryGetWorldBox(state, pos, out box);
     }
 
     /// <inheritdoc />

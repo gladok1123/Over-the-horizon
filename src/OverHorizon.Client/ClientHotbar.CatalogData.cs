@@ -249,11 +249,14 @@ public sealed partial class ClientHotbar
             ItemUseAction.PlaceMinecart => "Right-Click on Rail / Powered Rail to place & ride!",
             ItemUseAction.FlattenPath => "Right-Click Grass/Dirt to flatten into 15/16 Dirt Path!",
             ItemUseAction.PlaceBlock => "Placeable Voxel Block (Right-Click / Middle-Click Pick)",
-            _ => key == BuiltInItems.Arrow
-                ? "Ammunition for Bow (consumed in Survival)"
-                : key == BuiltInItems.ExperienceBottle
-                    ? "Right-Click: Shatter Bottle o' Enchanting for XP!"
-                    : "Crafting & Smelting Material",
+            _ => ResolveFallbackTooltip(key),
         };
+    }
+
+    private static string ResolveFallbackTooltip(ResourceKey key)
+    {
+        if (key == BuiltInItems.Arrow) return "Ammunition for Bow (consumed in Survival)";
+        if (key == BuiltInItems.ExperienceBottle) return "Right-Click: Shatter Bottle o' Enchanting for XP!";
+        return "Crafting & Smelting Material";
     }
 }

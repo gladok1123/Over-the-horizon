@@ -172,6 +172,38 @@ internal sealed partial class ClientMenuController
             invPlayerRect = new Vector4(wx + (72.0f * cs), wy + (5.0f * cs), 34.0f * cs, 45.0f * cs);
         }
 
+        RemotePlayerAvatar? localThirdPersonAvatar = null;
+        if (player.CameraPerspectiveMode != 0 && player.Mode != GameMode.Spectator)
+        {
+            var localSwing = player.LastSwingWasOffhand ? player.OffhandSwingProgress : player.HandSwingProgress;
+            localThirdPersonAvatar = new RemotePlayerAvatar(
+                EntityId: -1,
+                Username: UsernameInput,
+                FeetPosition: player.FeetPosition,
+                YawDegrees: player.Camera.YawDegrees,
+                PitchDegrees: player.Camera.PitchDegrees,
+                WalkPhase: player.WalkBobPhase,
+                HurtFlash: player.HurtFlashStrength,
+                Health: player.Health,
+                Armor: player.Hotbar.BuildLocalArmorVisual(),
+                LightBrightness: handBright,
+                IsSpectator: false,
+                IsBlockingShield: player.IsBlockingShield,
+                IsDrawingBow: player.Hotbar.SelectedIsBow && player.BowChargeNormalized > 0.01f,
+                BowCharge: player.BowChargeNormalized,
+                HandSwingProgress: localSwing,
+                LeftHandSwing: player.LastSwingWasOffhand,
+                MainHandSpriteTile: player.Hotbar.SelectedItemTile,
+                MainHandIsShield: player.Hotbar.SelectedIsShield,
+                MainHandIsBow: player.Hotbar.SelectedIsBow,
+                MainHandIsBlock3D: player.Hotbar.SelectedIsBlock3D,
+                MainHandBlockTile: player.Hotbar.SelectedSideTile,
+                OffhandIsShield: player.Hotbar.OffhandIsShield,
+                OffhandSpriteTile: player.Hotbar.OffhandItemTile,
+                IsSneaking: player.IsSneaking,
+                IsRidingMinecart: player.RidingMinecartId >= 0);
+        }
+
         return new FrameOverlayState(
             TargetedBlock: targetBlock,
             SelectedHotbarSlot: player.Hotbar.SelectedSlot,
@@ -258,35 +290,8 @@ internal sealed partial class ClientMenuController
             BowChargeNormalized = player.BowChargeNormalized,
             ChunkFogDistance = chunkFogDist,
             SleepFadeAlpha = player.SleepFadeAlpha,
-            IsThirdPersonCamera = player.CameraPerspectiveMode != 0 && player.Mode != GameMode.Spectator,
-            LocalThirdPersonPlayer = player.CameraPerspectiveMode != 0 && player.Mode != GameMode.Spectator
-                ? new RemotePlayerAvatar(
-                    EntityId: -1,
-                    Username: UsernameInput,
-                    FeetPosition: player.FeetPosition,
-                    YawDegrees: player.Camera.YawDegrees,
-                    PitchDegrees: player.Camera.PitchDegrees,
-                    WalkPhase: player.WalkBobPhase,
-                    HurtFlash: player.HurtFlashStrength,
-                    Health: player.Health,
-                    Armor: player.Hotbar.BuildLocalArmorVisual(),
-                    LightBrightness: handBright,
-                    IsSpectator: false,
-                    IsBlockingShield: player.IsBlockingShield,
-                    IsDrawingBow: player.Hotbar.SelectedIsBow && player.BowChargeNormalized > 0.01f,
-                    BowCharge: player.BowChargeNormalized,
-                    HandSwingProgress: player.LastSwingWasOffhand ? player.OffhandSwingProgress : player.HandSwingProgress,
-                    LeftHandSwing: player.LastSwingWasOffhand,
-                    MainHandSpriteTile: player.Hotbar.SelectedItemTile,
-                    MainHandIsShield: player.Hotbar.SelectedIsShield,
-                    MainHandIsBow: player.Hotbar.SelectedIsBow,
-                    MainHandIsBlock3D: player.Hotbar.SelectedIsBlock3D,
-                    MainHandBlockTile: player.Hotbar.SelectedSideTile,
-                    OffhandIsShield: player.Hotbar.OffhandIsShield,
-                    OffhandSpriteTile: player.Hotbar.OffhandItemTile,
-                    IsSneaking: player.IsSneaking,
-                    IsRidingMinecart: player.RidingMinecartId >= 0)
-                : null,
+            IsThirdPersonCamera = localThirdPersonAvatar.HasValue,
+            LocalThirdPersonPlayer = localThirdPersonAvatar,
         };
     }
 
