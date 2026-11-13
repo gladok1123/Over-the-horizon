@@ -147,7 +147,10 @@ internal sealed class ClientMenuController
     public void AppendTypedCharacter(char ch)
     {
         if (char.IsControl(ch)) return;
-        if (Mode == UiOverlayMode.ChatInput && ChatDraft.Length < 120) ChatDraft += ch;
+        if (Mode == UiOverlayMode.ChatInput && ChatDraft.Length < 120)
+        {
+            ChatDraft += ch;
+        }
         else if (Mode == UiOverlayMode.BlockInventory && CreativeSearchQuery.Length < 22)
         {
             CreativeSearchQuery += ch;
@@ -168,7 +171,10 @@ internal sealed class ClientMenuController
 
     public void HandleBackspace()
     {
-        if (Mode == UiOverlayMode.ChatInput && ChatDraft.Length > 0) ChatDraft = ChatDraft[..^1];
+        if (Mode == UiOverlayMode.ChatInput && ChatDraft.Length > 0)
+        {
+            ChatDraft = ChatDraft[..^1];
+        }
         else if (Mode == UiOverlayMode.BlockInventory && CreativeSearchQuery.Length > 0)
         {
             CreativeSearchQuery = CreativeSearchQuery[..^1];
