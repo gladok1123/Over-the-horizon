@@ -189,6 +189,29 @@ public static class BlockSoundProfile
         return SoundCue.StonePlace;
     }
 
+    /// <summary>Resolves the subtle material pitch multiplier when breaking <paramref name="blockKey"/>.</summary>
+    /// <param name="blockKey">Block resource key.</param>
+    public static float ResolveBreakPitch(ResourceKey blockKey)
+    {
+        if (blockKey == BuiltInBlocks.AmethystCluster) return 1.08f;
+        if (blockKey == BuiltInBlocks.AmethystBlock || blockKey == BuiltInBlocks.BuddingAmethyst) return 1.02f;
+        if (IsDeepslate(blockKey) || blockKey == BuiltInBlocks.Obsidian) return 0.86f;
+        if (IsGlass(blockKey)) return 1.04f;
+        if (IsSnow(blockKey) || blockKey == BuiltInBlocks.Sand || blockKey == BuiltInBlocks.RedSand) return 0.98f;
+        return 0.94f;
+    }
+
+    /// <summary>Resolves the subtle material pitch multiplier when placing <paramref name="blockKey"/>.</summary>
+    /// <param name="blockKey">Block resource key.</param>
+    public static float ResolvePlacePitch(ResourceKey blockKey)
+    {
+        if (blockKey == BuiltInBlocks.AmethystCluster) return 1.10f;
+        if (blockKey == BuiltInBlocks.AmethystBlock || blockKey == BuiltInBlocks.BuddingAmethyst) return 1.04f;
+        if (IsDeepslate(blockKey) || blockKey == BuiltInBlocks.Obsidian) return 0.88f;
+        if (IsMetal(blockKey)) return 1.02f;
+        return 0.96f;
+    }
+
     private static bool IsWood(ResourceKey blockKey) =>
         blockKey == BuiltInBlocks.OakPlanks ||
         blockKey == BuiltInBlocks.OakLog ||

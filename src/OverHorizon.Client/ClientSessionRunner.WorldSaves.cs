@@ -8,6 +8,7 @@ using OverHorizon.Networking.Packets.Serverbound;
 using OverHorizon.Rendering.Backends;
 using OverHorizon.Rendering.Hud;
 using OverHorizon.World.ChunkManagement;
+using OverHorizon.World.Generation;
 using OverHorizon.World.Storage;
 
 namespace OverHorizon.Client;

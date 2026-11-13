@@ -372,7 +372,9 @@ internal sealed partial class ClientItemUseHandler
             case ItemUseAction.PlaceBlock:
                 if (itemDef.PlacedBlockKey is not { } placeKey || player.CurrentTarget is not { } placeHit) return false;
                 var placePos = placeHit.AdjacentPosition;
-                var hitLocalY = placeHit.HitPoint.Y - Math.Floor(placeHit.HitPoint.Y);
+                var camFwd = new Vec3d(player.Camera.Forward.X, player.Camera.Forward.Y, player.Camera.Forward.Z);
+                var hitPoint = player.Camera.Position + (camFwd * placeHit.Distance);
+                var hitLocalY = Math.Clamp(hitPoint.Y - placePos.Y, 0.0, 1.0);
                 if (!BlockAttachmentAndShapeRules.TryResolvePlacementState(
                     _blocks, world.GetBlockState, placeKey, placePos, placeHit.HitFace, player.Camera.Forward, out var resolvedState, out var secondaryBlock, hitLocalY))
                 {
@@ -413,9 +415,10 @@ internal sealed partial class ClientItemUseHandler
                 {
                     useCooldown = 0.24;
                     player.TriggerHandSwing(isOffhand);
+                    var xpFwd = new Vec3d(player.Camera.Forward.X, player.Camera.Forward.Y, player.Camera.Forward.Z);
                     var xpSpot = player.CurrentTarget is { } xpHit
-                        ? xpHit.HitPoint
-                        : player.Camera.Position + (new Vec3d(player.Camera.Forward.X, player.Camera.Forward.Y, player.Camera.Forward.Z) * 1.6);
+                        ? player.Camera.Position + (xpFwd * xpHit.Distance)
+                        : player.Camera.Position + (xpFwd * 1.6);
                     worldBridge.Particles.EmitBurst(xpSpot, ParticleKind.GrowthSparkle, 16);
                     _audio.PlayPositional(SoundCue.GlassBreak, xpSpot, gain: 0.72f * player.MasterVolume, pitch: 1.06f);
                     _audio.PlayPositional(SoundCue.AmethystChime, player.Camera.Position, gain: 0.68f * player.MasterVolume, pitch: 1.18f);

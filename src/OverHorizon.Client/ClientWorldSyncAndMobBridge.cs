@@ -67,7 +67,6 @@ internal sealed partial class ClientWorldSyncAndMobBridge
     private double _ambientMobSoundTimer;
     private double _minecartRollAudioTimer;
     private double _fireCrackleTimer;
-    private double _tntFuseAudioTimer;
     private double _particleTickTimer;
     private int _rollingSyncRingCursor = 9;
     private int _dropSeq;

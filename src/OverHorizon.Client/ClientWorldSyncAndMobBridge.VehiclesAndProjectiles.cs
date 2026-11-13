@@ -284,8 +284,6 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         }
 
         // Active Fire crackle (PrimedTnt plays SoundCue.TntFuse once at ignition — no duplicate 0.65s re-trigger!)
-        _ = _tntFuseAudioTimer;
-
         if (WorldTicker.ActiveFirePositions.Count > 0)
         {
             _fireCrackleTimer += dt;
