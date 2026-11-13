@@ -188,23 +188,23 @@ public sealed class V6MechanicsRedstoneWorldsAndUiTests
             }
         }
 
-        // Unsupported Sand at (2, 64, 2), Water source at (10, 62, 10), GrassBlock next to Dirt at (6, 62, 6..7)
-        _ = col.SetBlockState(2, 64, 2, blocks.GetDefaultState(BuiltInBlocks.Sand), blocks);
-        _ = col.SetBlockState(10, 62, 10, blocks.GetDefaultState(BuiltInBlocks.Water), blocks);
-        _ = col.SetBlockState(6, 62, 6, blocks.GetDefaultState(BuiltInBlocks.GrassBlock), blocks);
-        _ = col.SetBlockState(7, 62, 6, blocks.GetDefaultState(BuiltInBlocks.Dirt), blocks);
-        _ = col.SetBlockState(4, 62, 4, blocks.GetDefaultState(BuiltInBlocks.Tnt), blocks);
+        // Unsupported Sand at (13, 64, 2) and Water source at (12, 62, 12) (outside TNT blast radius at (3, 62, 3))
+        _ = col.SetBlockState(13, 64, 2, blocks.GetDefaultState(BuiltInBlocks.Sand), blocks);
+        _ = col.SetBlockState(12, 62, 12, blocks.GetDefaultState(BuiltInBlocks.Water), blocks);
+        _ = col.SetBlockState(10, 62, 6, blocks.GetDefaultState(BuiltInBlocks.GrassBlock), blocks);
+        _ = col.SetBlockState(11, 62, 6, blocks.GetDefaultState(BuiltInBlocks.Dirt), blocks);
+        _ = col.SetBlockState(3, 62, 3, blocks.GetDefaultState(BuiltInBlocks.Tnt), blocks);
         cache.UpsertColumn(col);
 
         var ticker = new PrimedTntAndWorldTicker(blocks);
         void SetWorld(BlockPos p, BlockState s) => _ = cache.ApplyBlockUpdate(p, s);
 
-        ticker.NotifyWorldBlockChanged(new BlockPos(2, 64, 2), cache.GetBlockState, SetWorld);
-        ticker.NotifyWorldBlockChanged(new BlockPos(10, 62, 10), cache.GetBlockState, SetWorld);
-        _ = cache.ApplyBlockUpdate(new BlockPos(4, 62, 4), BlockState.Air);
-        _ = ticker.SpawnPrimedTnt(new BlockPos(4, 62, 4));
+        ticker.NotifyWorldBlockChanged(new BlockPos(13, 64, 2), cache.GetBlockState, SetWorld);
+        ticker.NotifyWorldBlockChanged(new BlockPos(12, 62, 12), cache.GetBlockState, SetWorld);
+        _ = cache.ApplyBlockUpdate(new BlockPos(3, 62, 3), BlockState.Air);
+        _ = ticker.SpawnPrimedTnt(new BlockPos(3, 62, 3));
 
-        cache.GetBlockState(new BlockPos(4, 62, 4)).IsAir.Should().BeTrue("ignited TNT block converts into live PrimedTntEntity");
+        cache.GetBlockState(new BlockPos(3, 62, 3)).IsAir.Should().BeTrue("ignited TNT block converts into live PrimedTntEntity");
         ticker.PrimedTnts.Should().HaveCount(1);
 
         var craters = new List<Vec3d>();
@@ -213,7 +213,7 @@ public sealed class V6MechanicsRedstoneWorldsAndUiTests
             ticker.Step(
                 0.10,
                 cache,
-                new Vec3d(8.0, 65.0, 8.0),
+                new Vec3d(10.0, 65.0, 6.0),
                 cache.GetBlockState,
                 cache.GetLight,
                 SetWorld,
@@ -223,15 +223,15 @@ public sealed class V6MechanicsRedstoneWorldsAndUiTests
         // 1. PrimedTnt detonated after 4.0s fuse, carving Stone at Y=61 while sparing Bedrock at Y=60!
         ticker.PrimedTnts.Should().BeEmpty();
         craters.Should().NotBeEmpty();
-        cache.GetBlockState(new BlockPos(4, 61, 4)).IsAir.Should().BeTrue("explosion destroys breakable Stone beneath TNT");
-        cache.GetBlockState(new BlockPos(4, 60, 4)).Should().Be(bedrock, "Bedrock is blast-immune");
+        cache.GetBlockState(new BlockPos(3, 61, 3)).IsAir.Should().BeTrue("explosion destroys breakable Stone beneath TNT");
+        cache.GetBlockState(new BlockPos(3, 60, 3)).Should().Be(bedrock, "Bedrock is blast-immune");
 
         // 2. Unsupported Sand fell from Y=64 down onto Y=62!
-        blocks.GetStateMetadata(cache.GetBlockState(new BlockPos(2, 62, 2))).BlockKey.Should().Be(BuiltInBlocks.Sand);
-        cache.GetBlockState(new BlockPos(2, 64, 2)).IsAir.Should().BeTrue();
+        blocks.GetStateMetadata(cache.GetBlockState(new BlockPos(13, 62, 2))).BlockKey.Should().Be(BuiltInBlocks.Sand);
+        cache.GetBlockState(new BlockPos(13, 64, 2)).IsAir.Should().BeTrue();
 
-        // 3. Water spread outward from (10, 62, 10) to cardinal neighbors!
-        blocks.GetStateMetadata(cache.GetBlockState(new BlockPos(11, 62, 10))).BlockKey.Should().Be(BuiltInBlocks.Water);
+        // 3. Water spread outward from (12, 62, 12) to cardinal neighbors!
+        blocks.GetStateMetadata(cache.GetBlockState(new BlockPos(13, 62, 12))).BlockKey.Should().Be(BuiltInBlocks.Water);
     }
 
     [Fact]
