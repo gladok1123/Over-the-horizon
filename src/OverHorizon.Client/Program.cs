@@ -33,9 +33,10 @@ internal static class Program
                 return 0;
             }
 
+            var downloadedAssets = 0;
             if (!parsedOptions.Headless && !parsedOptions.HeadlessCheckOnly)
             {
-                await Minecraft23w13aAssetSyncer.EnsureAssetsCachedAsync(parsedOptions.ExternalAssetsPath, cts.Token).ConfigureAwait(false);
+                downloadedAssets = await Minecraft23w13aAssetSyncer.EnsureAssetsCachedAsync(parsedOptions.ExternalAssetsPath, cts.Token).ConfigureAwait(false);
             }
 
             using var host = ClientBootstrap.BuildHost(args, parsedOptions);
@@ -46,6 +47,11 @@ internal static class Program
             var audio = host.Services.GetRequiredService<IAudioSubsystem>();
             var options = host.Services.GetRequiredService<ClientOptions>();
             var runner = host.Services.GetRequiredService<ClientSessionRunner>();
+
+            if (downloadedAssets > 0)
+            {
+                audio.ReloadSoundPack(options.ExternalAssetsPath);
+            }
 
             var mode = string.IsNullOrWhiteSpace(options.ServerHost) ? "Singleplayer" : $"Multiplayer({options.ServerHost}:{options.ServerPort})";
             ClientLog.ClientInitialized(logger, render.BackendName, audio.IsInitialized, mode);

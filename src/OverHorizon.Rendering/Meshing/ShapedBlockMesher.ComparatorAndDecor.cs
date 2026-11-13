@@ -187,12 +187,14 @@ internal static partial class ShapedBlockMesher
             return;
         }
 
-        if (key == BuiltInBlocks.OakTrapdoor)
+        if (key == BuiltInBlocks.OakTrapdoor || key == BuiltInBlocks.IronTrapdoor)
         {
             var open = meta.Properties.TryGetValue("open", out var ov) && string.Equals(ov, "true", StringComparison.OrdinalIgnoreCase);
             var topHalf = meta.Properties.TryGetValue("half", out var hv) && string.Equals(hv, "top", StringComparison.OrdinalIgnoreCase);
             var facing = meta.Properties.TryGetValue("facing", out var f) ? f : "north";
-            var tile = ProceduralAtlasGenerator.TileOakTrapdoor;
+            var tile = key == BuiltInBlocks.IronTrapdoor
+                ? ProceduralAtlasGenerator.TileIronTrapdoor
+                : ProceduralAtlasGenerator.TileOakTrapdoor;
             if (!open)
             {
                 var y0 = topHalf ? 0.8125f : 0.0f;
@@ -211,9 +213,182 @@ internal static partial class ShapedBlockMesher
             return;
         }
 
+        if (key == BuiltInBlocks.OakDoor || key == BuiltInBlocks.IronDoor)
+        {
+            EmitDoorHalf(verts, indices, o, meta, packedLight);
+            return;
+        }
+
+        if (key == BuiltInBlocks.AmethystCluster)
+        {
+            EmitAmethystCluster(verts, indices, o, meta, packedLight);
+            return;
+        }
+
+        if (key == BuiltInBlocks.DirtPath || key == BuiltInBlocks.Farmland)
+        {
+            EmitDepressedSoilBlock(verts, indices, o, meta, packedLight);
+            return;
+        }
+
         // MonsterSpawner: outer dark iron cage + glowing fiery core inside!
         EmitSubBox(verts, indices, o, Vector3.Zero, Vector3.One, ProceduralAtlasGenerator.TileMonsterSpawner, packedLight, Vector2.Zero, Vector2.One);
         EmitSubBox(verts, indices, o, new Vector3(0.32f, 0.25f, 0.32f), new Vector3(0.68f, 0.65f, 0.68f), ProceduralAtlasGenerator.TileFire, 240.0f, Vector2.Zero, Vector2.One);
+    }
+
+    private static void EmitDoorHalf(
+        List<ChunkVertex> verts,
+        List<uint> indices,
+        Vector3 o,
+        BlockStateMetadata meta,
+        float packedLight)
+    {
+        var isIron = meta.BlockKey == BuiltInBlocks.IronDoor;
+        var isUpper = meta.Properties.TryGetValue("half", out var hv) && string.Equals(hv, "upper", StringComparison.OrdinalIgnoreCase);
+        var isOpen = meta.Properties.TryGetValue("open", out var ov) && string.Equals(ov, "true", StringComparison.OrdinalIgnoreCase);
+        var rightHinge = meta.Properties.TryGetValue("hinge", out var hgv) && string.Equals(hgv, "right", StringComparison.OrdinalIgnoreCase);
+        var facing = meta.Properties.TryGetValue("facing", out var fv) ? fv : "north";
+
+        var tile = isIron
+            ? (isUpper ? ProceduralAtlasGenerator.TileIronDoorTop : ProceduralAtlasGenerator.TileIronDoorBottom)
+            : (isUpper ? ProceduralAtlasGenerator.TileOakDoorTop : ProceduralAtlasGenerator.TileOakDoorBottom);
+
+        // Exact match to BlockCollisionShapeTable.ResolveDoorBox!
+        var edge = !isOpen
+            ? facing
+            : facing switch
+            {
+                "north" => rightHinge ? "east" : "west",
+                "south" => rightHinge ? "west" : "east",
+                "west" => rightHinge ? "north" : "south",
+                _ => rightHinge ? "south" : "north",
+            };
+
+        const float t = 0.1875f; // 3/16 block thick vanilla door leaf
+        // In Minecraft's oak_door / iron_door PNGs, the hinge is on the LEFT (u=0) and the doorknob is on the RIGHT (u=1).
+        var flipBroadU = isOpen ? !rightHinge : rightHinge;
+        var uHinge = flipBroadU ? 1.0f : 0.0f;
+        var uLatch = flipBroadU ? 0.0f : 1.0f;
+
+        if (edge is "north" or "south")
+        {
+            var z0 = edge == "north" ? 0.0f : 1.0f - t;
+            var z1 = edge == "north" ? t : 1.0f;
+            var a = o + new Vector3(0.0f, 0.0f, z0);
+            var b = o + new Vector3(1.0f, 1.0f, z1);
+            var southU0 = edge == "north" ? uHinge : uLatch;
+            var southU1 = edge == "north" ? uLatch : uHinge;
+
+            // Broad faces (+Z South and -Z North)
+            EmitQuad(verts, indices, new Vector3(a.X, a.Y, b.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(a.X, b.Y, b.Z), new Vector2(southU0, 1.0f), new Vector2(southU1, 1.0f), new Vector2(southU1, 0.0f), new Vector2(southU0, 0.0f), tile, 0.88f, packedLight);
+            EmitQuad(verts, indices, new Vector3(b.X, a.Y, a.Z), new Vector3(a.X, a.Y, a.Z), new Vector3(a.X, b.Y, a.Z), new Vector3(b.X, b.Y, a.Z), new Vector2(southU1, 1.0f), new Vector2(southU0, 1.0f), new Vector2(southU0, 0.0f), new Vector2(southU1, 0.0f), tile, 0.84f, packedLight);
+            // Thin 3/16 side/top/bottom rims
+            EmitQuad(verts, indices, new Vector3(b.X, a.Y, b.Z), new Vector3(b.X, a.Y, a.Z), new Vector3(b.X, b.Y, a.Z), new Vector3(b.X, b.Y, b.Z), new Vector2(0.0f, 1.0f), new Vector2(t, 1.0f), new Vector2(t, 0.0f), new Vector2(0.0f, 0.0f), tile, 0.74f, packedLight);
+            EmitQuad(verts, indices, new Vector3(a.X, a.Y, a.Z), new Vector3(a.X, a.Y, b.Z), new Vector3(a.X, b.Y, b.Z), new Vector3(a.X, b.Y, a.Z), new Vector2(0.0f, 1.0f), new Vector2(t, 1.0f), new Vector2(t, 0.0f), new Vector2(0.0f, 0.0f), tile, 0.74f, packedLight);
+            EmitQuad(verts, indices, new Vector3(a.X, b.Y, a.Z), new Vector3(a.X, b.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(b.X, b.Y, a.Z), new Vector2(0.0f, 0.0f), new Vector2(0.0f, t), new Vector2(1.0f, t), new Vector2(1.0f, 0.0f), tile, 0.98f, packedLight);
+            EmitQuad(verts, indices, new Vector3(a.X, a.Y, a.Z), new Vector3(b.X, a.Y, a.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(a.X, a.Y, b.Z), new Vector2(0.0f, 1.0f - t), new Vector2(1.0f, 1.0f - t), new Vector2(1.0f, 1.0f), new Vector2(0.0f, 1.0f), tile, 0.62f, packedLight);
+            return;
+        }
+
+        {
+            var x0 = edge == "west" ? 0.0f : 1.0f - t;
+            var x1 = edge == "west" ? t : 1.0f;
+            var a = o + new Vector3(x0, 0.0f, 0.0f);
+            var b = o + new Vector3(x1, 1.0f, 1.0f);
+            var eastU0 = edge == "west" ? uLatch : uHinge;
+            var eastU1 = edge == "west" ? uHinge : uLatch;
+
+            // Broad faces (+X East and -X West)
+            EmitQuad(verts, indices, new Vector3(b.X, a.Y, b.Z), new Vector3(b.X, a.Y, a.Z), new Vector3(b.X, b.Y, a.Z), new Vector3(b.X, b.Y, b.Z), new Vector2(eastU0, 1.0f), new Vector2(eastU1, 1.0f), new Vector2(eastU1, 0.0f), new Vector2(eastU0, 0.0f), tile, 0.78f, packedLight);
+            EmitQuad(verts, indices, new Vector3(a.X, a.Y, a.Z), new Vector3(a.X, a.Y, b.Z), new Vector3(a.X, b.Y, b.Z), new Vector3(a.X, b.Y, a.Z), new Vector2(eastU1, 1.0f), new Vector2(eastU0, 1.0f), new Vector2(eastU0, 0.0f), new Vector2(eastU1, 0.0f), tile, 0.78f, packedLight);
+            // Thin 3/16 side/top/bottom rims
+            EmitQuad(verts, indices, new Vector3(a.X, a.Y, b.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(a.X, b.Y, b.Z), new Vector2(0.0f, 1.0f), new Vector2(t, 1.0f), new Vector2(t, 0.0f), new Vector2(0.0f, 0.0f), tile, 0.86f, packedLight);
+            EmitQuad(verts, indices, new Vector3(b.X, a.Y, a.Z), new Vector3(a.X, a.Y, a.Z), new Vector3(a.X, b.Y, a.Z), new Vector3(b.X, b.Y, a.Z), new Vector2(0.0f, 1.0f), new Vector2(t, 1.0f), new Vector2(t, 0.0f), new Vector2(0.0f, 0.0f), tile, 0.86f, packedLight);
+            EmitQuad(verts, indices, new Vector3(a.X, b.Y, a.Z), new Vector3(a.X, b.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(b.X, b.Y, a.Z), new Vector2(0.0f, 0.0f), new Vector2(0.0f, 1.0f), new Vector2(t, 1.0f), new Vector2(t, 0.0f), tile, 0.98f, packedLight);
+            EmitQuad(verts, indices, new Vector3(a.X, a.Y, a.Z), new Vector3(b.X, a.Y, a.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(a.X, a.Y, b.Z), new Vector2(1.0f - t, 0.0f), new Vector2(1.0f, 0.0f), new Vector2(1.0f, 1.0f), new Vector2(1.0f - t, 1.0f), tile, 0.62f, packedLight);
+        }
+    }
+
+    private static void EmitAmethystCluster(
+        List<ChunkVertex> verts,
+        List<uint> indices,
+        Vector3 o,
+        BlockStateMetadata meta,
+        float packedLight)
+    {
+        var facing = meta.Properties.TryGetValue("facing", out var fv) ? fv : "up";
+        const ushort tile = ProceduralAtlasGenerator.TileAmethystCluster;
+        const float r = 0.34f;
+        const float h = 0.82f;
+
+        // Build two 45-degree crossed planes along local +Y [0..h], then orient +Y along `facing` from the supporting block face!
+        Vector3 TransformClusterPoint(Vector3 local) => facing switch
+        {
+            "down" => o + new Vector3(0.5f + local.X, 1.0f - local.Y, 0.5f - local.Z),
+            "north" => o + new Vector3(0.5f + local.X, 0.5f + local.Z, 1.0f - local.Y),
+            "south" => o + new Vector3(0.5f - local.X, 0.5f + local.Z, local.Y),
+            "west" => o + new Vector3(1.0f - local.Y, 0.5f + local.Z, 0.5f - local.X),
+            "east" => o + new Vector3(local.Y, 0.5f + local.Z, 0.5f + local.X),
+            _ => o + new Vector3(0.5f + local.X, local.Y, 0.5f + local.Z),
+        };
+
+        EmitDoubleSidedQuad(
+            verts,
+            indices,
+            TransformClusterPoint(new Vector3(-r, 0.0f, -r)),
+            TransformClusterPoint(new Vector3(r, 0.0f, r)),
+            TransformClusterPoint(new Vector3(r, h, r)),
+            TransformClusterPoint(new Vector3(-r, h, -r)),
+            tile,
+            0.96f,
+            packedLight);
+
+        EmitDoubleSidedQuad(
+            verts,
+            indices,
+            TransformClusterPoint(new Vector3(r, 0.0f, -r)),
+            TransformClusterPoint(new Vector3(-r, 0.0f, r)),
+            TransformClusterPoint(new Vector3(-r, h, r)),
+            TransformClusterPoint(new Vector3(r, h, -r)),
+            tile,
+            0.96f,
+            packedLight);
+    }
+
+    private static void EmitDepressedSoilBlock(
+        List<ChunkVertex> verts,
+        List<uint> indices,
+        Vector3 o,
+        BlockStateMetadata meta,
+        float packedLight)
+    {
+        const float topY = 0.9375f; // 15/16 block height (exact vanilla Dirt Path & Farmland!)
+        const ushort bottomTile = ProceduralAtlasGenerator.TileDirt;
+        ushort topTile;
+        ushort sideTile;
+
+        if (meta.BlockKey == BuiltInBlocks.DirtPath)
+        {
+            topTile = ProceduralAtlasGenerator.TileDirtPathTop;
+            sideTile = ProceduralAtlasGenerator.TileDirtPathSide;
+        }
+        else
+        {
+            var moist = meta.Properties.TryGetValue("moisture", out var mv) && string.Equals(mv, "7", StringComparison.Ordinal);
+            topTile = moist ? ProceduralAtlasGenerator.TileFarmlandTopWet : ProceduralAtlasGenerator.TileFarmlandTopDry;
+            sideTile = ProceduralAtlasGenerator.TileDirt;
+        }
+
+        var a = o;
+        var b = o + new Vector3(1.0f, topY, 1.0f);
+        const float sideV0 = 1.0f - topY;
+
+        EmitQuad(verts, indices, new Vector3(a.X, a.Y, b.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(a.X, b.Y, b.Z), new Vector2(0.0f, 1.0f), new Vector2(1.0f, 1.0f), new Vector2(1.0f, sideV0), new Vector2(0.0f, sideV0), sideTile, 0.84f, packedLight);
+        EmitQuad(verts, indices, new Vector3(b.X, a.Y, a.Z), new Vector3(a.X, a.Y, a.Z), new Vector3(a.X, b.Y, a.Z), new Vector3(b.X, b.Y, a.Z), new Vector2(0.0f, 1.0f), new Vector2(1.0f, 1.0f), new Vector2(1.0f, sideV0), new Vector2(0.0f, sideV0), sideTile, 0.84f, packedLight);
+        EmitQuad(verts, indices, new Vector3(b.X, a.Y, b.Z), new Vector3(b.X, a.Y, a.Z), new Vector3(b.X, b.Y, a.Z), new Vector3(b.X, b.Y, b.Z), new Vector2(0.0f, 1.0f), new Vector2(1.0f, 1.0f), new Vector2(1.0f, sideV0), new Vector2(0.0f, sideV0), sideTile, 0.72f, packedLight);
+        EmitQuad(verts, indices, new Vector3(a.X, a.Y, a.Z), new Vector3(a.X, a.Y, b.Z), new Vector3(a.X, b.Y, b.Z), new Vector3(a.X, b.Y, a.Z), new Vector2(0.0f, 1.0f), new Vector2(1.0f, 1.0f), new Vector2(1.0f, sideV0), new Vector2(0.0f, sideV0), sideTile, 0.72f, packedLight);
+        EmitQuad(verts, indices, new Vector3(a.X, b.Y, a.Z), new Vector3(a.X, b.Y, b.Z), new Vector3(b.X, b.Y, b.Z), new Vector3(b.X, b.Y, a.Z), new Vector2(0.0f, 0.0f), new Vector2(0.0f, 1.0f), new Vector2(1.0f, 1.0f), new Vector2(1.0f, 0.0f), topTile, 1.0f, packedLight);
+        EmitQuad(verts, indices, new Vector3(a.X, a.Y, a.Z), new Vector3(b.X, a.Y, a.Z), new Vector3(b.X, a.Y, b.Z), new Vector3(a.X, a.Y, b.Z), new Vector2(0.0f, 0.0f), new Vector2(1.0f, 0.0f), new Vector2(1.0f, 1.0f), new Vector2(0.0f, 1.0f), bottomTile, 0.56f, packedLight);
     }
 
     private static void EmitFireFlames(List<ChunkVertex> verts, List<uint> indices, Vector3 o, ushort tile, float packedLight)

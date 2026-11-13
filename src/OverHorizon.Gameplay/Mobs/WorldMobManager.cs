@@ -111,7 +111,7 @@ public sealed partial class WorldMobManager
                 mob.BurnTimer = MathF.Max(mob.BurnTimer, 4.0f);
             }
 
-            UpdateSunlightBurning(collisionWorld, spawnProbe, mob, skyBrightness, dt);
+            UpdateSunlightBurning(collisionWorld, spawnProbe, mob, skyBrightness, dt, mobLandingHurtEvents);
             if (!mob.IsDead)
             {
                 UpdateMobAiAndAttack(
@@ -151,7 +151,8 @@ public sealed partial class WorldMobManager
         Func<BlockPos, (byte SkyLight, byte BlockLight, bool IsGrassTop, bool IsSolidGround, bool IsClearSpace)> probe,
         ActiveMob mob,
         float skyBrightness,
-        float dt)
+        float dt,
+        List<(MobType Type, Vec3d Position, bool Died, float FallDamage)>? mobHurtEvents)
     {
         var feetBlock = mob.FeetPosition.ToBlockPos();
         if (world.IsColumnLoaded(feetBlock) && world.GetFluidLevelOrNegative(feetBlock) >= 0)
@@ -179,6 +180,9 @@ public sealed partial class WorldMobManager
                 mob.BurnDamageTickTimer -= 0.95f;
                 mob.Health = MathF.Max(0.0f, mob.Health - 1.0f);
                 mob.HurtFlashTimer = MathF.Max(mob.HurtFlashTimer, 0.75f);
+
+                // Negative FallDamage (-1.0f) signals a fire/sunlight burn tick so clients play MobHurt/Death + Fizz!
+                mobHurtEvents?.Add((mob.Type, mob.FeetPosition, mob.IsDead, -1.0f));
             }
         }
         else
@@ -326,17 +330,25 @@ public sealed partial class WorldMobManager
 
             if (mob.Type == MobType.Skeleton && onSkeletonShootArrow is not null && dist <= 16.5)
             {
-                mob.YawDegrees = (float)(Math.Atan2(dx, dz) * (180.0 / Math.PI));
-                mob.DesiredSpeed = dist > 9.5 ? 2.45f : 0.0f;
-                if (mob.AttackCooldownTimer <= 0.0f && dist >= 1.5)
+                var shootOrigin = new Vec3d(mob.FeetPosition.X, mob.FeetPosition.Y + 1.52, mob.FeetPosition.Z);
+                var playerChest = new Vec3d(playerFeetPos.X, playerFeetPos.Y + 1.35, playerFeetPos.Z);
+                if (HasClearLineOfSight(world, shootOrigin, playerChest))
                 {
-                    var shootOrigin = new Vec3d(mob.FeetPosition.X, mob.FeetPosition.Y + 1.52, mob.FeetPosition.Z);
-                    var aimTarget = new Vec3d(playerFeetPos.X, playerFeetPos.Y + 1.35 + (dist * 0.14), playerFeetPos.Z);
-                    var dir = (aimTarget - shootOrigin).Normalize();
-                    onSkeletonShootArrow(shootOrigin, dir * 21.5);
-                    mob.AttackCooldownTimer = 1.95f;
+                    mob.YawDegrees = (float)(Math.Atan2(dx, dz) * (180.0 / Math.PI));
+                    mob.DesiredSpeed = dist > 9.5 ? 2.45f : 0.0f;
+                    if (mob.AttackCooldownTimer <= 0.0f && dist >= 1.5)
+                    {
+                        var aimTarget = new Vec3d(playerFeetPos.X, playerFeetPos.Y + 1.35 + (dist * 0.14), playerFeetPos.Z);
+                        var dir = (aimTarget - shootOrigin).Normalize();
+                        onSkeletonShootArrow(shootOrigin, dir * 21.5);
+                        mob.AttackCooldownTimer = 1.95f;
+                    }
+
+                    return;
                 }
 
+                // Sightline obstructed by wall/door: keep advancing along A* path instead of shooting into solid stone!
+                mob.DesiredSpeed = 2.55f;
                 return;
             }
 
@@ -380,5 +392,46 @@ public sealed partial class WorldMobManager
         if (fwdLen < 1e-4f) return true;
         var dot = ((fwdXZ.X / fwdLen) * (toAttackerX / len)) + ((fwdXZ.Y / fwdLen) * (toAttackerZ / len));
         return dot >= -0.05f;
+    }
+
+    /// <summary>
+    /// Performs a zero-allocation sub-voxel 3D raycast from <paramref name="origin"/> to <paramref name="target"/>,
+    /// returning <see langword="true"/> only when no solid voxel or closed Door/Trapdoor slab blocks the shot.
+    /// </summary>
+    public static bool HasClearLineOfSight(IVoxelCollisionReader world, Vec3d origin, Vec3d target)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+
+        var delta = target - origin;
+        var length = delta.Length;
+        if (length <= 1e-4)
+        {
+            return true;
+        }
+
+        var dir = delta * (1.0 / length);
+        var steps = Math.Max(4, (int)Math.Ceiling(length / 0.16));
+        var stepDist = length / steps;
+        var lastChecked = new BlockPos(int.MinValue, int.MinValue, int.MinValue);
+        var hasCachedBox = false;
+        BoundingBox cachedBox = default;
+
+        for (var i = 1; i < steps; i++)
+        {
+            var p = origin + (dir * (i * stepDist));
+            var bp = p.ToBlockPos();
+            if (bp != lastChecked)
+            {
+                lastChecked = bp;
+                hasCachedBox = world.TryGetCollisionBox(bp, out cachedBox);
+            }
+
+            if (hasCachedBox && cachedBox.Contains(p))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

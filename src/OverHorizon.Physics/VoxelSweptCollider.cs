@@ -1,99 +1,116 @@
+using System;
+using System.Buffers;
 using OverHorizon.Core.Math;
 
 namespace OverHorizon.Physics;
 
 /// <summary>
-/// Allocation-free axis-by-axis swept AABB voxel collision solver with anti-tunneling sub-stepping.
+/// Deterministic swept axis-aligned bounding box solver against discrete and sub-voxel collision shapes
+/// (hinged Doors, Trapdoors, Fences, Dirt Paths, Farmland, and Beds).
+/// Resolves Y -> X -> Z sequentially with zero heap allocations via <see cref="ArrayPool{T}"/> + <see cref="ReadOnlySpan{T}"/>.
 /// </summary>
 public static class VoxelSweptCollider
 {
+    private const double SkinEpsilon = 1e-7;
+
     /// <summary>
-    /// Moves <paramref name="initialBox"/> by <paramref name="displacement"/> while resolving solid voxel collisions
-    /// along Y, then X, then Z. Automatically sub-steps large displacements to prevent tunneling.
+    /// Sweeps <paramref name="box"/> by <paramref name="requestedMove"/> against solid/sub-voxel shapes queried from <paramref name="world"/>.
     /// </summary>
-    /// <param name="world">Read-only voxel collision source.</param>
-    /// <param name="initialBox">Starting entity bounding box.</param>
-    /// <param name="displacement">Requested motion vector for this step.</param>
-    /// <returns>Tuple of resolved <see cref="BoundingBox"/>, actual applied motion, <c>OnGround</c>, and <c>CollidedHorizontally</c>.</returns>
-    public static (BoundingBox Box, Vec3d ActualMove, bool OnGround, bool CollidedHorizontally) MoveAndCollide(
+    /// <param name="world">Collision query reader.</param>
+    /// <param name="box">Initial world-space AABB.</param>
+    /// <param name="requestedMove">Desired displacement vector for this step.</param>
+    /// <returns>Resolved AABB, actual displacement, grounded contact flag, and horizontal collision flag.</returns>
+    public static (BoundingBox Box, Vec3d ActualMove, bool OnGround, bool HitHorizontal) MoveAndCollide(
         IVoxelCollisionReader world,
-        BoundingBox initialBox,
-        Vec3d displacement)
+        BoundingBox box,
+        Vec3d requestedMove)
     {
         ArgumentNullException.ThrowIfNull(world);
 
-        var distance = displacement.Length;
-        if (distance <= 0.0)
+        // Expand broadphase scan downward by 0.55 blocks so 1.5-tall Fence posts below feet are always collected!
+        var expanded = box.ExpandTowards(requestedMove);
+        var minX = (int)Math.Floor(expanded.MinX - SkinEpsilon);
+        var maxX = (int)Math.Floor(expanded.MaxX + SkinEpsilon);
+        var minY = (int)Math.Floor(expanded.MinY - 0.55 - SkinEpsilon);
+        var maxY = (int)Math.Floor(expanded.MaxY + SkinEpsilon);
+        var minZ = (int)Math.Floor(expanded.MinZ - SkinEpsilon);
+        var maxZ = (int)Math.Floor(expanded.MaxZ + SkinEpsilon);
+
+        var maxCells = Math.Max(16, (maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1));
+        var rented = ArrayPool<BoundingBox>.Shared.Rent(Math.Min(maxCells, 4096));
+        var count = 0;
+
+        try
         {
-            return (initialBox, Vec3d.Zero, false, false);
-        }
-
-        var substeps = Math.Max(1, (int)Math.Ceiling(distance / PhysicsConstants.MaxSubstepDisplacement));
-        var stepDelta = displacement * (1.0 / substeps);
-
-        var currentBox = initialBox;
-        var onGround = false;
-        var hitHorizontal = false;
-        var remainingStep = stepDelta;
-
-        for (var s = 0; s < substeps; s++)
-        {
-            var resolvedY = ResolveAxisY(world, currentBox, remainingStep.Y);
-            if (Math.Abs(resolvedY - remainingStep.Y) > 1e-9)
+            for (var y = minY; y <= maxY; y++)
             {
-                if (remainingStep.Y < 0.0)
+                for (var z = minZ; z <= maxZ; z++)
                 {
-                    onGround = true;
+                    for (var x = minX; x <= maxX; x++)
+                    {
+                        if (!world.TryGetCollisionBox(new BlockPos(x, y, z), out var cellBox))
+                        {
+                            continue;
+                        }
+
+                        if (count == rented.Length)
+                        {
+                            var grown = ArrayPool<BoundingBox>.Shared.Rent(rented.Length * 2);
+                            rented.AsSpan(0, count).CopyTo(grown);
+                            ArrayPool<BoundingBox>.Shared.Return(rented);
+                            rented = grown;
+                        }
+
+                        rented[count++] = cellBox;
+                    }
                 }
-
-                remainingStep = new Vec3d(remainingStep.X, 0.0, remainingStep.Z);
             }
 
-            currentBox = currentBox.Move(new Vec3d(0.0, resolvedY, 0.0));
+            ReadOnlySpan<BoundingBox> obstacles = rented.AsSpan(0, count);
 
-            var resolvedX = ResolveAxisX(world, currentBox, remainingStep.X);
-            if (Math.Abs(resolvedX - remainingStep.X) > 1e-9)
-            {
-                hitHorizontal = true;
-                remainingStep = new Vec3d(0.0, remainingStep.Y, remainingStep.Z);
-            }
+            var resolvedY = ResolveAxisY(box, requestedMove.Y, obstacles);
+            box = box.Move(new Vec3d(0.0, resolvedY, 0.0));
 
-            currentBox = currentBox.Move(new Vec3d(resolvedX, 0.0, 0.0));
+            var resolvedX = ResolveAxisX(box, requestedMove.X, obstacles);
+            box = box.Move(new Vec3d(resolvedX, 0.0, 0.0));
 
-            var resolvedZ = ResolveAxisZ(world, currentBox, remainingStep.Z);
-            if (Math.Abs(resolvedZ - remainingStep.Z) > 1e-9)
-            {
-                hitHorizontal = true;
-                remainingStep = new Vec3d(remainingStep.X, remainingStep.Y, 0.0);
-            }
+            var resolvedZ = ResolveAxisZ(box, requestedMove.Z, obstacles);
+            box = box.Move(new Vec3d(0.0, 0.0, resolvedZ));
 
-            currentBox = currentBox.Move(new Vec3d(0.0, 0.0, resolvedZ));
+            var collidedY = Math.Abs(resolvedY - requestedMove.Y) > SkinEpsilon;
+            var collidedX = Math.Abs(resolvedX - requestedMove.X) > SkinEpsilon;
+            var collidedZ = Math.Abs(resolvedZ - requestedMove.Z) > SkinEpsilon;
+            var grounded = collidedY && requestedMove.Y < 0.0;
+
+            return (
+                box,
+                new Vec3d(resolvedX, resolvedY, resolvedZ),
+                grounded,
+                collidedX || collidedZ);
         }
-
-        var actualMove = new Vec3d(
-            currentBox.MinX - initialBox.MinX,
-            currentBox.MinY - initialBox.MinY,
-            currentBox.MinZ - initialBox.MinZ);
-
-        return (currentBox, actualMove, onGround, hitHorizontal);
+        finally
+        {
+            ArrayPool<BoundingBox>.Shared.Return(rented);
+        }
     }
 
     /// <summary>
-    /// Determines whether <paramref name="box"/> intersects any solid block in <paramref name="world"/>.
+    /// Determines whether <paramref name="box"/> strictly overlaps any solid or sub-voxel collision box in <paramref name="world"/>.
     /// </summary>
-    /// <param name="world">Collision reader.</param>
-    /// <param name="box">Query bounding box.</param>
-    /// <returns><see langword="true"/> if overlapping at least one solid block.</returns>
+    /// <param name="world">Collision query reader.</param>
+    /// <param name="box">Candidate entity or block placement box.</param>
+    /// <returns><see langword="true"/> when intersecting any solid shape; otherwise <see langword="false"/>.</returns>
     public static bool IntersectsAnySolid(IVoxelCollisionReader world, BoundingBox box)
     {
         ArgumentNullException.ThrowIfNull(world);
 
-        var minX = (int)Math.Floor(box.MinX + PhysicsConstants.CollisionEpsilon);
-        var maxX = (int)Math.Floor(box.MaxX - PhysicsConstants.CollisionEpsilon);
-        var minY = (int)Math.Floor(box.MinY + PhysicsConstants.CollisionEpsilon);
-        var maxY = (int)Math.Floor(box.MaxY - PhysicsConstants.CollisionEpsilon);
-        var minZ = (int)Math.Floor(box.MinZ + PhysicsConstants.CollisionEpsilon);
-        var maxZ = (int)Math.Floor(box.MaxZ - PhysicsConstants.CollisionEpsilon);
+        var shrunk = box.Inflate(-SkinEpsilon, -SkinEpsilon, -SkinEpsilon);
+        var minX = (int)Math.Floor(shrunk.MinX);
+        var maxX = (int)Math.Floor(shrunk.MaxX);
+        var minY = (int)Math.Floor(shrunk.MinY - 0.55);
+        var maxY = (int)Math.Floor(shrunk.MaxY);
+        var minZ = (int)Math.Floor(shrunk.MinZ);
+        var maxZ = (int)Math.Floor(shrunk.MaxZ);
 
         for (var y = minY; y <= maxY; y++)
         {
@@ -101,8 +118,8 @@ public static class VoxelSweptCollider
             {
                 for (var x = minX; x <= maxX; x++)
                 {
-                    var pos = new BlockPos(x, y, z);
-                    if (world.IsSolidBlock(pos) && box.Intersects(BoundingBox.FromBlock(pos)))
+                    if (world.TryGetCollisionBox(new BlockPos(x, y, z), out var cellBox) &&
+                        shrunk.Intersects(cellBox))
                     {
                         return true;
                     }
@@ -113,64 +130,36 @@ public static class VoxelSweptCollider
         return false;
     }
 
-    private static double ResolveAxisY(IVoxelCollisionReader world, BoundingBox box, double dy)
+    private static double ResolveAxisY(BoundingBox moving, double dy, ReadOnlySpan<BoundingBox> obstacles)
     {
-        if (Math.Abs(dy) < 1e-12)
+        if (Math.Abs(dy) <= SkinEpsilon)
         {
             return 0.0;
         }
 
-        var swept = box.ExpandTowards(new Vec3d(0.0, dy, 0.0));
-        var minX = (int)Math.Floor(swept.MinX + PhysicsConstants.CollisionEpsilon);
-        var maxX = (int)Math.Floor(swept.MaxX - PhysicsConstants.CollisionEpsilon);
-        var minY = (int)Math.Floor(swept.MinY + PhysicsConstants.CollisionEpsilon);
-        var maxY = (int)Math.Floor(swept.MaxY - PhysicsConstants.CollisionEpsilon);
-        var minZ = (int)Math.Floor(swept.MinZ + PhysicsConstants.CollisionEpsilon);
-        var maxZ = (int)Math.Floor(swept.MaxZ - PhysicsConstants.CollisionEpsilon);
-
-        for (var y = minY; y <= maxY; y++)
+        for (var i = 0; i < obstacles.Length; i++)
         {
-            for (var z = minZ; z <= maxZ; z++)
+            ref readonly var obs = ref obstacles[i];
+            if (moving.MaxX <= obs.MinX + SkinEpsilon || moving.MinX >= obs.MaxX - SkinEpsilon ||
+                moving.MaxZ <= obs.MinZ + SkinEpsilon || moving.MinZ >= obs.MaxZ - SkinEpsilon)
             {
-                for (var x = minX; x <= maxX; x++)
+                continue;
+            }
+
+            if (dy > 0.0 && moving.MaxY <= obs.MinY + SkinEpsilon)
+            {
+                var maxAllowed = obs.MinY - moving.MaxY;
+                if (maxAllowed < dy)
                 {
-                    if (!world.IsSolidBlock(new BlockPos(x, y, z)))
-                    {
-                        continue;
-                    }
-
-                    var bMinX = (double)x;
-                    var bMaxX = x + 1.0;
-                    var bMinZ = (double)z;
-                    var bMaxZ = z + 1.0;
-
-                    if (box.MaxX <= bMinX + PhysicsConstants.CollisionEpsilon ||
-                        box.MinX >= bMaxX - PhysicsConstants.CollisionEpsilon ||
-                        box.MaxZ <= bMinZ + PhysicsConstants.CollisionEpsilon ||
-                        box.MinZ >= bMaxZ - PhysicsConstants.CollisionEpsilon)
-                    {
-                        continue;
-                    }
-
-                    var bMinY = (double)y;
-                    var bMaxY = y + 1.0;
-
-                    if (dy > 0.0 && box.MaxY <= bMinY + PhysicsConstants.CollisionEpsilon)
-                    {
-                        var gap = bMinY - box.MaxY;
-                        if (gap < dy)
-                        {
-                            dy = Math.Max(0.0, gap);
-                        }
-                    }
-                    else if (dy < 0.0 && box.MinY >= bMaxY - PhysicsConstants.CollisionEpsilon)
-                    {
-                        var gap = bMaxY - box.MinY;
-                        if (gap > dy)
-                        {
-                            dy = Math.Min(0.0, gap);
-                        }
-                    }
+                    dy = Math.Max(0.0, maxAllowed);
+                }
+            }
+            else if (dy < 0.0 && moving.MinY >= obs.MaxY - SkinEpsilon)
+            {
+                var minAllowed = obs.MaxY - moving.MinY;
+                if (minAllowed > dy)
+                {
+                    dy = Math.Min(0.0, minAllowed);
                 }
             }
         }
@@ -178,64 +167,36 @@ public static class VoxelSweptCollider
         return dy;
     }
 
-    private static double ResolveAxisX(IVoxelCollisionReader world, BoundingBox box, double dx)
+    private static double ResolveAxisX(BoundingBox moving, double dx, ReadOnlySpan<BoundingBox> obstacles)
     {
-        if (Math.Abs(dx) < 1e-12)
+        if (Math.Abs(dx) <= SkinEpsilon)
         {
             return 0.0;
         }
 
-        var swept = box.ExpandTowards(new Vec3d(dx, 0.0, 0.0));
-        var minX = (int)Math.Floor(swept.MinX + PhysicsConstants.CollisionEpsilon);
-        var maxX = (int)Math.Floor(swept.MaxX - PhysicsConstants.CollisionEpsilon);
-        var minY = (int)Math.Floor(swept.MinY + PhysicsConstants.CollisionEpsilon);
-        var maxY = (int)Math.Floor(swept.MaxY - PhysicsConstants.CollisionEpsilon);
-        var minZ = (int)Math.Floor(swept.MinZ + PhysicsConstants.CollisionEpsilon);
-        var maxZ = (int)Math.Floor(swept.MaxZ - PhysicsConstants.CollisionEpsilon);
-
-        for (var y = minY; y <= maxY; y++)
+        for (var i = 0; i < obstacles.Length; i++)
         {
-            for (var z = minZ; z <= maxZ; z++)
+            ref readonly var obs = ref obstacles[i];
+            if (moving.MaxY <= obs.MinY + SkinEpsilon || moving.MinY >= obs.MaxY - SkinEpsilon ||
+                moving.MaxZ <= obs.MinZ + SkinEpsilon || moving.MinZ >= obs.MaxZ - SkinEpsilon)
             {
-                for (var x = minX; x <= maxX; x++)
+                continue;
+            }
+
+            if (dx > 0.0 && moving.MaxX <= obs.MinX + SkinEpsilon)
+            {
+                var maxAllowed = obs.MinX - moving.MaxX;
+                if (maxAllowed < dx)
                 {
-                    if (!world.IsSolidBlock(new BlockPos(x, y, z)))
-                    {
-                        continue;
-                    }
-
-                    var bMinY = (double)y;
-                    var bMaxY = y + 1.0;
-                    var bMinZ = (double)z;
-                    var bMaxZ = z + 1.0;
-
-                    if (box.MaxY <= bMinY + PhysicsConstants.CollisionEpsilon ||
-                        box.MinY >= bMaxY - PhysicsConstants.CollisionEpsilon ||
-                        box.MaxZ <= bMinZ + PhysicsConstants.CollisionEpsilon ||
-                        box.MinZ >= bMaxZ - PhysicsConstants.CollisionEpsilon)
-                    {
-                        continue;
-                    }
-
-                    var bMinX = (double)x;
-                    var bMaxX = x + 1.0;
-
-                    if (dx > 0.0 && box.MaxX <= bMinX + PhysicsConstants.CollisionEpsilon)
-                    {
-                        var gap = bMinX - box.MaxX;
-                        if (gap < dx)
-                        {
-                            dx = Math.Max(0.0, gap);
-                        }
-                    }
-                    else if (dx < 0.0 && box.MinX >= bMaxX - PhysicsConstants.CollisionEpsilon)
-                    {
-                        var gap = bMaxX - box.MinX;
-                        if (gap > dx)
-                        {
-                            dx = Math.Min(0.0, gap);
-                        }
-                    }
+                    dx = Math.Max(0.0, maxAllowed);
+                }
+            }
+            else if (dx < 0.0 && moving.MinX >= obs.MaxX - SkinEpsilon)
+            {
+                var minAllowed = obs.MaxX - moving.MinX;
+                if (minAllowed > dx)
+                {
+                    dx = Math.Min(0.0, minAllowed);
                 }
             }
         }
@@ -243,64 +204,36 @@ public static class VoxelSweptCollider
         return dx;
     }
 
-    private static double ResolveAxisZ(IVoxelCollisionReader world, BoundingBox box, double dz)
+    private static double ResolveAxisZ(BoundingBox moving, double dz, ReadOnlySpan<BoundingBox> obstacles)
     {
-        if (Math.Abs(dz) < 1e-12)
+        if (Math.Abs(dz) <= SkinEpsilon)
         {
             return 0.0;
         }
 
-        var swept = box.ExpandTowards(new Vec3d(0.0, 0.0, dz));
-        var minX = (int)Math.Floor(swept.MinX + PhysicsConstants.CollisionEpsilon);
-        var maxX = (int)Math.Floor(swept.MaxX - PhysicsConstants.CollisionEpsilon);
-        var minY = (int)Math.Floor(swept.MinY + PhysicsConstants.CollisionEpsilon);
-        var maxY = (int)Math.Floor(swept.MaxY - PhysicsConstants.CollisionEpsilon);
-        var minZ = (int)Math.Floor(swept.MinZ + PhysicsConstants.CollisionEpsilon);
-        var maxZ = (int)Math.Floor(swept.MaxZ - PhysicsConstants.CollisionEpsilon);
-
-        for (var y = minY; y <= maxY; y++)
+        for (var i = 0; i < obstacles.Length; i++)
         {
-            for (var z = minZ; z <= maxZ; z++)
+            ref readonly var obs = ref obstacles[i];
+            if (moving.MaxX <= obs.MinX + SkinEpsilon || moving.MinX >= obs.MaxX - SkinEpsilon ||
+                moving.MaxY <= obs.MinY + SkinEpsilon || moving.MinY >= obs.MaxY - SkinEpsilon)
             {
-                for (var x = minX; x <= maxX; x++)
+                continue;
+            }
+
+            if (dz > 0.0 && moving.MaxZ <= obs.MinZ + SkinEpsilon)
+            {
+                var maxAllowed = obs.MinZ - moving.MaxZ;
+                if (maxAllowed < dz)
                 {
-                    if (!world.IsSolidBlock(new BlockPos(x, y, z)))
-                    {
-                        continue;
-                    }
-
-                    var bMinX = (double)x;
-                    var bMaxX = x + 1.0;
-                    var bMinY = (double)y;
-                    var bMaxY = y + 1.0;
-
-                    if (box.MaxX <= bMinX + PhysicsConstants.CollisionEpsilon ||
-                        box.MinX >= bMaxX - PhysicsConstants.CollisionEpsilon ||
-                        box.MaxY <= bMinY + PhysicsConstants.CollisionEpsilon ||
-                        box.MinY >= bMaxY - PhysicsConstants.CollisionEpsilon)
-                    {
-                        continue;
-                    }
-
-                    var bMinZ = (double)z;
-                    var bMaxZ = z + 1.0;
-
-                    if (dz > 0.0 && box.MaxZ <= bMinZ + PhysicsConstants.CollisionEpsilon)
-                    {
-                        var gap = bMinZ - box.MaxZ;
-                        if (gap < dz)
-                        {
-                            dz = Math.Max(0.0, gap);
-                        }
-                    }
-                    else if (dz < 0.0 && box.MinZ >= bMaxZ - PhysicsConstants.CollisionEpsilon)
-                    {
-                        var gap = bMaxZ - box.MinZ;
-                        if (gap > dz)
-                        {
-                            dz = Math.Min(0.0, gap);
-                        }
-                    }
+                    dz = Math.Max(0.0, maxAllowed);
+                }
+            }
+            else if (dz < 0.0 && moving.MinZ >= obs.MaxZ - SkinEpsilon)
+            {
+                var minAllowed = obs.MaxZ - moving.MinZ;
+                if (minAllowed > dz)
+                {
+                    dz = Math.Min(0.0, minAllowed);
                 }
             }
         }

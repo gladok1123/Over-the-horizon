@@ -9,7 +9,7 @@ namespace OverHorizon.Rendering.Backends;
 /// 6-face textured 3D blocks, 3D torches/lanterns, 3D shields, <c>16x16</c> pixel-extruded 3D tools/swords/items
 /// (handle in hand, blade upright-forward!), and Steve right-arm empty hand.
 /// </summary>
-public static class HeldItem3DMesher
+public static partial class HeldItem3DMesher
 {
     /// <summary>Appends the first-person Right-Hand and Left-Hand (Offhand) 3D viewmodels into <paramref name="dst"/>.</summary>
     public static void AppendHeldViewmodel(
@@ -151,6 +151,12 @@ public static class HeldItem3DMesher
             return;
         }
 
+        if (spriteTile == ProceduralItemTileManifest.TileOakFenceItem)
+        {
+            AppendHeldFenceModel(dst, xSign, bobX, bobY, swingSin, swingSinSq, light);
+            return;
+        }
+
         if (isBlock3D && sideTile >= 0)
         {
             AppendTextured3DBlock(dst, xSign, topTile, bottomTile, frontTile, sideTile, bobX, bobY, swingSin, swingSinSq, light);
@@ -215,17 +221,87 @@ public static class HeldItem3DMesher
                   Matrix4x4.CreateRotationY(0.45f * xSign) *
                   Matrix4x4.CreateTranslation(pivot);
 
-        if (tile == ProceduralAtlasGenerator.TileLantern)
+        if (tile is ProceduralAtlasGenerator.TileLantern or 197)
         {
-            var (su0, sv0, su1, sv1) = TileUvBounds(tile, 0.0f, 2.0f / 16.0f, 6.0f / 16.0f, 9.0f / 16.0f);
-            var (cu0, cv0, cu1, cv1) = TileUvBounds(tile, 1.0f / 16.0f, 0.0f, 5.0f / 16.0f, 2.0f / 16.0f);
-            EmitTexturedBoxSingleUv(dst, new Vector3(-0.11f, -0.10f, -0.11f), new Vector3(0.22f, 0.26f, 0.22f), rot, su0, sv0, su1, sv1, light);
-            EmitTexturedBoxSingleUv(dst, new Vector3(-0.075f, 0.16f, -0.075f), new Vector3(0.15f, 0.075f, 0.15f), rot, cu0, cv0, cu1, cv1, light * 0.92f);
+            const int lanternTile = ProceduralAtlasGenerator.TileLantern;
+            var (su0, sv0, su1, sv1) = TileUvBounds(lanternTile, 0.0f, 2.0f / 16.0f, 6.0f / 16.0f, 9.0f / 16.0f);
+            var (cu0, cv0, cu1, cv1) = TileUvBounds(lanternTile, 1.0f / 16.0f, 0.0f, 5.0f / 16.0f, 2.0f / 16.0f);
+            var (capU0, capV0, capU1, capV1) = TileUvBounds(lanternTile, 0.0f, 9.0f / 16.0f, 6.0f / 16.0f, 15.0f / 16.0f);
+            var (topU0, topV0, topU1, topV1) = TileUvBounds(lanternTile, 1.0f / 16.0f, 10.0f / 16.0f, 5.0f / 16.0f, 14.0f / 16.0f);
+            var (ru0, rv0, ru1, rv1) = TileUvBounds(lanternTile, 11.0f / 16.0f, 1.0f / 16.0f, 14.0f / 16.0f, 4.0f / 16.0f);
+
+            EmitLanternBoxWithCapUv(dst, new Vector3(-0.115f, -0.11f, -0.115f), new Vector3(0.23f, 0.27f, 0.23f), rot, su0, sv0, su1, sv1, capU0, capV0, capU1, capV1, light);
+            EmitLanternBoxWithCapUv(dst, new Vector3(-0.078f, 0.16f, -0.078f), new Vector3(0.156f, 0.076f, 0.156f), rot, cu0, cv0, cu1, cv1, topU0, topV0, topU1, topV1, light * 0.94f);
+
+            // Crossed iron loop at top of held lantern
+            var loopCol = new Vector4(light * 0.88f, light * 0.88f, light * 0.90f, 1.0f);
+            EmitDoubleSidedUvQuad(dst, rot, new Vector3(-0.045f, 0.236f, -0.045f), new Vector3(0.045f, 0.236f, 0.045f), new Vector3(0.045f, 0.305f, 0.045f), new Vector3(-0.045f, 0.305f, -0.045f), ru0, rv0, ru1, rv1, loopCol);
+            EmitDoubleSidedUvQuad(dst, rot, new Vector3(0.045f, 0.236f, -0.045f), new Vector3(-0.045f, 0.236f, 0.045f), new Vector3(-0.045f, 0.305f, 0.045f), new Vector3(0.045f, 0.305f, -0.045f), ru0, rv0, ru1, rv1, loopCol);
             return;
         }
 
         var (tu0, tv0, tu1, tv1) = TileUvBounds(tile, 0.4375f, 0.375f, 0.5625f, 1.0f);
         EmitTexturedBoxSingleUv(dst, new Vector3(-0.045f, -0.14f, -0.045f), new Vector3(0.09f, 0.46f, 0.09f), rot, tu0, tv0, tu1, tv1, light);
+    }
+
+    private static void AppendHeldFenceModel(List<OverlayVertex> dst, float xSign, float bobX, float bobY, float swingSin, float swingSinSq, float light)
+    {
+        var pivot = new Vector3((0.53f * xSign) + bobX - (swingSinSq * 0.22f * xSign), -0.44f - bobY + (swingSin * 0.12f), -0.82f - (swingSin * 0.18f));
+        var rot = Matrix4x4.CreateRotationY((0.72f + (swingSin * 0.40f)) * xSign) *
+                  Matrix4x4.CreateRotationX(0.20f - (swingSinSq * 0.80f)) *
+                  Matrix4x4.CreateTranslation(pivot);
+        EmitMiniFenceMesh(dst, rot, 0.38f, light);
+    }
+
+    internal static void EmitMiniFenceMesh(List<OverlayVertex> dst, Matrix4x4 m, float scale, float light)
+    {
+        const int planks = ProceduralAtlasGenerator.TileOakPlanks;
+        var postW = 0.22f * scale;
+        var postH = 0.96f * scale;
+        var postX = 0.34f * scale;
+        var railW = 0.72f * scale;
+        var railH = 0.17f * scale;
+        var railD = 0.13f * scale;
+
+        EmitBox6Face(dst, new Vector3(-postX - (postW * 0.5f), -postH * 0.5f, -postW * 0.5f), new Vector3(postW, postH, postW), m, planks, light);
+        EmitBox6Face(dst, new Vector3(postX - (postW * 0.5f), -postH * 0.5f, -postW * 0.5f), new Vector3(postW, postH, postW), m, planks, light);
+        EmitBox6Face(dst, new Vector3(-railW * 0.5f, 0.16f * scale, -railD * 0.5f), new Vector3(railW, railH, railD), m, planks, light * 0.95f);
+        EmitBox6Face(dst, new Vector3(-railW * 0.5f, -0.22f * scale, -railD * 0.5f), new Vector3(railW, railH, railD), m, planks, light * 0.92f);
+    }
+
+    private static void EmitBox6Face(List<OverlayVertex> dst, Vector3 min, Vector3 size, Matrix4x4 m, int tile, float light)
+    {
+        var max = min + size;
+        EmitBlockCubeFace(dst, new Vector3(min.X, max.Y, min.Z), new Vector3(min.X, max.Y, max.Z), new Vector3(max.X, max.Y, max.Z), new Vector3(max.X, max.Y, min.Z), m, tile, light);
+        EmitBlockCubeFace(dst, new Vector3(min.X, min.Y, min.Z), new Vector3(max.X, min.Y, min.Z), new Vector3(max.X, min.Y, max.Z), new Vector3(min.X, min.Y, max.Z), m, tile, light * 0.58f);
+        EmitBlockCubeFace(dst, new Vector3(min.X, min.Y, max.Z), new Vector3(max.X, min.Y, max.Z), new Vector3(max.X, max.Y, max.Z), new Vector3(min.X, max.Y, max.Z), m, tile, light * 0.86f);
+        EmitBlockCubeFace(dst, new Vector3(max.X, min.Y, min.Z), new Vector3(min.X, min.Y, min.Z), new Vector3(min.X, max.Y, min.Z), new Vector3(max.X, max.Y, min.Z), m, tile, light * 0.82f);
+        EmitBlockCubeFace(dst, new Vector3(min.X, min.Y, min.Z), new Vector3(min.X, min.Y, max.Z), new Vector3(min.X, max.Y, max.Z), new Vector3(min.X, max.Y, min.Z), m, tile, light * 0.72f);
+        EmitBlockCubeFace(dst, new Vector3(max.X, min.Y, max.Z), new Vector3(max.X, min.Y, min.Z), new Vector3(max.X, max.Y, min.Z), new Vector3(max.X, max.Y, max.Z), m, tile, light * 0.70f);
+    }
+
+    private static void EmitLanternBoxWithCapUv(List<OverlayVertex> dst, Vector3 min, Vector3 size, Matrix4x4 m, float su0, float sv0, float su1, float sv1, float cu0, float cv0, float cu1, float cv1, float light)
+    {
+        var max = min + size;
+        var sideCol = new Vector4(light * 0.96f, light * 0.96f, light * 0.96f, 1.0f);
+        var topCol = new Vector4(light, light * 0.98f, light * 0.94f, 1.0f);
+        var botCol = new Vector4(light * 0.78f, light * 0.78f, light * 0.78f, 1.0f);
+        EmitTexturedQuad(dst, Vector3.Transform(new Vector3(min.X, min.Y, max.Z), m), Vector3.Transform(new Vector3(max.X, min.Y, max.Z), m), Vector3.Transform(new Vector3(max.X, max.Y, max.Z), m), Vector3.Transform(new Vector3(min.X, max.Y, max.Z), m), new Vector2(su0, sv1), new Vector2(su1, sv1), new Vector2(su1, sv0), new Vector2(su0, sv0), sideCol);
+        EmitTexturedQuad(dst, Vector3.Transform(new Vector3(max.X, min.Y, min.Z), m), Vector3.Transform(new Vector3(min.X, min.Y, min.Z), m), Vector3.Transform(new Vector3(min.X, max.Y, min.Z), m), Vector3.Transform(new Vector3(max.X, max.Y, min.Z), m), new Vector2(su0, sv1), new Vector2(su1, sv1), new Vector2(su1, sv0), new Vector2(su0, sv0), sideCol);
+        EmitTexturedQuad(dst, Vector3.Transform(new Vector3(min.X, min.Y, min.Z), m), Vector3.Transform(new Vector3(min.X, min.Y, max.Z), m), Vector3.Transform(new Vector3(min.X, max.Y, max.Z), m), Vector3.Transform(new Vector3(min.X, max.Y, min.Z), m), new Vector2(su0, sv1), new Vector2(su1, sv1), new Vector2(su1, sv0), new Vector2(su0, sv0), sideCol);
+        EmitTexturedQuad(dst, Vector3.Transform(new Vector3(max.X, min.Y, max.Z), m), Vector3.Transform(new Vector3(max.X, min.Y, min.Z), m), Vector3.Transform(new Vector3(max.X, max.Y, min.Z), m), Vector3.Transform(new Vector3(max.X, max.Y, max.Z), m), new Vector2(su0, sv1), new Vector2(su1, sv1), new Vector2(su1, sv0), new Vector2(su0, sv0), sideCol);
+        EmitTexturedQuad(dst, Vector3.Transform(new Vector3(min.X, max.Y, min.Z), m), Vector3.Transform(new Vector3(min.X, max.Y, max.Z), m), Vector3.Transform(new Vector3(max.X, max.Y, max.Z), m), Vector3.Transform(new Vector3(max.X, max.Y, min.Z), m), new Vector2(cu0, cv0), new Vector2(cu0, cv1), new Vector2(cu1, cv1), new Vector2(cu1, cv0), topCol);
+        EmitTexturedQuad(dst, Vector3.Transform(new Vector3(min.X, min.Y, min.Z), m), Vector3.Transform(new Vector3(max.X, min.Y, min.Z), m), Vector3.Transform(new Vector3(max.X, min.Y, max.Z), m), Vector3.Transform(new Vector3(min.X, min.Y, max.Z), m), new Vector2(cu0, cv1), new Vector2(cu1, cv1), new Vector2(cu1, cv0), new Vector2(cu0, cv0), botCol);
+    }
+
+    private static void EmitDoubleSidedUvQuad(List<OverlayVertex> dst, Matrix4x4 m, Vector3 a, Vector3 b, Vector3 c, Vector3 d, float u0, float v0, float u1, float v1, Vector4 col)
+    {
+        var p0 = Vector3.Transform(a, m);
+        var p1 = Vector3.Transform(b, m);
+        var p2 = Vector3.Transform(c, m);
+        var p3 = Vector3.Transform(d, m);
+        EmitTexturedQuad(dst, p0, p1, p2, p3, new Vector2(u0, v1), new Vector2(u1, v1), new Vector2(u1, v0), new Vector2(u0, v0), col);
+        EmitTexturedQuad(dst, p1, p0, p3, p2, new Vector2(u1, v1), new Vector2(u0, v1), new Vector2(u0, v0), new Vector2(u1, v0), col);
     }
 
     private static void AppendTextured3DBlock(
@@ -309,121 +385,6 @@ public static class HeldItem3DMesher
         }
 
         var scale = (isToolOrWeapon || isBow) ? 0.56f : 0.40f;
-        var halfThick = scale * (0.5f / 16.0f);
-        var pxSize = scale / 16.0f;
-        var (u0, v0, u1, v1) = TileUvBounds(tileIndex, 0.002f, 0.002f, 0.998f, 0.998f);
-        var half = scale * 0.5f;
-        var frontCol = new Vector4(light * 0.98f, light * 0.98f, light * 0.98f, 1.0f);
-        var backCol = new Vector4(light * 0.88f, light * 0.88f, light * 0.88f, 1.0f);
-
-        EmitTexturedQuad(
-            dst,
-            Vector3.Transform(new Vector3(-half, -half, halfThick), rot),
-            Vector3.Transform(new Vector3(half, -half, halfThick), rot),
-            Vector3.Transform(new Vector3(half, half, halfThick), rot),
-            Vector3.Transform(new Vector3(-half, half, halfThick), rot),
-            new Vector2(u0, v1), new Vector2(u1, v1), new Vector2(u1, v0), new Vector2(u0, v0),
-            frontCol);
-
-        EmitTexturedQuad(
-            dst,
-            Vector3.Transform(new Vector3(half, -half, -halfThick), rot),
-            Vector3.Transform(new Vector3(-half, -half, -halfThick), rot),
-            Vector3.Transform(new Vector3(-half, half, -halfThick), rot),
-            Vector3.Transform(new Vector3(half, half, -halfThick), rot),
-            new Vector2(u1, v1), new Vector2(u0, v1), new Vector2(u0, v0), new Vector2(u1, v0),
-            backCol);
-
-        var pixels = atlas.RgbaPixels.Span;
-        var tileOriginX = (tileIndex & 15) * 16;
-        var tileOriginY = (tileIndex >> 4) * 16;
-
-        for (var py = 0; py < 16; py++)
-        {
-            var yTop = half - (py * pxSize);
-            var yBot = yTop - pxSize;
-            for (var px = 0; px < 16; px++)
-            {
-                var idx = (((tileOriginY + py) * 256) + (tileOriginX + px)) * 4;
-                if (pixels[idx + 3] < 24) continue;
-
-                var r = (pixels[idx + 0] / 255.0f) * light;
-                var g = (pixels[idx + 1] / 255.0f) * light;
-                var b = (pixels[idx + 2] / 255.0f) * light;
-                var xLeft = -half + (px * pxSize);
-                var xRight = xLeft + pxSize;
-
-                if (IsTransparent(pixels, tileOriginX, tileOriginY, px - 1, py))
-                {
-                    EmitUntexturedQuad(dst, rot, new Vector3(xLeft, yBot, -halfThick), new Vector3(xLeft, yBot, halfThick), new Vector3(xLeft, yTop, halfThick), new Vector3(xLeft, yTop, -halfThick), new Vector4(r * 0.72f, g * 0.72f, b * 0.72f, 1.0f));
-                }
-
-                if (IsTransparent(pixels, tileOriginX, tileOriginY, px + 1, py))
-                {
-                    EmitUntexturedQuad(dst, rot, new Vector3(xRight, yBot, halfThick), new Vector3(xRight, yBot, -halfThick), new Vector3(xRight, yTop, -halfThick), new Vector3(xRight, yTop, halfThick), new Vector4(r * 0.76f, g * 0.76f, b * 0.76f, 1.0f));
-                }
-
-                if (IsTransparent(pixels, tileOriginX, tileOriginY, px, py - 1))
-                {
-                    EmitUntexturedQuad(dst, rot, new Vector3(xLeft, yTop, halfThick), new Vector3(xRight, yTop, halfThick), new Vector3(xRight, yTop, -halfThick), new Vector3(xLeft, yTop, -halfThick), new Vector4(r * 0.96f, g * 0.96f, b * 0.96f, 1.0f));
-                }
-
-                if (IsTransparent(pixels, tileOriginX, tileOriginY, px, py + 1))
-                {
-                    EmitUntexturedQuad(dst, rot, new Vector3(xLeft, yBot, -halfThick), new Vector3(xRight, yBot, -halfThick), new Vector3(xRight, yBot, halfThick), new Vector3(xLeft, yBot, halfThick), new Vector4(r * 0.60f, g * 0.60f, b * 0.60f, 1.0f));
-                }
-            }
-        }
-    }
-
-    private static bool IsTransparent(ReadOnlySpan<byte> atlasRgba, int ox, int oy, int px, int py) =>
-        (uint)px >= 16U || (uint)py >= 16U || atlasRgba[((((oy + py) * 256) + (ox + px)) * 4) + 3] < 24;
-
-    internal static (float U0, float V0, float U1, float V1) TileUvBounds(int tile, float lu0, float lv0, float lu1, float lv1)
-    {
-        var col = tile & 15;
-        var row = tile >> 4;
-        return ((col + lu0) / 16.0f, (row + lv0) / 16.0f, (col + lu1) / 16.0f, (row + lv1) / 16.0f);
-    }
-
-    internal static void EmitBlockCubeFace(List<OverlayVertex> dst, Vector3 a, Vector3 b, Vector3 c, Vector3 d, Matrix4x4 m, int tile, float shade) =>
-        EmitBlockCubeFaceTinted(dst, a, b, c, d, m, tile, new Vector4(shade, shade, shade, 1.0f));
-
-    internal static void EmitBlockCubeFaceTinted(List<OverlayVertex> dst, Vector3 a, Vector3 b, Vector3 c, Vector3 d, Matrix4x4 m, int tile, Vector4 tint)
-    {
-        var (u0, v0, u1, v1) = TileUvBounds(tile, 0.004f, 0.004f, 0.996f, 0.996f);
-        EmitTexturedQuad(dst, Vector3.Transform(a, m), Vector3.Transform(b, m), Vector3.Transform(c, m), Vector3.Transform(d, m), new Vector2(u0, v1), new Vector2(u1, v1), new Vector2(u1, v0), new Vector2(u0, v0), tint);
-    }
-
-    private static void EmitTexturedBoxSingleUv(List<OverlayVertex> dst, Vector3 min, Vector3 size, Matrix4x4 m, float u0, float v0, float u1, float v1, float light)
-    {
-        var max = min + size;
-        var sideCol = new Vector4(light * 0.92f, light * 0.92f, light * 0.92f, 1.0f);
-        var topCol = new Vector4(1.0f, 0.96f, 0.85f, 1.0f);
-        EmitTexturedQuad(dst, Vector3.Transform(new Vector3(min.X, min.Y, max.Z), m), Vector3.Transform(new Vector3(max.X, min.Y, max.Z), m), Vector3.Transform(new Vector3(max.X, max.Y, max.Z), m), Vector3.Transform(new Vector3(min.X, max.Y, max.Z), m), new Vector2(u0, v1), new Vector2(u1, v1), new Vector2(u1, v0), new Vector2(u0, v0), sideCol);
-        EmitTexturedQuad(dst, Vector3.Transform(new Vector3(max.X, min.Y, min.Z), m), Vector3.Transform(new Vector3(min.X, min.Y, min.Z), m), Vector3.Transform(new Vector3(min.X, max.Y, min.Z), m), Vector3.Transform(new Vector3(max.X, max.Y, min.Z), m), new Vector2(u0, v1), new Vector2(u1, v1), new Vector2(u1, v0), new Vector2(u0, v0), sideCol);
-        EmitTexturedQuad(dst, Vector3.Transform(new Vector3(min.X, min.Y, min.Z), m), Vector3.Transform(new Vector3(min.X, min.Y, max.Z), m), Vector3.Transform(new Vector3(min.X, max.Y, max.Z), m), Vector3.Transform(new Vector3(min.X, max.Y, min.Z), m), new Vector2(u0, v1), new Vector2(u1, v1), new Vector2(u1, v0), new Vector2(u0, v0), sideCol);
-        EmitTexturedQuad(dst, Vector3.Transform(new Vector3(max.X, min.Y, max.Z), m), Vector3.Transform(new Vector3(max.X, min.Y, min.Z), m), Vector3.Transform(new Vector3(max.X, max.Y, min.Z), m), Vector3.Transform(new Vector3(max.X, max.Y, max.Z), m), new Vector2(u0, v1), new Vector2(u1, v1), new Vector2(u1, v0), new Vector2(u0, v0), sideCol);
-        EmitTexturedQuad(dst, Vector3.Transform(new Vector3(min.X, max.Y, min.Z), m), Vector3.Transform(new Vector3(min.X, max.Y, max.Z), m), Vector3.Transform(new Vector3(max.X, max.Y, max.Z), m), Vector3.Transform(new Vector3(max.X, max.Y, min.Z), m), new Vector2(u0, v0), new Vector2(u0, v0 + 0.01f), new Vector2(u1, v0 + 0.01f), new Vector2(u1, v0), topCol);
-    }
-
-    internal static void EmitTexturedQuad(List<OverlayVertex> dst, Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, Vector2 uv0, Vector2 uv1, Vector2 uv2, Vector2 uv3, Vector4 col)
-    {
-        dst.Add(new OverlayVertex(p0, col, uv0));
-        dst.Add(new OverlayVertex(p1, col, uv1));
-        dst.Add(new OverlayVertex(p2, col, uv2));
-        dst.Add(new OverlayVertex(p0, col, uv0));
-        dst.Add(new OverlayVertex(p2, col, uv2));
-        dst.Add(new OverlayVertex(p3, col, uv3));
-    }
-
-    private static void EmitUntexturedQuad(List<OverlayVertex> dst, Matrix4x4 m, Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector4 col)
-    {
-        dst.Add(new OverlayVertex(Vector3.Transform(a, m), col));
-        dst.Add(new OverlayVertex(Vector3.Transform(b, m), col));
-        dst.Add(new OverlayVertex(Vector3.Transform(c, m), col));
-        dst.Add(new OverlayVertex(Vector3.Transform(a, m), col));
-        dst.Add(new OverlayVertex(Vector3.Transform(c, m), col));
-        dst.Add(new OverlayVertex(Vector3.Transform(d, m), col));
+        EmitExtruded16x16Mesh(dst, atlas, tileIndex, scale, rot, light);
     }
 }

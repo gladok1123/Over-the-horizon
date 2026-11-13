@@ -178,6 +178,18 @@ public static class BuiltInRecipes
         AddShapeless(registry, "bone_meal_from_bone", [Id(BuiltInItems.Bone)], Id(BuiltInItems.BoneMeal), 3);
         AddShapeless(registry, "quartz_from_amethyst", [Id(BuiltInBlocks.AmethystBlock)], quartz, 2);
         AddShaped(registry, "chiseled_sandstone", 1, 2, [Id(BuiltInBlocks.Sandstone), Id(BuiltInBlocks.Sandstone)], Id(BuiltInBlocks.ChiseledSandstone), 2);
+
+        // 11. v0.9.0 Hinged Doors, Iron Trapdoor, Amethyst Shards, Glass Bottles & Extended Biome Woods
+        var shard = Id(BuiltInItems.AmethystShard);
+        var glass = Id(BuiltInBlocks.Glass);
+        AddShaped(registry, "oak_door", 2, 3, [oakPlanks, oakPlanks, oakPlanks, oakPlanks, oakPlanks, oakPlanks], Id(BuiltInBlocks.OakDoor), 3);
+        AddShaped(registry, "iron_door", 2, 3, [iron, iron, iron, iron, iron, iron], Id(BuiltInBlocks.IronDoor), 3);
+        AddShaped(registry, "iron_trapdoor", 2, 2, [iron, iron, iron, iron], Id(BuiltInBlocks.IronTrapdoor), 1);
+        AddShaped(registry, "amethyst_block_from_shards", 2, 2, [shard, shard, shard, shard], Id(BuiltInBlocks.AmethystBlock), 1);
+        AddShaped(registry, "glass_bottle", 3, 2, [glass, 0, glass, 0, glass, 0], Id(BuiltInItems.GlassBottle), 3);
+        AddShapeless(registry, "planks_from_cherry_log", [Id(BuiltInBlocks.CherryLog)], oakPlanks, 4);
+        AddShapeless(registry, "planks_from_spruce_log", [Id(BuiltInBlocks.SpruceLog)], oakPlanks, 4);
+        AddShaped(registry, "sandstone_from_red_sand", 2, 2, [Id(BuiltInBlocks.RedSand), Id(BuiltInBlocks.RedSand), Id(BuiltInBlocks.RedSand), Id(BuiltInBlocks.RedSand)], Id(BuiltInBlocks.Sandstone), 1);
     }
 
     /// <summary>Creates, populates, and freezes the built-in crafting recipe registry.</summary>

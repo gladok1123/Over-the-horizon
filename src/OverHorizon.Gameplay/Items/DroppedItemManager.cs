@@ -16,10 +16,13 @@ public sealed class DroppedItemManager
     private const int MaxDroppedEntities = 192;
     private const float DespawnSeconds = 300.0f;
     private const double Gravity = 18.0;
-    private const double HalfWidth = 0.14;
-    private const double Height = 0.28;
+    private const double HalfWidth = 0.15;
+    private const double Height = 0.30;
+    private const double SpatialCellInvSize = 0.5; // 2.0m Spatial Hash Grid cells
 
     private readonly List<DroppedItemEntity> _items = [];
+    private readonly Dictionary<long, int> _spatialHeadByCell = new(64);
+    private int[] _spatialNext = new int[MaxDroppedEntities];
     private int _nextId = 1;
     private uint _rng = 0x5A17E903U;
 
@@ -66,8 +69,8 @@ public sealed class DroppedItemManager
     {
         if (stack.IsEmpty) return null;
         var dir = new Vec3d(forward.X, forward.Y, forward.Z).Normalize();
-        var vel = (dir * 5.4) + new Vec3d(0.0, 1.35, 0.0);
-        return AddEntity(new DroppedItemEntity(_nextId++, stack, eyePos + new Vec3d(0.0, -0.28, 0.0) + (dir * 0.32), vel, pickupDelaySeconds: 1.35f));
+        var vel = (dir * 6.8) + new Vec3d(0.0, 1.65, 0.0);
+        return AddEntity(new DroppedItemEntity(_nextId++, stack, eyePos + new Vec3d(0.0, -0.26, 0.0) + (dir * 0.38), vel, pickupDelaySeconds: 1.35f));
     }
 
     /// <summary>Replaces client-side mirrored drops from an authoritative multiplayer server snapshot.</summary>
@@ -222,14 +225,15 @@ public sealed class DroppedItemManager
         e.Position = new Vec3d((sweep.Box.MinX + sweep.Box.MaxX) * 0.5, sweep.Box.MinY, (sweep.Box.MinZ + sweep.Box.MaxZ) * 0.5);
         e.OnGround = sweep.OnGround;
 
-        var dragXZ = 0.96;
+        // Framerate-independent exponential air/ground/water drag so 30Hz, 60Hz, and 240Hz throw identical ballistic arcs!
+        var dragXZ = Math.Pow(0.98, dt * 20.0);
         if (e.OnGround)
         {
-            dragXZ = Math.Pow(0.18, dt * 10.0);
+            dragXZ = Math.Pow(0.58, dt * 20.0);
         }
         else if (inWater)
         {
-            dragXZ = 0.82;
+            dragXZ = Math.Pow(0.84, dt * 20.0);
         }
 
         var hitX = Math.Abs(sweep.ActualMove.X - reqMove.X) > 1e-5;
@@ -246,28 +250,91 @@ public sealed class DroppedItemManager
         e.Velocity = new Vec3d(nextVx, nextVy, nextVz);
     }
 
+    private static long SpatialCellKey(int cx, int cy, int cz) =>
+        (((long)cx & 0x1FFFFFL) << 42) | (((long)cy & 0x1FFFFFL) << 21) | ((long)cz & 0x1FFFFFL);
+
     private void MergeNearbyStacks(IRegistry<ItemDefinition> itemRegistry)
     {
-        for (var i = 0; i < _items.Count; i++)
+        var count = _items.Count;
+        if (count < 2)
+        {
+            return;
+        }
+
+        if (_spatialNext.Length < count)
+        {
+            _spatialNext = new int[Math.Max(count, _spatialNext.Length * 2)];
+        }
+
+        // O(N) zero-allocation intrusive Spatial Hash Grid replaces O(N^2) all-pairs distance checks!
+        _spatialHeadByCell.Clear();
+        for (var i = 0; i < count; i++)
+        {
+            var p = _items[i].Position;
+            var key = SpatialCellKey(
+                (int)Math.Floor(p.X * SpatialCellInvSize),
+                (int)Math.Floor(p.Y * SpatialCellInvSize),
+                (int)Math.Floor(p.Z * SpatialCellInvSize));
+            _spatialNext[i] = _spatialHeadByCell.TryGetValue(key, out var head) ? head : -1;
+            _spatialHeadByCell[key] = i;
+        }
+
+        var anyMergedToEmpty = false;
+        for (var i = 0; i < count; i++)
         {
             var a = _items[i];
             if (a.Stack.IsEmpty) continue;
             var maxStack = itemRegistry.TryGetById(a.Stack.ItemId, out var def) ? Math.Max(1, def.MaxStackSize) : 64;
             if (maxStack <= 1 || a.Stack.Count >= maxStack) continue;
 
-            for (var j = i + 1; j < _items.Count && a.Stack.Count < maxStack; j++)
-            {
-                var b = _items[j];
-                if (!a.Stack.CanMergeWith(b.Stack)) continue;
-                if ((a.Position - b.Position).LengthSquared > 1.10 * 1.10) continue;
+            var cx = (int)Math.Floor(a.Position.X * SpatialCellInvSize);
+            var cy = (int)Math.Floor(a.Position.Y * SpatialCellInvSize);
+            var cz = (int)Math.Floor(a.Position.Z * SpatialCellInvSize);
 
-                var transfer = Math.Min(maxStack - a.Stack.Count, b.Stack.Count);
-                a.Stack = a.Stack.WithCount(a.Stack.Count + transfer);
-                b.Stack = b.Stack.WithCount(b.Stack.Count - transfer);
-                if (b.Stack.IsEmpty)
+            for (var dy = -1; dy <= 1 && a.Stack.Count < maxStack; dy++)
+            {
+                for (var dz = -1; dz <= 1 && a.Stack.Count < maxStack; dz++)
                 {
-                    _items.RemoveAt(j);
-                    j--;
+                    for (var dx = -1; dx <= 1 && a.Stack.Count < maxStack; dx++)
+                    {
+                        if (!_spatialHeadByCell.TryGetValue(SpatialCellKey(cx + dx, cy + dy, cz + dz), out var j))
+                        {
+                            continue;
+                        }
+
+                        while (j >= 0 && a.Stack.Count < maxStack)
+                        {
+                            if (j > i)
+                            {
+                                var b = _items[j];
+                                if (!b.Stack.IsEmpty &&
+                                    a.Stack.CanMergeWith(b.Stack) &&
+                                    (a.Position - b.Position).LengthSquared <= 1.15 * 1.15)
+                                {
+                                    var transfer = Math.Min(maxStack - a.Stack.Count, b.Stack.Count);
+                                    a.Stack = a.Stack.WithCount(a.Stack.Count + transfer);
+                                    b.Stack = b.Stack.WithCount(b.Stack.Count - transfer);
+                                    if (b.Stack.IsEmpty)
+                                    {
+                                        anyMergedToEmpty = true;
+                                    }
+                                }
+                            }
+
+                            j = _spatialNext[j];
+                        }
+                    }
+                }
+            }
+        }
+
+        if (anyMergedToEmpty)
+        {
+            for (var i = _items.Count - 1; i >= 0; i--)
+            {
+                if (_items[i].Stack.IsEmpty)
+                {
+                    _items.RemoveAt(i);
                 }
             }
         }

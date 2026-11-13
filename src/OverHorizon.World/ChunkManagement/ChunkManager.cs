@@ -109,11 +109,21 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
         var previous = column.SetBlockState(lx, worldPos.Y, lz, newState, _registries.Blocks);
         if (previous != newState)
         {
-            var newStopY = column.GetHeight(HeightmapType.LightBlocking, lx, lz);
-            var minBandY = Math.Max(EngineConstants.WorldMinY, Math.Min(worldPos.Y, Math.Min(oldStopY, newStopY)) - 16);
-            var maxBandY = Math.Min(EngineConstants.WorldMaxY - 1, Math.Max(worldPos.Y, Math.Max(oldStopY, newStopY)) + 16);
             column.LastModifiedTick = tickNumber;
-            RefreshColumnAndBorderNeighbors(chunkPos, column, minBandY, maxBandY);
+            var oldMeta = _registries.Blocks.GetStateMetadata(previous);
+            var newMeta = _registries.Blocks.GetStateMetadata(newState);
+            if (oldMeta.IsOpaque != newMeta.IsOpaque || oldMeta.Block.LightEmission != newMeta.Block.LightEmission)
+            {
+                var newStopY = column.GetHeight(HeightmapType.LightBlocking, lx, lz);
+                var minBandY = Math.Max(EngineConstants.WorldMinY, Math.Min(worldPos.Y, Math.Min(oldStopY, newStopY)) - 16);
+                var maxBandY = Math.Min(EngineConstants.WorldMaxY - 1, Math.Max(worldPos.Y, Math.Max(oldStopY, newStopY)) + 16);
+                RefreshColumnAndBorderNeighbors(chunkPos, column, minBandY, maxBandY);
+            }
+            else
+            {
+                // Fast-path for Redstone wire/lever/repeater/door/trapdoor state transitions that do not alter opacity or light emission!
+                _publishedSnapshots[key] = column.CreateSnapshot();
+            }
         }
 
         return true;
@@ -128,7 +138,7 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
             return 0;
         }
 
-        var touched = new Dictionary<long, (ChunkPos Pos, ChunkColumn Column, int MinY, int MaxY)>(8);
+        var touched = new Dictionary<long, (ChunkPos Pos, ChunkColumn Column, int MinY, int MaxY, bool LightingChanged)>(8);
         var changedCount = 0;
 
         for (var i = 0; i < changes.Length; i++)
@@ -156,6 +166,9 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
             }
 
             changedCount++;
+            var oldMeta = _registries.Blocks.GetStateMetadata(previous);
+            var newMeta = _registries.Blocks.GetStateMetadata(newState);
+            var lightDelta = oldMeta.IsOpaque != newMeta.IsOpaque || oldMeta.Block.LightEmission != newMeta.Block.LightEmission;
             var newStopY = column.GetHeight(HeightmapType.LightBlocking, lx, lz);
             var lowY = Math.Max(EngineConstants.WorldMinY, Math.Min(worldPos.Y, Math.Min(oldStopY, newStopY)) - 16);
             var highY = Math.Min(EngineConstants.WorldMaxY - 1, Math.Max(worldPos.Y, Math.Max(oldStopY, newStopY)) + 16);
@@ -163,17 +176,24 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
 
             if (touched.TryGetValue(key, out var existing))
             {
-                touched[key] = (chunkPos, column, Math.Min(existing.MinY, lowY), Math.Max(existing.MaxY, highY));
+                touched[key] = (chunkPos, column, Math.Min(existing.MinY, lowY), Math.Max(existing.MaxY, highY), existing.LightingChanged || lightDelta);
             }
             else
             {
-                touched[key] = (chunkPos, column, lowY, highY);
+                touched[key] = (chunkPos, column, lowY, highY, lightDelta);
             }
         }
 
-        foreach (var (_, entry) in touched)
+        foreach (var (key, entry) in touched)
         {
-            RefreshColumnAndBorderNeighbors(entry.Pos, entry.Column, entry.MinY, entry.MaxY);
+            if (entry.LightingChanged)
+            {
+                RefreshColumnAndBorderNeighbors(entry.Pos, entry.Column, entry.MinY, entry.MaxY);
+            }
+            else
+            {
+                _publishedSnapshots[key] = entry.Column.CreateSnapshot();
+            }
         }
 
         return changedCount;

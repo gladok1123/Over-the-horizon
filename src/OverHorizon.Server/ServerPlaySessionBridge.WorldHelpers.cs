@@ -181,14 +181,15 @@ public sealed partial class ServerPlaySessionBridge
     {
         foreach (var (sid, pl) in _players)
         {
-            if (pl.GameMode == GameMode.Survival &&
+            if (pl.GameMode is GameMode.Survival or GameMode.Creative &&
                 pl.LastPosition.Y < EngineConstants.WorldMinY - 12.0 &&
                 tickNumber - pl.LastVoidDamageTick >= 10L)
             {
                 pl.LastVoidDamageTick = tickNumber;
                 ServerPvpCombatHandler.ApplyPlayerDamageAndCheckDeath(
                     pl, sid, 0, 4.0f, Vec3d.Zero, tickNumber,
-                    $"{pl.Username} fell out of the world!", _gameplay, broadcaster);
+                    $"{pl.Username} fell out of the world!", _gameplay, broadcaster,
+                    bypassInvulnerability: pl.GameMode == GameMode.Creative);
             }
         }
 

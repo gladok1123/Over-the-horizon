@@ -139,9 +139,10 @@ internal static class ServerPvpCombatHandler
         long tickNumber,
         string deathAnnouncement,
         IGameplaySubsystem gameplay,
-        INetworkBroadcaster broadcaster)
+        INetworkBroadcaster broadcaster,
+        bool bypassInvulnerability = false)
     {
-        if (victimState.IsInvulnerable || damage <= 0.0f)
+        if ((!bypassInvulnerability && victimState.IsInvulnerable) || damage <= 0.0f)
         {
             return;
         }

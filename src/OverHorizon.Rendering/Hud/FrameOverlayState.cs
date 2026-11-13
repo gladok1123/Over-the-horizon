@@ -93,4 +93,6 @@ public sealed record FrameOverlayState(
     IReadOnlyList<FallingBlockVisual>? FallingBlocks = null,
     IReadOnlyList<WorldParticleVisual>? Particles = null,
     IReadOnlyList<HudStatusEffectVisual>? StatusEffects = null,
-    bool IsSpectatorMode = false);
+    bool IsSpectatorMode = false,
+    RemotePlayerAvatar? LocalThirdPersonPlayer = null,
+    bool IsThirdPersonCamera = false);

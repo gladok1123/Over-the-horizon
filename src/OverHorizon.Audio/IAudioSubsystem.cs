@@ -41,4 +41,12 @@ public interface IAudioSubsystem : IDisposable
     /// <param name="gain">Source gain multiplier.</param>
     /// <param name="pitch">Source pitch multiplier.</param>
     void PlayPositional(SoundCue cue, Vec3d worldPosition, float gain = 1.0f, float pitch = 1.0f);
+
+    /// <summary>
+    /// Hot-reloads the sound bank from <paramref name="externalAssetsPath"/> when new <c>.ogg</c> files become available.
+    /// </summary>
+    /// <param name="externalAssetsPath">Optional path to external <c>23w13a__or__b</c> resource directory.</param>
+    void ReloadSoundPack(string? externalAssetsPath)
+    {
+    }
 }

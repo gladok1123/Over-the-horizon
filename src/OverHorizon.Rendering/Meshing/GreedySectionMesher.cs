@@ -174,8 +174,11 @@ public static class GreedySectionMesher
         key == BuiltInBlocks.Dirt ||
         key == BuiltInBlocks.GrassBlock ||
         key == BuiltInBlocks.Sand ||
+        key == BuiltInBlocks.RedSand ||
+        key == BuiltInBlocks.Terracotta ||
         key == BuiltInBlocks.Sandstone ||
         key == BuiltInBlocks.Gravel ||
+        key == BuiltInBlocks.PackedIce ||
         key == BuiltInBlocks.SnowBlock;
 
     private static bool ShouldRenderFace(BlockStateMetadata current, BlockStateMetadata neighbor, Direction face, bool xray)

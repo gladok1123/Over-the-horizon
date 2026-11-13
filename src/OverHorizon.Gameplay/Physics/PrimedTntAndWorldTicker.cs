@@ -217,7 +217,8 @@ public sealed partial class PrimedTntAndWorldTicker
         {
             var bp = initialDestroyed[i];
             var meta = _blocks.GetStateMetadata(getBlock(bp));
-            if (BlockAttachmentAndShapeRules.TryGetPartnerBedPosition(meta, bp, out var partnerPos, out _))
+            if (BlockAttachmentAndShapeRules.TryGetPartnerBedPosition(meta, bp, out var partnerPos, out _) ||
+                BlockAttachmentAndShapeRules.TryGetPartnerDoorPosition(meta, bp, out partnerPos, out _))
             {
                 _ = destroyed.Add(partnerPos);
             }

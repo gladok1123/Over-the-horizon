@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using OverHorizon.Audio;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Items;
@@ -160,12 +161,25 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         _redstoneSoundScratch.Clear();
 
         var interacted = Redstone.TryInteractComponent(pos, _localWorld.GetBlockState, RecordWorldSet);
-        if (!interacted) return false;
+        if (interacted)
+        {
+            Redstone.EvaluateImmediate(_localWorld.GetBlockState, RecordWorldSet, _ignitedTntScratch, _redstoneSoundScratch);
+            Particles.EmitBurst(new Vec3d(pos.X + 0.5, pos.Y + 0.35, pos.Z + 0.5), ParticleKind.RedstoneSpark, 6);
+            ProcessRedstoneOutputsAndRemesh();
+            return true;
+        }
 
-        Redstone.EvaluateImmediate(_localWorld.GetBlockState, RecordWorldSet, _ignitedTntScratch, _redstoneSoundScratch);
-        Particles.EmitBurst(new Vec3d(pos.X + 0.5, pos.Y + 0.35, pos.Z + 0.5), ParticleKind.RedstoneSpark, 6);
-        ProcessRedstoneOutputsAndRemesh();
-        return true;
+        if (ComposterAndTrapdoorMechanics.TryToggleDoorOrTrapdoor(_blocks, pos, _localWorld.GetBlockState, RecordWorldSet, out var nowOpen, out var isDoor))
+        {
+            var cue = isDoor
+                ? (nowOpen ? SoundCue.WoodenDoorOpen : SoundCue.WoodenDoorClose)
+                : (nowOpen ? SoundCue.WoodenTrapdoorOpen : SoundCue.WoodenTrapdoorClose);
+            _audio.PlayPositional(cue, new Vec3d(pos.X + 0.5, pos.Y + 0.5, pos.Z + 0.5), gain: 0.75f);
+            ProcessRedstoneOutputsAndRemesh();
+            return true;
+        }
+
+        return false;
     }
 
     public bool ApplyLocalBlockChangeWithCascade(
@@ -192,18 +206,32 @@ internal sealed partial class ClientWorldSyncAndMobBridge
 
         WorldTicker.NotifyWorldBlockChanged(primaryPos, _localWorld.GetBlockState, RecordWorldSet);
 
-        // 1. Atomic 2-block RedBed breaking: breaking EITHER head or foot removes its partner without duplicate drops!
-        if (primaryState.IsAir &&
-            !previousState.IsAir &&
-            BlockAttachmentAndShapeRules.TryGetPartnerBedPosition(_blocks.GetStateMetadata(previousState), primaryPos, out var partnerBedPos, out _))
+        // 1. Atomic 2-block RedBed & OakDoor/IronDoor breaking: breaking EITHER half removes its partner without duplicate drops!
+        if (primaryState.IsAir && !previousState.IsAir)
         {
-            var partnerState = _localWorld.GetBlockState(partnerBedPos);
-            if (!partnerState.IsAir &&
-                _blocks.GetStateMetadata(partnerState).BlockKey == BuiltInBlocks.RedBed &&
-                _localWorld.SetBlockState(partnerBedPos, BlockState.Air))
+            var prevMeta = _blocks.GetStateMetadata(previousState);
+            if (BlockAttachmentAndShapeRules.TryGetPartnerBedPosition(prevMeta, primaryPos, out var partnerBedPos, out _))
             {
-                TrackEditedBlock(partnerBedPos);
-                WorldTicker.NotifyWorldBlockChanged(partnerBedPos, _localWorld.GetBlockState, RecordWorldSet);
+                var partnerState = _localWorld.GetBlockState(partnerBedPos);
+                if (!partnerState.IsAir &&
+                    _blocks.GetStateMetadata(partnerState).BlockKey == BuiltInBlocks.RedBed &&
+                    _localWorld.SetBlockState(partnerBedPos, BlockState.Air))
+                {
+                    TrackEditedBlock(partnerBedPos);
+                    WorldTicker.NotifyWorldBlockChanged(partnerBedPos, _localWorld.GetBlockState, RecordWorldSet);
+                }
+            }
+            else if (BlockAttachmentAndShapeRules.TryGetPartnerDoorPosition(prevMeta, primaryPos, out var partnerDoorPos, out _))
+            {
+                var partnerState = _localWorld.GetBlockState(partnerDoorPos);
+                if (!partnerState.IsAir &&
+                    _blocks.GetStateMetadata(partnerState).BlockKey == prevMeta.BlockKey &&
+                    _localWorld.SetBlockState(partnerDoorPos, BlockState.Air))
+                {
+                    TrackEditedBlock(partnerDoorPos);
+                    Redstone.NotifyBlockChanged(partnerDoorPos);
+                    WorldTicker.NotifyWorldBlockChanged(partnerDoorPos, _localWorld.GetBlockState, RecordWorldSet);
+                }
             }
         }
 
@@ -236,7 +264,10 @@ internal sealed partial class ClientWorldSyncAndMobBridge
                     WorldTicker.NotifyWorldBlockChanged(nPos, _localWorld.GetBlockState, RecordWorldSet);
                     checkQueue.Enqueue(nPos);
 
-                    if (spawnDetachedItemDrops && nKey != BuiltInBlocks.RedBed && nKey != BuiltInBlocks.Fire)
+                    var nMeta = _blocks.GetStateMetadata(nState);
+                    var isUpperDoor = nMeta.Properties.TryGetValue("half", out var halfVal) &&
+                                      string.Equals(halfVal, "upper", StringComparison.OrdinalIgnoreCase);
+                    if (spawnDetachedItemDrops && nKey != BuiltInBlocks.RedBed && nKey != BuiltInBlocks.Fire && !isUpperDoor)
                     {
                         var drop = BlockDropResolver.ResolveDrop(nKey, heldTool: null, _items, _dropSeq++);
                         if (!drop.IsEmpty)
@@ -332,6 +363,14 @@ internal sealed partial class ClientWorldSyncAndMobBridge
                 RedstoneSoundKind.PistonExtend => SoundCue.PistonExtend,
                 RedstoneSoundKind.PistonRetract => SoundCue.PistonRetract,
                 RedstoneSoundKind.TorchFizz => SoundCue.Fizz,
+                RedstoneSoundKind.WoodenDoorOpen => SoundCue.WoodenDoorOpen,
+                RedstoneSoundKind.WoodenDoorClose => SoundCue.WoodenDoorClose,
+                RedstoneSoundKind.IronDoorOpen => SoundCue.IronDoorOpen,
+                RedstoneSoundKind.IronDoorClose => SoundCue.IronDoorClose,
+                RedstoneSoundKind.WoodenTrapdoorOpen => SoundCue.WoodenTrapdoorOpen,
+                RedstoneSoundKind.WoodenTrapdoorClose => SoundCue.WoodenTrapdoorClose,
+                RedstoneSoundKind.IronTrapdoorOpen => SoundCue.IronTrapdoorOpen,
+                RedstoneSoundKind.IronTrapdoorClose => SoundCue.IronTrapdoorClose,
                 _ => SoundCue.UiClick,
             };
             _audio.PlayPositional(cue, new Vec3d(sPos.X + 0.5, sPos.Y + 0.5, sPos.Z + 0.5), gain: 0.72f);
@@ -349,10 +388,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
 
         if (_editedPositionsScratch.Count <= 24)
         {
-            for (var i = 0; i < _editedPositionsScratch.Count; i++)
-            {
-                _worldCache.RemeshAroundBlockImmediate(_editedPositionsScratch[i], _renderer);
-            }
+            _worldCache.RemeshEditedBlocksBatchImmediate(CollectionsMarshal.AsSpan(_editedPositionsScratch), _renderer);
         }
     }
 

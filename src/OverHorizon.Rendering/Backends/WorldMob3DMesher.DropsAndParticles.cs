@@ -19,11 +19,21 @@ public static partial class WorldMob3DMesher
         IReadOnlyList<RemotePlayerAvatar>? avatars)
     {
         if (avatars is null || avatars.Count == 0) return;
-        const int c = EntityTextureAtlasGenerator.CellSteve;
 
         for (var i = 0; i < avatars.Count; i++)
         {
-            var a = avatars[i];
+            AppendSingleRemotePlayer(dst, cameraPos, avatars[i]);
+        }
+    }
+
+    /// <summary>Appends a single articulated 3D player avatar (used for multiplayer peers and local <c>F5</c> 3rd-person camera).</summary>
+    public static void AppendSingleRemotePlayer(
+        List<OverlayVertex> dst,
+        Vec3d cameraPos,
+        RemotePlayerAvatar a)
+    {
+        const int c = EntityTextureAtlasGenerator.CellSteve;
+        {
             var poseOffsetY = 0.0f;
             if (a.IsRidingMinecart)
             {
@@ -38,7 +48,7 @@ public static partial class WorldMob3DMesher
                 (float)(a.FeetPosition.X - cameraPos.X),
                 (float)(a.FeetPosition.Y - cameraPos.Y) - poseOffsetY,
                 (float)(a.FeetPosition.Z - cameraPos.Z));
-            if (relFeet.LengthSquared() > 128.0f * 128.0f) continue;
+            if (relFeet.LengthSquared() > 128.0f * 128.0f) return;
 
             var yawRad = a.YawDegrees * (MathF.PI / 180.0f);
             // Fix inverted head pitch: positive PitchDegrees (look up) requires negative X-rotation so +Z nose tilts +Y!
@@ -56,7 +66,7 @@ public static partial class WorldMob3DMesher
                 var ghostTint = new Vector4(tint.X, tint.Y, tint.Z, 0.45f);
                 EntityBoxUvBuilder.EmitEntityBox(dst, c, 0, 0, 8, 8, 8, new Vector3(-0.25f, 0.0f, -0.25f), new Vector3(0.50f, 0.50f, 0.50f), headXform, ghostTint);
                 EntityBoxUvBuilder.EmitEntityBox(dst, c, 32, 0, 8, 8, 8, new Vector3(-0.268f, -0.018f, -0.268f), new Vector3(0.536f, 0.536f, 0.536f), headXform, ghostTint);
-                continue;
+                return;
             }
 
             var walkSwing = MathF.Sin(a.WalkPhase) * 0.55f;
@@ -119,16 +129,19 @@ public static partial class WorldMob3DMesher
     public static void AppendDroppedItems(
         List<OverlayVertex> dst,
         Vec3d cameraPos,
-        IReadOnlyList<DroppedItemVisual>? drops)
+        IReadOnlyList<DroppedItemVisual>? drops,
+        TextureAtlasData? atlas = null)
     {
         if (drops is null || drops.Count == 0) return;
 
         for (var i = 0; i < drops.Count; i++)
         {
             var d = drops[i];
+            // Lift by +0.22f + gentle sinusoidal hover above d.Position.Y (which is the bottom of the drop AABB!)
+            var bobOffset = 0.22f + (MathF.Sin((d.SpinRadians * 1.6f) + (i * 0.7f)) * 0.055f);
             var rel = new Vector3(
                 (float)(d.Position.X - cameraPos.X),
-                (float)(d.Position.Y - cameraPos.Y),
+                (float)(d.Position.Y - cameraPos.Y) + bobOffset,
                 (float)(d.Position.Z - cameraPos.Z));
             if (rel.LengthSquared() > 72.0f * 72.0f) continue;
 
@@ -154,7 +167,11 @@ public static partial class WorldMob3DMesher
                 };
                 var m = Matrix4x4.CreateRotationY(d.SpinRadians) * Matrix4x4.CreateTranslation(rel + off);
 
-                if (d.IsBlock3D && d.SideTile >= 0)
+                if (d.SpriteTile == ProceduralItemTileManifest.TileOakFenceItem)
+                {
+                    HeldItem3DMesher.EmitMiniFenceMesh(dst, m, 0.28f, light);
+                }
+                else if (d.IsBlock3D && d.SideTile >= 0)
                 {
                     const float hs = 0.135f;
                     var top = d.TopTile >= 0 ? d.TopTile : d.SideTile;
@@ -167,7 +184,14 @@ public static partial class WorldMob3DMesher
                 }
                 else if (d.SpriteTile >= 0)
                 {
-                    EmitDoubleSidedSpriteCard(dst, m, d.SpriteTile, 0.20f, light);
+                    if (atlas is not null)
+                    {
+                        HeldItem3DMesher.EmitExtruded16x16Mesh(dst, atlas, d.SpriteTile, 0.34f, m, light);
+                    }
+                    else
+                    {
+                        EmitDoubleSidedSpriteCard(dst, m, d.SpriteTile, 0.20f, light);
+                    }
                 }
             }
         }

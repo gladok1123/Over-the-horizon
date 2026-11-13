@@ -25,9 +25,14 @@ public sealed partial class ClientSessionRunner
         await PersistActiveWorldIfAnyAsync().ConfigureAwait(false);
 
         var oldSavedWorld = _ownedSavedWorld;
-        _ownedSavedWorld = null;
         if (oldSavedWorld is not null)
         {
+            await EnqueueOnMainThreadAsync(() =>
+            {
+                _ownedSavedWorld = null;
+                _worldBridge.SetActiveLocalWorld(_panoramaWorld, _worldBridge.TimeCycle.TotalTicks);
+            }).ConfigureAwait(false);
+            if (_backgroundWorldStreamTask is not null) await _backgroundWorldStreamTask.ConfigureAwait(false);
             await oldSavedWorld.DisposeAsync().ConfigureAwait(false);
         }
 
@@ -51,6 +56,7 @@ public sealed partial class ClientSessionRunner
             _ownedSavedWorld = freshWorld;
             _activeWorldMeta = meta;
             _currentSeed = meta.Seed;
+            _biomeSampler = new BiomeSampler(_currentSeed, _registries.Biomes);
             _localSpawnY = resolvedSpawnY;
             _worldBridge.SetActiveLocalWorld(freshWorld, meta.WorldTimeTicks);
             _player.DismountMinecart();
@@ -80,51 +86,76 @@ public sealed partial class ClientSessionRunner
         if (_transport.IsConnected) return;
         _menu.StatusMessage = "Saving world and opening LAN server on TCP 25565...";
 
-        if (_backgroundWorldStreamTask is not null) await _backgroundWorldStreamTask.ConfigureAwait(false);
-        await PersistActiveWorldIfAnyAsync().ConfigureAwait(false);
-
-        var savedFeet = _player.FeetPosition;
-        var savedYaw = _player.Camera.YawDegrees;
-        var savedPitch = _player.Camera.PitchDegrees;
-        var worldDir = !string.IsNullOrEmpty(_activeWorldMeta?.FolderPath)
-            ? _activeWorldMeta.FolderPath
-            : Path.Combine(Directory.GetCurrentDirectory(), "saves", "lan_world");
-        var worldSeed = _activeWorldMeta?.Seed ?? _currentSeed;
-
-        var oldSavedWorld = _ownedSavedWorld;
-        _ownedSavedWorld = null;
-        if (oldSavedWorld is not null)
+        try
         {
-            await oldSavedWorld.DisposeAsync().ConfigureAwait(false);
+            if (_backgroundWorldStreamTask is not null) await _backgroundWorldStreamTask.ConfigureAwait(false);
+            await PersistActiveWorldIfAnyAsync().ConfigureAwait(false);
+
+            var savedFeet = _player.FeetPosition;
+            var savedYaw = _player.Camera.YawDegrees;
+            var savedPitch = _player.Camera.PitchDegrees;
+            var savedMeta = _activeWorldMeta;
+            var worldDir = !string.IsNullOrEmpty(savedMeta?.FolderPath)
+                ? savedMeta.FolderPath
+                : Path.Combine(Directory.GetCurrentDirectory(), "saves", "lan_world");
+            var worldSeed = savedMeta?.Seed ?? _currentSeed;
+
+            // Crucial: detach _worldBridge from oldSavedWorld ON THE MAIN THREAD BEFORE disposing oldSavedWorld,
+            // so UpdateInteractiveFrame never calls TryGetSnapshot/UpsertTicket on a disposed WorldSubsystem!
+            var oldSavedWorld = _ownedSavedWorld;
+            if (oldSavedWorld is not null)
+            {
+                await EnqueueOnMainThreadAsync(() =>
+                {
+                    _ownedSavedWorld = null;
+                    _worldBridge.SetActiveLocalWorld(_panoramaWorld, _worldBridge.TimeCycle.TotalTicks);
+                }).ConfigureAwait(false);
+                if (_backgroundWorldStreamTask is not null) await _backgroundWorldStreamTask.ConfigureAwait(false);
+                await oldSavedWorld.DisposeAsync().ConfigureAwait(false);
+            }
+
+            var started = await launcher.EnsureLocalServerRunningAsync(
+                25565, ct, customWorldDir: worldDir, seed: worldSeed, viewDistance: Math.Clamp(_menu.ActiveViewDistance, 4, 12)).ConfigureAwait(false);
+            if (!started)
+            {
+                if (savedMeta is not null)
+                {
+                    var reopened = WorldSaveManager.OpenWorldSubsystem(savedMeta, _registries);
+                    await EnqueueOnMainThreadAsync(() =>
+                    {
+                        _ownedSavedWorld = reopened;
+                        _worldBridge.SetActiveLocalWorld(reopened, savedMeta.WorldTimeTicks);
+                    }).ConfigureAwait(false);
+                }
+
+                _menu.StatusMessage = "Could not launch OverHorizon.Server for LAN.";
+                return;
+            }
+
+            var user = string.IsNullOrWhiteSpace(_menu.UsernameInput) ? "Explorer" : _menu.UsernameInput;
+            var freshTransport = new ClientMultiplayerTransport();
+            var login = await freshTransport.ConnectAndLoginAsync("127.0.0.1", 25565, user, ct).ConfigureAwait(false);
+            ClientLog.MultiplayerConnected(_logger, "127.0.0.1", 25565, login.Username, login.AssignedEntityId);
+
+            await EnqueueOnMainThreadAsync(() =>
+            {
+                _meshQueue.DrainPending();
+                _worldCache.ClearAll(_renderer);
+                _remotePlayers.Clear();
+                _worldBridge.ClearMultiplayerEntitySnapshots();
+                _transport = freshTransport;
+                _receivedInitialSpawnSync = true;
+                _player.ApplyAuthoritativePose(savedFeet, savedYaw, savedPitch, updateSpawn: false);
+                _transport.EnqueueOutbound(new MovePlayerPacket(savedFeet, savedYaw, savedPitch, _player.OnGround));
+                _menu.StatusMessage = string.Empty;
+                _menu.Mode = UiOverlayMode.InGame;
+                _chatHistory.AddMessage("[LAN] Local game hosted on 0.0.0.0:25565! Friends can join via Multiplayer.");
+            }).ConfigureAwait(false);
         }
-
-        var started = await launcher.EnsureLocalServerRunningAsync(
-            25565, ct, customWorldDir: worldDir, seed: worldSeed, viewDistance: Math.Clamp(_menu.ActiveViewDistance, 4, 12)).ConfigureAwait(false);
-        if (!started)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            _menu.StatusMessage = "Could not launch OverHorizon.Server for LAN.";
-            return;
+            _menu.StatusMessage = $"LAN start error: {ex.Message}";
         }
-
-        var user = string.IsNullOrWhiteSpace(_menu.UsernameInput) ? "Explorer" : _menu.UsernameInput;
-        var freshTransport = new ClientMultiplayerTransport();
-        var login = await freshTransport.ConnectAndLoginAsync("127.0.0.1", 25565, user, ct).ConfigureAwait(false);
-        ClientLog.MultiplayerConnected(_logger, "127.0.0.1", 25565, login.Username, login.AssignedEntityId);
-
-        await EnqueueOnMainThreadAsync(() =>
-        {
-            _meshQueue.DrainPending();
-            _worldCache.ClearAll(_renderer);
-            _remotePlayers.Clear();
-            _worldBridge.ClearMultiplayerEntitySnapshots();
-            _transport = freshTransport;
-            _receivedInitialSpawnSync = true;
-            _player.ApplyAuthoritativePose(savedFeet, savedYaw, savedPitch, updateSpawn: false);
-            _transport.EnqueueOutbound(new MovePlayerPacket(savedFeet, savedYaw, savedPitch, _player.OnGround));
-            _menu.StatusMessage = string.Empty;
-            _menu.Mode = UiOverlayMode.InGame;
-            _chatHistory.AddMessage("[LAN] Local game hosted on 0.0.0.0:25565! Friends can join via Multiplayer.");
-        }).ConfigureAwait(false);
     }
 
     private async Task SaveAndReturnToTitleAsync(CancellationToken ct)
@@ -156,9 +187,14 @@ public sealed partial class ClientSessionRunner
         await PersistActiveWorldIfAnyAsync().ConfigureAwait(false);
 
         var oldSavedWorld = _ownedSavedWorld;
-        _ownedSavedWorld = null;
         if (oldSavedWorld is not null)
         {
+            await EnqueueOnMainThreadAsync(() =>
+            {
+                _ownedSavedWorld = null;
+                _worldBridge.SetActiveLocalWorld(_panoramaWorld, WorldTimeCycle.DayTicks);
+            }).ConfigureAwait(false);
+            if (_backgroundWorldStreamTask is not null) await _backgroundWorldStreamTask.ConfigureAwait(false);
             await oldSavedWorld.DisposeAsync().ConfigureAwait(false);
         }
 
@@ -167,6 +203,7 @@ public sealed partial class ClientSessionRunner
         {
             _activeWorldMeta = null;
             _currentSeed = DefaultPanoramaSeed;
+            _biomeSampler = new BiomeSampler(_currentSeed, _registries.Biomes);
             _player.DismountMinecart();
             _meshQueue.DrainPending();
             _worldCache.ClearAll(_renderer);

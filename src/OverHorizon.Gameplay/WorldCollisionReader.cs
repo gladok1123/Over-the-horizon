@@ -15,6 +15,7 @@ namespace OverHorizon.Gameplay;
 public sealed class WorldCollisionReader : IVoxelSelectionReader
 {
     private readonly IChunkManager _chunks;
+    private readonly BlockCollisionShapeTable _collisionShapes;
     private readonly bool[] _isSolidByStateId;
     private readonly sbyte[] _fluidLevelByStateId;
     private readonly bool[] _hasSelectionByStateId;
@@ -29,6 +30,7 @@ public sealed class WorldCollisionReader : IVoxelSelectionReader
         ArgumentNullException.ThrowIfNull(blocks);
 
         _chunks = chunks;
+        _collisionShapes = new BlockCollisionShapeTable(blocks);
         var stateCount = blocks.StateCount;
         _isSolidByStateId = new bool[stateCount];
         _fluidLevelByStateId = new sbyte[stateCount];
@@ -86,6 +88,24 @@ public sealed class WorldCollisionReader : IVoxelSelectionReader
 
         var state = snapshot.GetBlockState(pos.SectionLocalX, pos.Y, pos.SectionLocalZ);
         return (uint)state.Id < (uint)_fluidLevelByStateId.Length ? _fluidLevelByStateId[state.Id] : -1;
+    }
+
+    /// <inheritdoc />
+    public bool TryGetCollisionBox(BlockPos pos, out BoundingBox box)
+    {
+        box = default;
+        if (pos.Y < EngineConstants.WorldMinY || pos.Y >= EngineConstants.WorldMaxY)
+        {
+            return false;
+        }
+
+        if (!_chunks.TryGetSnapshot(pos.ToChunkPos(), out var snapshot))
+        {
+            return false;
+        }
+
+        var state = snapshot.GetBlockState(pos.SectionLocalX, pos.Y, pos.SectionLocalZ);
+        return _collisionShapes.TryGetWorldBox(state, pos, out box);
     }
 
     /// <inheritdoc />

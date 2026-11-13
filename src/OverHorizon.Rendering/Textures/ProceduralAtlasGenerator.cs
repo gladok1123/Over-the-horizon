@@ -130,8 +130,26 @@ public static partial class ProceduralAtlasGenerator
     internal const ushort TileAmethystBlock = 110;
     internal const ushort TileMossyStoneBricks = 111;
     internal const ushort TileChiseledSandstone = 112;
+    internal const ushort TileOakDoorTop = 113;
+    internal const ushort TileOakDoorBottom = 114;
+    internal const ushort TileIronDoorTop = 115;
+    internal const ushort TileIronDoorBottom = 116;
+    internal const ushort TileIronTrapdoor = 117;
+    internal const ushort TileBuddingAmethyst = 118;
+    internal const ushort TileAmethystCluster = 119;
+    internal const ushort TileDirtPathTop = 120;
+    internal const ushort TileDirtPathSide = 121;
+    internal const ushort TileCherryLogSide = 122;
+    internal const ushort TileCherryLeaves = 123;
+    internal const ushort TileSpruceLogSide = 124;
+    internal const ushort TileSpruceLeaves = 125;
+    internal const ushort TileRedSand = 126;
+    internal const ushort TileCherryLogTop = 249;
+    internal const ushort TileSpruceLogTop = 250;
+    internal const ushort TileTerracotta = 251;
+    internal const ushort TilePackedIce = 252;
 
-    private const ushort FirstCustomTile = 114;
+    private const ushort FirstCustomTile = 127;
     private const ushort FirstItemSpriteTile = 128;
 
     /// <summary>Creates the default <c>256x256</c> block &amp; item texture atlas.</summary>
@@ -162,6 +180,21 @@ public static partial class ProceduralAtlasGenerator
                     _ = resourcePack.TryBlitItemTile(pixels, tile, stem, tr, tg, tb);
                 }
 
+                // Composite authentic two-layer 23w13a__or__b potions (glass bottle + tinted liquid) & spotted spawn eggs!
+                var potions = ProceduralItemTileManifest.PotionOverlays;
+                for (var i = 0; i < potions.Length; i++)
+                {
+                    var (tile, lr, lg, lb) = potions[i];
+                    _ = resourcePack.TryBlitPotionTile(pixels, tile, lr, lg, lb);
+                }
+
+                var eggs = ProceduralItemTileManifest.SpawnEggOverlays;
+                for (var i = 0; i < eggs.Length; i++)
+                {
+                    var (tile, br, bg, bb, sr, sg, sb) = eggs[i];
+                    _ = resourcePack.TryBlitSpawnEggTile(pixels, tile, br, bg, bb, sr, sg, sb);
+                }
+
                 _ = resourcePack.TryBlitItemTile(pixels, ProceduralItemTileManifest.TileBowPulling0, "bow_pulling_0");
                 _ = resourcePack.TryBlitItemTile(pixels, ProceduralItemTileManifest.TileBowPulling1, "bow_pulling_1");
                 _ = resourcePack.TryBlitItemTile(pixels, ProceduralItemTileManifest.TileBowPulling2, "bow_pulling_2");
@@ -169,6 +202,9 @@ public static partial class ProceduralAtlasGenerator
 
             _ = resourcePack.TryExtractRedBedTiles(pixels, TileRedBedTopHead, TileRedBedTopFoot, TileRedBedHeadSide, TileRedBedSide);
         }
+
+        // Render isometric 2-post + 2-rail Oak Fence inventory icon directly from the loaded oak_planks tile!
+        PaintFenceInventoryIconFromPlanks(pixels, ProceduralItemTileManifest.TileOakFenceItem, TileOakPlanks);
 
         var lookup = BuildFaceLookup();
         var nextCustomTile = FirstCustomTile;
@@ -214,6 +250,7 @@ public static partial class ProceduralAtlasGenerator
         itemLookup[BuiltInBlocks.Ladder] = TileLadder;
         itemLookup[BuiltInBlocks.Rail] = TileRail;
         itemLookup[BuiltInBlocks.Cobweb] = TileCobweb;
+        itemLookup[BuiltInBlocks.OakFence] = ProceduralItemTileManifest.TileOakFenceItem;
 
         return new TextureAtlasData(
             AtlasDimension,

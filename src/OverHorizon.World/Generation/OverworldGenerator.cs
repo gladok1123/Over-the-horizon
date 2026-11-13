@@ -38,6 +38,9 @@ public sealed class OverworldGenerator : IWorldGenerator
     private readonly BlockState _snowBlock;
     private readonly BlockState _sand;
     private readonly BlockState _sandstone;
+    private readonly BlockState _redSand;
+    private readonly BlockState _terracotta;
+    private readonly BlockState _packedIce;
     private readonly BlockState _water;
 
     /// <summary>
@@ -74,6 +77,9 @@ public sealed class OverworldGenerator : IWorldGenerator
         _snowBlock = blocks.GetDefaultState(BuiltInBlocks.SnowBlock);
         _sand = blocks.GetDefaultState(BuiltInBlocks.Sand);
         _sandstone = blocks.GetDefaultState(BuiltInBlocks.Sandstone);
+        _redSand = blocks.GetDefaultState(BuiltInBlocks.RedSand);
+        _terracotta = blocks.GetDefaultState(BuiltInBlocks.Terracotta);
+        _packedIce = blocks.GetDefaultState(BuiltInBlocks.PackedIce);
         _water = blocks.GetDefaultState(BuiltInBlocks.Water);
     }
 
@@ -144,7 +150,7 @@ public sealed class OverworldGenerator : IWorldGenerator
     {
         var baseH = ComputeColumnBaseHeight(worldX, worldZ, out var biomeId);
         var biomeKey = _biomeSampler.GetBiome(biomeId).Key;
-        if (biomeKey == BuiltInBiomes.Ocean || biomeKey == BuiltInBiomes.Desert)
+        if (biomeKey == BuiltInBiomes.Ocean || biomeKey == BuiltInBiomes.Desert || biomeKey == BuiltInBiomes.Badlands)
         {
             return (false, baseH, biomeKey);
         }
@@ -289,22 +295,53 @@ public sealed class OverworldGenerator : IWorldGenerator
                     {
                         var above = chunk.GetBlockState(lx, y + 1, lz);
                         var underWater = above == _water;
-                        if (underWater || biomeKey == BuiltInBiomes.Desert || (y <= SeaLevel + 1 && !_mineshaftGenerator.IsVerticalAccessShaftColumn(wx, wz)))
+                        if (underWater || (y <= SeaLevel + 1 && !_mineshaftGenerator.IsVerticalAccessShaftColumn(wx, wz)))
+                        {
+                            _ = chunk.SetBlockStateRaw(lx, y, lz, biomeKey == BuiltInBiomes.Badlands ? _redSand : _sand);
+                            depthRemaining = 3;
+                        }
+                        else if (biomeKey == BuiltInBiomes.Desert)
                         {
                             _ = chunk.SetBlockStateRaw(lx, y, lz, _sand);
                             depthRemaining = 3;
                         }
+                        else if (biomeKey == BuiltInBiomes.Badlands)
+                        {
+                            _ = chunk.SetBlockStateRaw(lx, y, lz, y >= 76 ? _terracotta : _redSand);
+                            depthRemaining = 5;
+                        }
+                        else if (biomeKey == BuiltInBiomes.SnowyTaiga || biomeKey == BuiltInBiomes.IceSpikes)
+                        {
+                            _ = chunk.SetBlockStateRaw(lx, y, lz, _snowBlock);
+                            depthRemaining = 3;
+                        }
                         else
                         {
-                            var topBlock = y >= 102 ? _snowBlock : _grass;
+                            var topBlock = y >= 108 ? _snowBlock : _grass;
                             _ = chunk.SetBlockStateRaw(lx, y, lz, topBlock);
                             depthRemaining = 3;
                         }
                     }
                     else
                     {
-                        var desertSub = depthRemaining == 1 ? _sandstone : _sand;
-                        var subBlock = biomeKey == BuiltInBiomes.Desert ? desertSub : _dirt;
+                        BlockState subBlock;
+                        if (biomeKey == BuiltInBiomes.Desert)
+                        {
+                            subBlock = depthRemaining == 1 ? _sandstone : _sand;
+                        }
+                        else if (biomeKey == BuiltInBiomes.Badlands)
+                        {
+                            subBlock = _terracotta;
+                        }
+                        else if (biomeKey == BuiltInBiomes.IceSpikes)
+                        {
+                            subBlock = depthRemaining == 1 ? _packedIce : _snowBlock;
+                        }
+                        else
+                        {
+                            subBlock = _dirt;
+                        }
+
                         _ = chunk.SetBlockStateRaw(lx, y, lz, subBlock);
                         depthRemaining--;
                     }

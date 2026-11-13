@@ -16,8 +16,22 @@ public sealed partial class RedstoneEngine
     /// <summary>Maximum number of blocks a Piston or Sticky Piston can push.</summary>
     public const int MaxPistonPushCount = PistonMechanics.MaxPistonPushCount;
 
+    private static readonly string[] PowerLevelTokens =
+    [
+        "0", "1", "2", "3", "4", "5", "6", "7",
+        "8", "9", "10", "11", "12", "13", "14", "15",
+    ];
+
     private readonly IBlockRegistry _blocks;
     private readonly HashSet<BlockPos> _dirtyNodes = [];
+    private readonly HashSet<BlockPos> _regionScratch = [];
+    private readonly List<BlockPos> _snapshotScratch = [];
+    private readonly HashSet<BlockPos> _wiresScratch = [];
+    private readonly Queue<BlockPos> _bfsScratch = [];
+    private readonly Dictionary<BlockPos, int> _powerMapScratch = [];
+    private readonly PriorityQueue<BlockPos, int> _pqScratch = new();
+    private readonly List<BlockPos> _scheduledKeysScratch = [];
+    private readonly List<BlockPos> _expiredButtonsScratch = [];
     private readonly Dictionary<BlockPos, double> _activeButtons = [];
     private readonly Dictionary<BlockPos, (double RemainingSeconds, int TargetPower)> _scheduledDiodes = [];
     private readonly HashSet<BlockPos> _activePlates = [];
@@ -174,15 +188,25 @@ public sealed partial class RedstoneEngine
     {
         for (var pass = 0; pass < 6 && _dirtyNodes.Count > 0; pass++)
         {
-            var region = new HashSet<BlockPos>(_dirtyNodes);
+            _regionScratch.Clear();
+            foreach (var dirty in _dirtyNodes)
+            {
+                _ = _regionScratch.Add(dirty);
+            }
+
             _dirtyNodes.Clear();
 
-            PropagateWireNetwork(region, getBlock, setBlock);
+            PropagateWireNetwork(_regionScratch, getBlock, setBlock);
 
-            var snapshot = region.ToArray();
-            for (var i = 0; i < snapshot.Length; i++)
+            _snapshotScratch.Clear();
+            foreach (var p in _regionScratch)
             {
-                EvaluateComponentAt(snapshot[i], getBlock, setBlock, ignitedTntPositions, soundEvents, useTimedDiodeQueue);
+                _snapshotScratch.Add(p);
+            }
+
+            for (var i = 0; i < _snapshotScratch.Count; i++)
+            {
+                EvaluateComponentAt(_snapshotScratch[i], getBlock, setBlock, ignitedTntPositions, soundEvents, useTimedDiodeQueue);
             }
         }
     }
@@ -232,15 +256,23 @@ public sealed partial class RedstoneEngine
             if (powered && key == BuiltInBlocks.RedstoneLamp) setBlock(pos, _blocks.GetDefaultState(BuiltInBlocks.LitRedstoneLamp));
             else if (!powered && key == BuiltInBlocks.LitRedstoneLamp) setBlock(pos, _blocks.GetDefaultState(BuiltInBlocks.RedstoneLamp));
         }
-        else if (key == BuiltInBlocks.OakTrapdoor)
+        else if (key == BuiltInBlocks.OakTrapdoor || key == BuiltInBlocks.IronTrapdoor)
         {
             var powered = GetPowerReceivedAt(pos, getBlock, ignoreSource: null) > 0;
             if (IsTrue(meta, "powered") != powered)
             {
                 var next = _blocks.WithProperty(_blocks.WithProperty(state, "powered", powered ? "true" : "false"), "open", powered ? "true" : "false");
                 setBlock(pos, next);
-                soundEvents.Add((pos, RedstoneSoundKind.Click));
+                var isIron = key == BuiltInBlocks.IronTrapdoor;
+                var snd = isIron
+                    ? (powered ? RedstoneSoundKind.IronTrapdoorOpen : RedstoneSoundKind.IronTrapdoorClose)
+                    : (powered ? RedstoneSoundKind.WoodenTrapdoorOpen : RedstoneSoundKind.WoodenTrapdoorClose);
+                soundEvents.Add((pos, snd));
             }
+        }
+        else if (key == BuiltInBlocks.OakDoor || key == BuiltInBlocks.IronDoor)
+        {
+            EvaluateDoor(pos, state, meta, getBlock, setBlock, soundEvents);
         }
         else if (key == BuiltInBlocks.Piston || key == BuiltInBlocks.StickyPiston)
         {
@@ -330,8 +362,52 @@ public sealed partial class RedstoneEngine
         }
         else
         {
-            setBlock(pos, _blocks.WithProperty(state, "power", targetPower.ToString(CultureInfo.InvariantCulture)));
+            setBlock(pos, _blocks.WithProperty(state, "power", PowerLevelTokens[Math.Clamp(targetPower, 0, 15)]));
             NotifyBlockChanged(pos.Offset(facingDir));
+        }
+    }
+
+    private void EvaluateDoor(
+        BlockPos pos,
+        BlockState state,
+        BlockStateMetadata meta,
+        Func<BlockPos, BlockState> getBlock,
+        Action<BlockPos, BlockState> setBlock,
+        List<(BlockPos Pos, RedstoneSoundKind Sound)> soundEvents)
+    {
+        var isUpper = meta.Properties.TryGetValue("half", out var hv) && string.Equals(hv, "upper", StringComparison.OrdinalIgnoreCase);
+        var lowerPos = isUpper ? pos.Offset(Direction.Down) : pos;
+        var upperPos = lowerPos.Offset(Direction.Up);
+
+        var lowerState = isUpper ? getBlock(lowerPos) : state;
+        if (lowerState.IsAir) return;
+        var lowerMeta = isUpper ? _blocks.GetStateMetadata(lowerState) : meta;
+        if (lowerMeta.BlockKey != meta.BlockKey) return;
+
+        var powered = GetPowerReceivedAt(lowerPos, getBlock, ignoreSource: null) > 0 ||
+                      GetPowerReceivedAt(upperPos, getBlock, ignoreSource: null) > 0;
+        if (IsTrue(lowerMeta, "powered") == powered)
+        {
+            return;
+        }
+
+        var powStr = powered ? "true" : "false";
+        var wasOpen = IsTrue(lowerMeta, "open");
+        setBlock(lowerPos, _blocks.WithProperty(_blocks.WithProperty(lowerState, "powered", powStr), "open", powStr));
+
+        var upperState = isUpper ? state : getBlock(upperPos);
+        if (!upperState.IsAir && _blocks.GetStateMetadata(upperState).BlockKey == lowerMeta.BlockKey)
+        {
+            setBlock(upperPos, _blocks.WithProperty(_blocks.WithProperty(upperState, "powered", powStr), "open", powStr));
+        }
+
+        if (wasOpen != powered)
+        {
+            var isIron = lowerMeta.BlockKey == BuiltInBlocks.IronDoor;
+            var snd = isIron
+                ? (powered ? RedstoneSoundKind.IronDoorOpen : RedstoneSoundKind.IronDoorClose)
+                : (powered ? RedstoneSoundKind.WoodenDoorOpen : RedstoneSoundKind.WoodenDoorClose);
+            soundEvents.Add((lowerPos, snd));
         }
     }
 
@@ -339,10 +415,15 @@ public sealed partial class RedstoneEngine
     {
         if (_scheduledDiodes.Count == 0) return;
 
-        var keys = _scheduledDiodes.Keys.ToArray();
-        for (var i = 0; i < keys.Length; i++)
+        _scheduledKeysScratch.Clear();
+        foreach (var k in _scheduledDiodes.Keys)
         {
-            var pos = keys[i];
+            _scheduledKeysScratch.Add(k);
+        }
+
+        for (var i = 0; i < _scheduledKeysScratch.Count; i++)
+        {
+            var pos = _scheduledKeysScratch[i];
             var (rem, targetPow) = _scheduledDiodes[pos];
             var nextRem = rem - dt;
             if (nextRem > 0.0)
@@ -370,7 +451,7 @@ public sealed partial class RedstoneEngine
             else if (meta.BlockKey == BuiltInBlocks.RedstoneComparator)
             {
                 var liveOut = RedstoneDiodeAndWireRules.ComputeComparatorOutput(_blocks, this, pos, meta, getBlock);
-                setBlock(pos, _blocks.WithProperty(cur, "power", liveOut.ToString(CultureInfo.InvariantCulture)));
+                setBlock(pos, _blocks.WithProperty(cur, "power", PowerLevelTokens[Math.Clamp(liveOut, 0, 15)]));
                 NotifyBlockChanged(pos);
                 NotifyBlockChanged(pos.Offset(facingDir));
             }

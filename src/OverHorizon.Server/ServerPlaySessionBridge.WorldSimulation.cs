@@ -201,6 +201,20 @@ public sealed partial class ServerPlaySessionBridge
                 }
             }
 
+            // Atomically clear the partner half of a 2-block Door so cascade detachment never drops a second door!
+            if ((existingMeta.BlockKey == BuiltInBlocks.OakDoor || existingMeta.BlockKey == BuiltInBlocks.IronDoor) &&
+                BlockAttachmentAndShapeRules.TryGetPartnerDoorPosition(existingMeta, target, out var partnerPos, out _))
+            {
+                var partnerState = _world.GetBlockState(partnerPos);
+                if (!partnerState.IsAir &&
+                    _registries.Blocks.GetStateMetadata(partnerState).BlockKey == existingMeta.BlockKey &&
+                    _world.SetBlockState(partnerPos, BlockState.Air, tickNumber))
+                {
+                    _redstone.NotifyBlockChanged(partnerPos);
+                    broadcaster.BroadcastToPlaySessions(new BlockUpdatePacket(partnerPos, BlockState.Air.Id));
+                }
+            }
+
             ServerWorldTimeAndBlockSync.ApplyMutationAndBroadcastCascade(
                 _world, _registries, _redstone, target, BlockState.Air, tickNumber, broadcaster, _droppedItems, _tntAndWorld);
             return;
@@ -209,10 +223,12 @@ public sealed partial class ServerPlaySessionBridge
         if (action.BlockStateId == 0 || action.BlockStateId >= _registries.Blocks.StateCount) return;
 
         var candidateState = new BlockState(action.BlockStateId);
-        if (_registries.Blocks.GetStateMetadata(candidateState).IsSolid)
+        var candidateMeta = _registries.Blocks.GetStateMetadata(candidateState);
+        if (candidateMeta.IsSolid &&
+            OverHorizon.Physics.BlockCollisionShapeTable.TryGetCollisionBox(candidateMeta, target, out var placedBox))
         {
             var playerBox = BoundingBox.FromEntityFeet(playerFeet, PlayerWidth, PlayerHeight).Inflate(-1e-4, -1e-4, -1e-4);
-            if (playerBox.Intersects(BoundingBox.FromBlock(target))) return;
+            if (playerBox.Intersects(placedBox)) return;
         }
 
         var placeEvent = new OverHorizon.Modding.Events.BlockPlaceEvent(session.SessionId, session.Username, target, candidateState);

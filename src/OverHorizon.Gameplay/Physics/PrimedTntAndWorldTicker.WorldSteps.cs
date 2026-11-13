@@ -289,10 +289,14 @@ public sealed partial class PrimedTntAndWorldTicker
     private static bool IsFlammableBlock(ResourceKey key) =>
         key == BuiltInBlocks.OakPlanks || key == BuiltInBlocks.BirchPlanks ||
         key == BuiltInBlocks.OakLog || key == BuiltInBlocks.BirchLog ||
+        key == BuiltInBlocks.CherryLog || key == BuiltInBlocks.SpruceLog ||
         key == BuiltInBlocks.OakLeaves || key == BuiltInBlocks.BirchLeaves ||
+        key == BuiltInBlocks.CherryLeaves || key == BuiltInBlocks.SpruceLeaves ||
         key == BuiltInBlocks.OakFence || key == BuiltInBlocks.Bookshelf ||
         key == BuiltInBlocks.HayBlock || key == BuiltInBlocks.CrimsonWool ||
         key == BuiltInBlocks.WhiteWool || key == BuiltInBlocks.BlueWool;
+
+    private readonly Queue<BlockPos> _cascadeQueueScratch = new();
 
     private int StepGrassSpreadAndDecay(
         Vec3d center,
@@ -320,6 +324,36 @@ public sealed partial class PrimedTntAndWorldTicker
             if (state.IsAir) continue;
 
             var meta = _blocks.GetStateMetadata(state);
+            if (meta.BlockKey == BuiltInBlocks.BuddingAmethyst)
+            {
+                var dirs = DirectionExtensions.All;
+                var growDir = dirs[NextRandom() % (uint)dirs.Length];
+                var crystalPos = pos.Offset(growDir);
+                if (crystalPos.Y >= EngineConstants.WorldMinY && crystalPos.Y < EngineConstants.WorldMaxY && getBlock(crystalPos).IsAir)
+                {
+                    var clusterState = _blocks.WithProperty(
+                        _blocks.GetDefaultState(BuiltInBlocks.AmethystCluster),
+                        "facing",
+                        BlockAttachmentAndShapeRules.DirectionName(growDir));
+                    setBlock(crystalPos, clusterState);
+                    mutations++;
+                }
+
+                continue;
+            }
+
+            if (meta.BlockKey == BuiltInBlocks.DirtPath)
+            {
+                var pathAbove = _blocks.GetStateMetadata(getBlock(pos.Offset(Direction.Up)));
+                if (pathAbove.IsOpaque || pathAbove.IsFluid)
+                {
+                    setBlock(pos, dirtDefault);
+                    mutations++;
+                }
+
+                continue;
+            }
+
             if (meta.BlockKey != BuiltInBlocks.GrassBlock) continue;
 
             var abovePos = pos.Offset(Direction.Up);
@@ -363,16 +397,17 @@ public sealed partial class PrimedTntAndWorldTicker
         Action<BlockPos, BlockState> setBlock,
         List<(BlockPos Pos, BlockState DetachedState)>? detachedBlocks)
     {
-        var queue = new Queue<BlockPos>();
-        queue.Enqueue(changedPos);
+        _cascadeQueueScratch.Clear();
+        _cascadeQueueScratch.Enqueue(changedPos);
         var safety = 0;
 
-        while (queue.Count > 0 && safety++ < 64)
+        while (_cascadeQueueScratch.Count > 0 && safety++ < 64)
         {
-            var origin = queue.Dequeue();
-            foreach (var dir in DirectionExtensions.All)
+            var origin = _cascadeQueueScratch.Dequeue();
+            var dirs = DirectionExtensions.All;
+            for (var i = 0; i < dirs.Length; i++)
             {
-                var neighbor = origin.Offset(dir);
+                var neighbor = origin.Offset(dirs[i]);
                 if (neighbor.Y < EngineConstants.WorldMinY || neighbor.Y >= EngineConstants.WorldMaxY) continue;
 
                 var ns = getBlock(neighbor);
@@ -380,7 +415,7 @@ public sealed partial class PrimedTntAndWorldTicker
                 {
                     detachedBlocks?.Add((neighbor, ns));
                     setBlock(neighbor, BlockState.Air);
-                    queue.Enqueue(neighbor);
+                    _cascadeQueueScratch.Enqueue(neighbor);
                     EnqueueFrontierNeighbors(neighbor, getBlock);
                 }
             }
@@ -431,7 +466,7 @@ public sealed partial class PrimedTntAndWorldTicker
     {
         if (state.IsAir) return false;
         var key = _blocks.GetStateMetadata(state).BlockKey;
-        return key == BuiltInBlocks.Sand || key == BuiltInBlocks.Gravel;
+        return key == BuiltInBlocks.Sand || key == BuiltInBlocks.RedSand || key == BuiltInBlocks.Gravel;
     }
 
     private bool CanGravityFallInto(BlockState below)

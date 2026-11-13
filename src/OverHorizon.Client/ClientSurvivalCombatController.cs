@@ -242,8 +242,8 @@ internal sealed class ClientSurvivalCombatController
             _hitSoundCooldown = 0.22;
             player.TriggerHandSwing();
             var center = new Vec3d(hit.BlockPosition.X + 0.5, hit.BlockPosition.Y + 0.5, hit.BlockPosition.Z + 0.5);
-            var hitCue = ClientPlayerVitalsAndAudio.ResolveFootstepCue(blockKey.Path);
-            _audio.PlayPositional(hitCue, center, gain: 0.45f * player.MasterVolume, pitch: 0.84f);
+            var hitCue = BlockSoundProfile.ResolveFootstepCue(blockKey);
+            _audio.PlayPositional(hitCue, center, gain: 0.45f * player.MasterVolume, pitch: 0.88f);
         }
 
         if (_miningElapsedSeconds >= duration)

@@ -1,5 +1,4 @@
 using System.Numerics;
-using Microsoft.Extensions.Logging;
 using OverHorizon.Core.Math;
 using Silk.NET.Core.Loader;
 using Silk.NET.OpenAL;
@@ -7,112 +6,126 @@ using Silk.NET.OpenAL;
 namespace OverHorizon.Audio;
 
 /// <summary>
-/// Silk.NET OpenAL 3D positional audio subsystem with clean-room procedural PCM buffers,
-/// voice pooling, camera-relative anti-jitter source coordinates, and graceful headless fallback.
+/// Silk.NET OpenAL 3D positional audio engine with a 32-voice pooled channel ring, O(1) buffer lookup,
+/// micro-cooldown spam deduplication, and hot-reloadable <c>23w13a__or__b</c> <c>.ogg</c> sound packs.
 /// </summary>
 public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
 {
-    private const int VoicePoolSize = 20;
-    private const double DefaultMaxAudibleDistance = 16.0;
-    private const double MediumMaxAudibleDistance = 22.0;
-    private const double ExplosionMaxAudibleDistance = 48.0;
-    private static readonly Lock ResolverSyncRoot = new();
+    private const int VoicePoolSize = 32;
+    private const int MaxCueSlots = 128;
+    private const long DuplicateCueCooldownMs = 18;
+    private static readonly object ResolverSyncRoot = new();
 
-    private readonly ILogger<OpenAlAudioSubsystem> _logger;
-    private readonly IReadOnlyDictionary<SoundCue, PcmSoundClip> _soundBank;
-    private readonly Dictionary<SoundCue, uint> _alBuffers = [];
+    private readonly Lock _sync = new();
+    private readonly uint[] _alBuffers = new uint[MaxCueSlots];
+    private readonly int[] _clipDurationsMs = new int[MaxCueSlots];
+    private readonly long[] _lastCuePlayTick = new long[MaxCueSlots];
     private readonly uint[] _voiceSources = new uint[VoicePoolSize];
+    private readonly long[] _voiceBusyUntilTick = new long[VoicePoolSize];
+    private IReadOnlyDictionary<SoundCue, PcmSoundClip> _soundBank;
 
     private ALContext? _alc;
     private AL? _al;
     private Device* _device;
     private Context* _context;
     private int _roundRobinVoice;
+    private long _totalSoundsTriggered;
+    private float _masterGain = 1.0f;
     private bool _disposed;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="OpenAlAudioSubsystem"/> class.
     /// </summary>
-    /// <param name="logger">Structured logger.</param>
-    /// <param name="externalAssetsPath">Optional path to external <c>.wav</c> sound pack or directory.</param>
-    public OpenAlAudioSubsystem(ILogger<OpenAlAudioSubsystem> logger, string? externalAssetsPath = null)
+    /// <param name="externalAssetsPath">Optional path to external <c>.ogg</c>/<c>.wav</c> assets folder.</param>
+    public OpenAlAudioSubsystem(string? externalAssetsPath = null)
     {
-        ArgumentNullException.ThrowIfNull(logger);
-        _logger = logger;
-        _soundBank = ProceduralSoundBank.CreateDefaultBank(externalAssetsPath);
+        _soundBank = ProceduralSoundBank.LoadOrCreateAll(externalAssetsPath);
+        CacheClipDurations(_soundBank);
     }
 
     /// <inheritdoc />
     public bool IsInitialized { get; private set; }
 
     /// <inheritdoc />
-    public long TotalSoundsTriggered { get; private set; }
+    public long TotalSoundsTriggered => Interlocked.Read(ref _totalSoundsTriggered);
 
     /// <inheritdoc />
     public Vec3d ListenerPosition { get; private set; }
-
-    /// <summary>Gets the synthesized PCM clips managed by this subsystem.</summary>
-    public IReadOnlyDictionary<SoundCue, PcmSoundClip> SoundBank => _soundBank;
 
     /// <inheritdoc />
     public bool TryInitializeDevice()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (IsInitialized)
-        {
-            return true;
-        }
 
-        try
+        lock (_sync)
         {
-            EnsureSingleFileNativeResolver();
-            var (alc, al) = AcquireOpenAlApis();
-
-            var device = alc.OpenDevice(string.Empty);
-            if (device is null)
+            if (IsInitialized)
             {
-                al.Dispose();
-                alc.Dispose();
-                AudioLog.OpenAlFallback(_logger, "OpenDevice returned null");
-                return false;
+                return true;
             }
 
-            var context = alc.CreateContext(device, null);
-            if (context is null || !alc.MakeContextCurrent(context))
+            try
             {
-                if (context is not null)
+                EnsureSingleFileNativeResolver();
+                (_alc, _al) = AcquireOpenAlApis();
+
+                _device = _alc.OpenDevice(string.Empty);
+                if (_device is null)
                 {
-                    alc.DestroyContext(context);
+                    ReleaseOpenAlHandles();
+                    return false;
                 }
 
-                alc.CloseDevice(device);
-                al.Dispose();
-                alc.Dispose();
-                AudioLog.OpenAlFallback(_logger, "CreateContext/MakeContextCurrent failed");
+                _context = _alc.CreateContext(_device, null);
+                if (_context is null || !_alc.MakeContextCurrent(_context))
+                {
+                    ReleaseOpenAlHandles();
+                    return false;
+                }
+
+                _al.DistanceModel(DistanceModel.InverseDistanceClamped);
+                UploadSoundBank(_al);
+                AllocateVoicePool(_al);
+
+                IsInitialized = true;
+                UpdateListenerCore(ListenerPosition, -Vector3.UnitZ, Vector3.UnitY, _masterGain);
+                return true;
+            }
+            catch (Exception ex) when (ex is DllNotFoundException or FileNotFoundException or TypeInitializationException or InvalidOperationException)
+            {
+                ReleaseOpenAlHandles();
                 return false;
             }
-
-            _alc = alc;
-            _al = al;
-            _device = device;
-            _context = context;
-
-            al.GetError();
-            al.DistanceModel(DistanceModel.LinearDistanceClamped);
-            al.SetListenerProperty(ListenerVector3.Position, 0.0f, 0.0f, 0.0f);
-
-            UploadSoundBank(al);
-            AllocateVoicePool(al);
-
-            IsInitialized = true;
-            AudioLog.OpenAlInitialized(_logger, _alBuffers.Count, _voiceSources.Length);
-            return true;
         }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
+    }
+
+    /// <inheritdoc />
+    public void ReloadSoundPack(string? externalAssetsPath)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var reloaded = ProceduralSoundBank.LoadOrCreateAll(externalAssetsPath);
+        lock (_sync)
         {
-            ReleaseOpenAlHandles();
-            AudioLog.OpenAlFallback(_logger, ex.GetType().Name);
-            return false;
+            _soundBank = reloaded;
+            CacheClipDurations(reloaded);
+            if (!IsInitialized || _al is null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < _voiceSources.Length; i++)
+            {
+                if (_voiceSources[i] != 0)
+                {
+                    _al.SourceStop(_voiceSources[i]);
+                    _al.SetSourceProperty(_voiceSources[i], SourceInteger.Buffer, 0);
+                    _voiceBusyUntilTick[i] = 0;
+                }
+            }
+
+            DeleteAllBuffers(_al);
+            UploadSoundBank(_al);
         }
     }
 
@@ -120,25 +133,18 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
     public void UpdateListener(Vec3d position, Vector3 forward, Vector3 up, float masterGain = 1.0f)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ListenerPosition = position;
 
-        if (!IsInitialized || _al is null)
+        lock (_sync)
         {
-            return;
-        }
+            ListenerPosition = position;
+            _masterGain = Math.Clamp(masterGain, 0f, 1f);
 
-        var clampedGain = Math.Clamp(masterGain, 0.0f, 1.0f);
-        _al.SetListenerProperty(ListenerFloat.Gain, clampedGain);
+            if (!IsInitialized || _al is null)
+            {
+                return;
+            }
 
-        Span<float> orientation =
-        [
-            forward.X, forward.Y, forward.Z,
-            up.X, up.Y, up.Z,
-        ];
-
-        fixed (float* ptr = orientation)
-        {
-            _al.SetListenerProperty(ListenerFloatArray.Orientation, ptr);
+            UpdateListenerCore(position, forward, up, _masterGain);
         }
     }
 
@@ -147,50 +153,56 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        var dx = worldPosition.X - ListenerPosition.X;
-        var dy = worldPosition.Y - ListenerPosition.Y;
-        var dz = worldPosition.Z - ListenerPosition.Z;
-        var distSq = (dx * dx) + (dy * dy) + (dz * dz);
-        var maxDist = ResolveMaxAudibleDistance(cue);
-        if (distSq > maxDist * maxDist)
+        _ = Interlocked.Increment(ref _totalSoundsTriggered);
+        var cueIndex = (int)cue;
+        if ((uint)cueIndex >= MaxCueSlots)
         {
             return;
         }
 
-        TotalSoundsTriggered++;
-
-        if (!IsInitialized || _al is null || !_alBuffers.TryGetValue(cue, out var bufferId))
+        lock (_sync)
         {
-            return;
-        }
+            if (!IsInitialized || _al is null)
+            {
+                return;
+            }
 
-        var dist = Math.Sqrt(distSq);
-        var distanceFactor = dist <= 1.25
-            ? 1.0f
-            : MathF.Pow(Math.Clamp(1.0f - (float)((dist - 1.25) / (maxDist - 1.25)), 0.0f, 1.0f), 1.65f);
-        var attenuatedGain = Math.Clamp(gain * distanceFactor, 0.0f, 2.0f);
-        if (attenuatedGain <= 0.002f)
-        {
-            return;
-        }
+            var buffer = _alBuffers[cueIndex];
+            if (buffer == 0)
+            {
+                return;
+            }
 
-        var source = SelectAvailableVoice(_al);
-        _al.SourceStop(source);
-        _al.SetSourceProperty(source, SourceInteger.Buffer, bufferId);
-        _al.SetSourceProperty(source, SourceVector3.Position, (float)dx, (float)dy, (float)dz);
-        _al.SetSourceProperty(source, SourceFloat.ReferenceDistance, 1.5f);
-        _al.SetSourceProperty(source, SourceFloat.MaxDistance, (float)maxDist);
-        _al.SetSourceProperty(source, SourceFloat.Gain, attenuatedGain);
-        _al.SetSourceProperty(source, SourceFloat.Pitch, Math.Clamp(pitch, 0.5f, 2.0f));
-        _al.SourcePlay(source);
+            var nowTick = Environment.TickCount64;
+            if (nowTick - _lastCuePlayTick[cueIndex] < DuplicateCueCooldownMs)
+            {
+                return;
+            }
+
+            // Camera-relative floating-point origin prevents 32-bit float precision jitter far from world origin.
+            var rel = worldPosition - ListenerPosition;
+            if (rel.LengthSquared > 64.0 * 64.0)
+            {
+                return;
+            }
+
+            _lastCuePlayTick[cueIndex] = nowTick;
+            var relFloat = new Vector3((float)rel.X, (float)rel.Y, (float)rel.Z);
+            var clampedPitch = Math.Clamp(pitch, 0.5f, 2.0f);
+            var durationMs = (int)MathF.Ceiling(_clipDurationsMs[cueIndex] / clampedPitch);
+
+            var voiceIdx = SelectAvailableVoiceIndex(_al, nowTick);
+            var source = _voiceSources[voiceIdx];
+            _voiceBusyUntilTick[voiceIdx] = nowTick + durationMs;
+
+            _al.SourceStop(source);
+            _al.SetSourceProperty(source, SourceInteger.Buffer, (int)buffer);
+            _al.SetSourceProperty(source, SourceVector3.Position, in relFloat);
+            _al.SetSourceProperty(source, SourceFloat.Gain, Math.Clamp(gain, 0f, 2f));
+            _al.SetSourceProperty(source, SourceFloat.Pitch, clampedPitch);
+            _al.SourcePlay(source);
+        }
     }
-
-    private static double ResolveMaxAudibleDistance(SoundCue cue) => cue switch
-    {
-        SoundCue.Explosion => ExplosionMaxAudibleDistance,
-        SoundCue.TntFuse or SoundCue.BowShoot or SoundCue.ArrowHit or SoundCue.PistonExtend or SoundCue.PistonRetract or SoundCue.ShieldBlock => MediumMaxAudibleDistance,
-        _ => DefaultMaxAudibleDistance,
-    };
 
     /// <inheritdoc />
     public void Dispose()
@@ -200,8 +212,16 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
             return;
         }
 
-        ReleaseOpenAlHandles();
-        _disposed = true;
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            ReleaseOpenAlHandles();
+            _disposed = true;
+        }
     }
 
     private static void EnsureSingleFileNativeResolver()
@@ -269,10 +289,53 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
         }
     }
 
+    private void CacheClipDurations(IReadOnlyDictionary<SoundCue, PcmSoundClip> bank)
+    {
+        Array.Clear(_clipDurationsMs, 0, _clipDurationsMs.Length);
+        foreach (var (cue, clip) in bank)
+        {
+            var idx = (int)cue;
+            if ((uint)idx < MaxCueSlots && clip.SampleRate > 0)
+            {
+                _clipDurationsMs[idx] = Math.Max(20, (int)(clip.Samples.Length * 1000L / clip.SampleRate));
+            }
+        }
+    }
+
+    private void UpdateListenerCore(Vec3d position, Vector3 forward, Vector3 up, float masterGain)
+    {
+        if (_al is null)
+        {
+            return;
+        }
+
+        ListenerPosition = position;
+        var origin = Vector3.Zero;
+        _al.SetListenerProperty(ListenerVector3.Position, in origin);
+        _al.SetListenerProperty(ListenerFloat.Gain, masterGain);
+
+        Span<float> orientation =
+        [
+            forward.X, forward.Y, forward.Z,
+            up.X, up.Y, up.Z,
+        ];
+
+        fixed (float* oriPtr = orientation)
+        {
+            _al.SetListenerProperty(ListenerFloatArray.Orientation, oriPtr);
+        }
+    }
+
     private void UploadSoundBank(AL al)
     {
         foreach (var (cue, clip) in _soundBank)
         {
+            var idx = (int)cue;
+            if ((uint)idx >= MaxCueSlots)
+            {
+                continue;
+            }
+
             var buffer = al.GenBuffer();
             var span = clip.Samples.Span;
             fixed (short* samplePtr = span)
@@ -280,7 +343,19 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
                 al.BufferData(buffer, BufferFormat.Mono16, samplePtr, span.Length * sizeof(short), clip.SampleRate);
             }
 
-            _alBuffers[cue] = buffer;
+            _alBuffers[idx] = buffer;
+        }
+    }
+
+    private void DeleteAllBuffers(AL al)
+    {
+        for (var i = 0; i < _alBuffers.Length; i++)
+        {
+            if (_alBuffers[i] != 0)
+            {
+                al.DeleteBuffer(_alBuffers[i]);
+                _alBuffers[i] = 0;
+            }
         }
     }
 
@@ -294,22 +369,34 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
             al.SetSourceProperty(src, SourceFloat.RolloffFactor, 1.0f);
             al.SetSourceProperty(src, SourceBoolean.Looping, false);
             _voiceSources[i] = src;
+            _voiceBusyUntilTick[i] = 0;
         }
     }
 
-    private uint SelectAvailableVoice(AL al)
+    private int SelectAvailableVoiceIndex(AL al, long nowTick)
     {
+        // Fast O(1)-amortized pure C# timestamp scan avoids up to 32 native OpenAL P/Invoke queries per sound!
         for (var i = 0; i < _voiceSources.Length; i++)
         {
-            var candidate = _voiceSources[i];
-            al.GetSourceProperty(candidate, GetSourceInteger.SourceState, out var state);
-            if ((SourceState)state != SourceState.Playing)
+            var idx = (_roundRobinVoice + i) % _voiceSources.Length;
+            if (nowTick >= _voiceBusyUntilTick[idx])
             {
-                return candidate;
+                _roundRobinVoice = (idx + 1) % _voiceSources.Length;
+                return idx;
             }
         }
 
-        var stolen = _voiceSources[_roundRobinVoice];
+        for (var i = 0; i < _voiceSources.Length; i++)
+        {
+            al.GetSourceProperty(_voiceSources[i], GetSourceInteger.SourceState, out var state);
+            if ((SourceState)state != SourceState.Playing)
+            {
+                _roundRobinVoice = (i + 1) % _voiceSources.Length;
+                return i;
+            }
+        }
+
+        var stolen = _roundRobinVoice;
         _roundRobinVoice = (_roundRobinVoice + 1) % _voiceSources.Length;
         return stolen;
     }
@@ -330,15 +417,7 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
                 }
             }
 
-            foreach (var buf in _alBuffers.Values)
-            {
-                if (buf != 0)
-                {
-                    _al.DeleteBuffer(buf);
-                }
-            }
-
-            _alBuffers.Clear();
+            DeleteAllBuffers(_al);
         }
 
         if (_alc is not null)

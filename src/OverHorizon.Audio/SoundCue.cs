@@ -214,4 +214,76 @@ public enum SoundCue : byte
 
     /// <summary>Composter filling or popping Bone Meal (<c>block/composter/ready1.ogg</c>).</summary>
     ComposterReady = 69,
+
+    /// <summary>Breaking gravel (<c>dig/gravel1.ogg</c>).</summary>
+    GravelBreak = 70,
+
+    /// <summary>Placing gravel (<c>dig/gravel2.ogg</c>).</summary>
+    GravelPlace = 71,
+
+    /// <summary>Breaking snow (<c>dig/snow1.ogg</c>).</summary>
+    SnowBreak = 72,
+
+    /// <summary>Placing snow (<c>dig/snow2.ogg</c>).</summary>
+    SnowPlace = 73,
+
+    /// <summary>Breaking wool or bed (<c>dig/cloth2.ogg</c>).</summary>
+    ClothBreak = 74,
+
+    /// <summary>Breaking deepslate or deepslate ores (<c>block/deepslate/break1.ogg</c>).</summary>
+    DeepslateBreak = 75,
+
+    /// <summary>Placing deepslate (<c>block/deepslate/place1.ogg</c>).</summary>
+    DeepslatePlace = 76,
+
+    /// <summary>Footstep on deepslate (<c>block/deepslate/step1.ogg</c>).</summary>
+    FootstepDeepslate = 77,
+
+    /// <summary>Breaking amethyst block (<c>block/amethyst/break1.ogg</c>).</summary>
+    AmethystBreak = 78,
+
+    /// <summary>Placing amethyst block (<c>block/amethyst/place1.ogg</c>).</summary>
+    AmethystPlace = 79,
+
+    /// <summary>Footstep on amethyst (<c>block/amethyst/step1.ogg</c>).</summary>
+    FootstepAmethyst = 80,
+
+    /// <summary>Crystalline amethyst shimmer (<c>block/amethyst/shimmer.ogg</c>).</summary>
+    AmethystChime = 81,
+
+    /// <summary>Breaking amethyst cluster (<c>block/amethyst_cluster/break1.ogg</c>).</summary>
+    AmethystClusterBreak = 82,
+
+    /// <summary>Placing amethyst cluster (<c>block/amethyst_cluster/place1.ogg</c>).</summary>
+    AmethystClusterPlace = 83,
+
+    /// <summary>Opening wooden door (<c>block/wooden_door/open1.ogg</c>).</summary>
+    WoodenDoorOpen = 84,
+
+    /// <summary>Closing wooden door (<c>block/wooden_door/close1.ogg</c>).</summary>
+    WoodenDoorClose = 85,
+
+    /// <summary>Opening iron door (<c>block/iron_door/open1.ogg</c>).</summary>
+    IronDoorOpen = 86,
+
+    /// <summary>Closing iron door (<c>block/iron_door/close1.ogg</c>).</summary>
+    IronDoorClose = 87,
+
+    /// <summary>Opening wooden trapdoor (<c>block/wooden_trapdoor/open1.ogg</c>).</summary>
+    WoodenTrapdoorOpen = 88,
+
+    /// <summary>Closing wooden trapdoor (<c>block/wooden_trapdoor/close1.ogg</c>).</summary>
+    WoodenTrapdoorClose = 89,
+
+    /// <summary>Opening iron trapdoor (<c>block/iron_trapdoor/open1.ogg</c>).</summary>
+    IronTrapdoorOpen = 90,
+
+    /// <summary>Closing iron trapdoor (<c>block/iron_trapdoor/close1.ogg</c>).</summary>
+    IronTrapdoorClose = 91,
+
+    /// <summary>Tilling dirt or grass into farmland with a Hoe (<c>item/hoe/till1.ogg</c>).</summary>
+    HoeTill = 92,
+
+    /// <summary>Flattening grass or dirt into a dirt path with a Shovel (<c>item/shovel/flatten1.ogg</c>).</summary>
+    ShovelFlatten = 93,
 }

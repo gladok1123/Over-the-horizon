@@ -7,103 +7,162 @@ using OverHorizon.Gameplay.Survival;
 namespace OverHorizon.Gameplay.Redstone;
 
 /// <summary>
-/// Dijkstra <c>0..15</c> <c>RedstoneWire</c> signal solver, directional block power queries, and momentary button/plate timers for <see cref="RedstoneEngine"/>.
+/// Zero-allocation pooled Dijkstra <c>0..15</c> <c>RedstoneWire</c> signal solver, directional block power queries,
+/// and momentary button/plate timers for <see cref="RedstoneEngine"/>.
 /// </summary>
 public sealed partial class RedstoneEngine
 {
+    private readonly HashSet<BlockPos> _steppedPlatesScratch = [];
+
     private void PropagateWireNetwork(HashSet<BlockPos> region, Func<BlockPos, BlockState> getBlock, Action<BlockPos, BlockState> setBlock)
     {
-        var wires = new HashSet<BlockPos>();
-        var bfs = new Queue<BlockPos>();
+        _wiresScratch.Clear();
+        _bfsScratch.Clear();
 
-        foreach (var p in region.Where(p => _blocks.GetStateMetadata(getBlock(p)).BlockKey == BuiltInBlocks.RedstoneWire && wires.Add(p)))
+        foreach (var p in region)
         {
-            bfs.Enqueue(p);
-        }
-
-        while (bfs.Count > 0 && wires.Count < 512)
-        {
-            var cur = bfs.Dequeue();
-            foreach (var n in EnumerateConnectedWires(cur, getBlock).Where(wires.Add))
+            var st = getBlock(p);
+            if (!st.IsAir && _blocks.GetStateMetadata(st).BlockKey == BuiltInBlocks.RedstoneWire && _wiresScratch.Add(p))
             {
-                bfs.Enqueue(n);
+                _bfsScratch.Enqueue(p);
             }
         }
 
-        if (wires.Count == 0) return;
-
-        var powerMap = new Dictionary<BlockPos, int>(wires.Count);
-        var pq = new PriorityQueue<BlockPos, int>();
-
-        foreach (var w in wires)
+        if (_bfsScratch.Count == 0)
         {
-            var seedPower = ComputeExternalSourcePowerForWire(w, getBlock);
-            powerMap[w] = seedPower;
-            if (seedPower > 0) pq.Enqueue(w, -seedPower);
+            return;
         }
 
-        while (pq.Count > 0)
+        Span<BlockPos> neighbors = stackalloc BlockPos[12];
+        while (_bfsScratch.Count > 0 && _wiresScratch.Count < 512)
         {
-            var cur = pq.Dequeue();
-            var curPow = powerMap[cur];
-            if (curPow <= 1) continue;
-            var nextPow = curPow - 1;
-            foreach (var nw in EnumerateConnectedWires(cur, getBlock))
+            var cur = _bfsScratch.Dequeue();
+            var nCount = FillConnectedWires(cur, getBlock, neighbors);
+            for (var i = 0; i < nCount; i++)
             {
-                if (wires.Contains(nw) && nextPow > powerMap[nw])
+                if (_wiresScratch.Add(neighbors[i]))
                 {
-                    powerMap[nw] = nextPow;
-                    pq.Enqueue(nw, -nextPow);
+                    _bfsScratch.Enqueue(neighbors[i]);
                 }
             }
         }
 
-        foreach (var (wPos, targetPow) in powerMap)
+        _powerMapScratch.Clear();
+        _pqScratch.Clear();
+
+        foreach (var w in _wiresScratch)
+        {
+            var seedPower = ComputeExternalSourcePowerForWire(w, getBlock);
+            _powerMapScratch[w] = seedPower;
+            if (seedPower > 0)
+            {
+                _pqScratch.Enqueue(w, -seedPower);
+            }
+        }
+
+        while (_pqScratch.Count > 0)
+        {
+            var cur = _pqScratch.Dequeue();
+            var curPow = _powerMapScratch[cur];
+            if (curPow <= 1)
+            {
+                continue;
+            }
+
+            var nextPow = curPow - 1;
+            var nCount = FillConnectedWires(cur, getBlock, neighbors);
+            for (var i = 0; i < nCount; i++)
+            {
+                var nw = neighbors[i];
+                if (_wiresScratch.Contains(nw) && nextPow > _powerMapScratch[nw])
+                {
+                    _powerMapScratch[nw] = nextPow;
+                    _pqScratch.Enqueue(nw, -nextPow);
+                }
+            }
+        }
+
+        foreach (var (wPos, targetPow) in _powerMapScratch)
         {
             var curState = getBlock(wPos);
             var curMeta = _blocks.GetStateMetadata(curState);
             if (curMeta.BlockKey == BuiltInBlocks.RedstoneWire && ParseInt(curMeta, "power", 0) != targetPow)
             {
-                setBlock(wPos, _blocks.WithProperty(curState, "power", targetPow.ToString(CultureInfo.InvariantCulture)));
-                foreach (var dir in DirectionExtensions.All) _ = region.Add(wPos.Offset(dir));
+                setBlock(wPos, _blocks.WithProperty(curState, "power", PowerLevelTokens[Math.Clamp(targetPow, 0, 15)]));
+                var dirs = DirectionExtensions.All;
+                for (var i = 0; i < dirs.Length; i++)
+                {
+                    _ = region.Add(wPos.Offset(dirs[i]));
+                }
             }
         }
     }
 
-    private IEnumerable<BlockPos> EnumerateConnectedWires(BlockPos pos, Func<BlockPos, BlockState> getBlock)
+    private int FillConnectedWires(BlockPos pos, Func<BlockPos, BlockState> getBlock, Span<BlockPos> outNeighbors)
     {
-        var aboveBlocked = _blocks.GetStateMetadata(getBlock(pos.Offset(Direction.Up))).IsOpaque;
+        var count = 0;
+        var upState = getBlock(pos.Offset(Direction.Up));
+        var aboveBlocked = !upState.IsAir && _blocks.GetStateMetadata(upState).IsOpaque;
+
         for (var i = 0; i < 4; i++)
         {
-            var dir = i switch { 0 => Direction.North, 1 => Direction.South, 2 => Direction.West, _ => Direction.East };
+            var dir = i switch
+            {
+                0 => Direction.North,
+                1 => Direction.South,
+                2 => Direction.West,
+                _ => Direction.East,
+            };
             var flat = pos.Offset(dir);
-            if (_blocks.GetStateMetadata(getBlock(flat)).BlockKey == BuiltInBlocks.RedstoneWire) yield return flat;
+            var flatState = getBlock(flat);
+            var flatIsOpaque = false;
+            if (!flatState.IsAir)
+            {
+                var flatMeta = _blocks.GetStateMetadata(flatState);
+                flatIsOpaque = flatMeta.IsOpaque;
+                if (flatMeta.BlockKey == BuiltInBlocks.RedstoneWire)
+                {
+                    outNeighbors[count++] = flat;
+                }
+            }
 
             if (!aboveBlocked)
             {
                 var upDiag = flat.Offset(Direction.Up);
-                if (upDiag.Y < EngineConstants.WorldMaxY && _blocks.GetStateMetadata(getBlock(upDiag)).BlockKey == BuiltInBlocks.RedstoneWire)
+                if (upDiag.Y < EngineConstants.WorldMaxY)
                 {
-                    yield return upDiag;
+                    var upDiagState = getBlock(upDiag);
+                    if (!upDiagState.IsAir && _blocks.GetStateMetadata(upDiagState).BlockKey == BuiltInBlocks.RedstoneWire)
+                    {
+                        outNeighbors[count++] = upDiag;
+                    }
                 }
             }
 
-            if (!_blocks.GetStateMetadata(getBlock(flat)).IsOpaque)
+            if (!flatIsOpaque)
             {
                 var dnDiag = flat.Offset(Direction.Down);
-                if (dnDiag.Y >= EngineConstants.WorldMinY && _blocks.GetStateMetadata(getBlock(dnDiag)).BlockKey == BuiltInBlocks.RedstoneWire)
+                if (dnDiag.Y >= EngineConstants.WorldMinY)
                 {
-                    yield return dnDiag;
+                    var dnDiagState = getBlock(dnDiag);
+                    if (!dnDiagState.IsAir && _blocks.GetStateMetadata(dnDiagState).BlockKey == BuiltInBlocks.RedstoneWire)
+                    {
+                        outNeighbors[count++] = dnDiag;
+                    }
                 }
             }
         }
+
+        return count;
     }
 
     private int ComputeExternalSourcePowerForWire(BlockPos wirePos, Func<BlockPos, BlockState> getBlock)
     {
         var best = 0;
-        foreach (var dir in DirectionExtensions.All)
+        var dirs = DirectionExtensions.All;
+        for (var i = 0; i < dirs.Length; i++)
         {
+            var dir = dirs[i];
             var nPos = wirePos.Offset(dir);
             var nState = getBlock(nPos);
             if (nState.IsAir) continue;
@@ -111,7 +170,7 @@ public sealed partial class RedstoneEngine
             if (meta.BlockKey == BuiltInBlocks.RedstoneWire) continue;
 
             var sig = GetDirectSourcePower(meta, dir.Opposite());
-            if (sig == 0 && meta.IsSolid && meta.BlockKey != BuiltInBlocks.Piston && meta.BlockKey != BuiltInBlocks.StickyPiston)
+            if (sig == 0 && meta.IsOpaque && meta.BlockKey != BuiltInBlocks.Piston && meta.BlockKey != BuiltInBlocks.StickyPiston)
             {
                 sig = GetStrongPowerIntoSolidBlock(nPos, getBlock);
             }
@@ -149,7 +208,7 @@ public sealed partial class RedstoneEngine
         var direct = GetDirectSourcePower(meta, directionTowardTarget);
         if (direct > 0) return direct;
 
-        return meta.IsSolid && meta.BlockKey != BuiltInBlocks.Piston && meta.BlockKey != BuiltInBlocks.StickyPiston
+        return meta.IsOpaque && meta.BlockKey != BuiltInBlocks.Piston && meta.BlockKey != BuiltInBlocks.StickyPiston
             ? GetStrongPowerIntoSolidBlock(neighborPos, getBlock)
             : 0;
     }
@@ -157,15 +216,20 @@ public sealed partial class RedstoneEngine
     private int GetStrongPowerIntoSolidBlock(BlockPos blockPos, Func<BlockPos, BlockState> getBlock)
     {
         var best = 0;
-        if (_blocks.GetStateMetadata(getBlock(blockPos.Offset(Direction.Down))).BlockKey == BuiltInBlocks.RedstoneTorch)
+        var belowState = getBlock(blockPos.Offset(Direction.Down));
+        if (!belowState.IsAir && _blocks.GetStateMetadata(belowState).BlockKey == BuiltInBlocks.RedstoneTorch)
         {
             return 15;
         }
 
-        foreach (var dir in DirectionExtensions.All)
+        var dirs = DirectionExtensions.All;
+        for (var i = 0; i < dirs.Length; i++)
         {
+            var dir = dirs[i];
             var adj = blockPos.Offset(dir);
-            var m = _blocks.GetStateMetadata(getBlock(adj));
+            var adjState = getBlock(adj);
+            if (adjState.IsAir) continue;
+            var m = _blocks.GetStateMetadata(adjState);
             if ((m.BlockKey == BuiltInBlocks.Lever || m.BlockKey == BuiltInBlocks.StoneButton) && IsTrue(m, "powered"))
             {
                 var f = BlockAttachmentAndShapeRules.GetFacing(m, "up");
@@ -231,19 +295,19 @@ public sealed partial class RedstoneEngine
     {
         if (_activeButtons.Count > 0)
         {
-            var expired = new List<BlockPos>();
+            _expiredButtonsScratch.Clear();
             foreach (var (bPos, rem) in _activeButtons)
             {
-                if (rem - dt <= 0.0) expired.Add(bPos);
+                if (rem - dt <= 0.0) _expiredButtonsScratch.Add(bPos);
                 else _activeButtons[bPos] = rem - dt;
             }
 
-            for (var i = 0; i < expired.Count; i++)
+            for (var i = 0; i < _expiredButtonsScratch.Count; i++)
             {
-                var p = expired[i];
+                var p = _expiredButtonsScratch[i];
                 _ = _activeButtons.Remove(p);
                 var s = getBlock(p);
-                if (_blocks.GetStateMetadata(s).BlockKey == BuiltInBlocks.StoneButton)
+                if (!s.IsAir && _blocks.GetStateMetadata(s).BlockKey == BuiltInBlocks.StoneButton)
                 {
                     setBlock(p, _blocks.WithProperty(s, "powered", "false"));
                     soundEvents.Add((p, RedstoneSoundKind.Click));
@@ -252,14 +316,14 @@ public sealed partial class RedstoneEngine
             }
         }
 
-        var steppedPlates = new HashSet<BlockPos>();
+        _steppedPlatesScratch.Clear();
         for (var i = 0; i < entityFeetPositions.Length; i++)
         {
             var bp = entityFeetPositions[i].ToBlockPos();
             var st = getBlock(bp);
-            if (_blocks.GetStateMetadata(st).BlockKey == BuiltInBlocks.StonePressurePlate)
+            if (!st.IsAir && _blocks.GetStateMetadata(st).BlockKey == BuiltInBlocks.StonePressurePlate)
             {
-                _ = steppedPlates.Add(bp);
+                _ = _steppedPlatesScratch.Add(bp);
                 if (_activePlates.Add(bp))
                 {
                     setBlock(bp, _blocks.WithProperty(st, "powered", "true"));
@@ -271,13 +335,21 @@ public sealed partial class RedstoneEngine
 
         if (_activePlates.Count > 0)
         {
-            var released = _activePlates.Where(plate => !steppedPlates.Contains(plate)).ToArray();
-            for (var i = 0; i < released.Length; i++)
+            _expiredButtonsScratch.Clear();
+            foreach (var plate in _activePlates)
             {
-                var p = released[i];
+                if (!_steppedPlatesScratch.Contains(plate))
+                {
+                    _expiredButtonsScratch.Add(plate);
+                }
+            }
+
+            for (var i = 0; i < _expiredButtonsScratch.Count; i++)
+            {
+                var p = _expiredButtonsScratch[i];
                 _ = _activePlates.Remove(p);
                 var s = getBlock(p);
-                if (_blocks.GetStateMetadata(s).BlockKey == BuiltInBlocks.StonePressurePlate)
+                if (!s.IsAir && _blocks.GetStateMetadata(s).BlockKey == BuiltInBlocks.StonePressurePlate)
                 {
                     setBlock(p, _blocks.WithProperty(s, "powered", "false"));
                     soundEvents.Add((p, RedstoneSoundKind.Click));

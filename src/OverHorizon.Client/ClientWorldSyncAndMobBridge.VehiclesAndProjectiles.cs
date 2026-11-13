@@ -154,6 +154,13 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         for (var i = 0; i < _mobFallScratch.Count; i++)
         {
             var ev = _mobFallScratch[i];
+            if (ev.FallDamage < 0.0f)
+            {
+                _audio.PlayPositional(SoundCue.Fizz, ev.Position, gain: 0.36f * player.MasterVolume, pitch: 1.12f);
+                _audio.PlayPositional(ClientSurvivalCombatController.ResolveMobHurtOrDeathCue(ev.Type, ev.Died), ev.Position, gain: 0.72f * player.MasterVolume);
+                continue;
+            }
+
             _audio.PlayPositional(ev.FallDamage > 5.0f ? SoundCue.FallBig : SoundCue.FallSmall, ev.Position, gain: 0.55f * player.MasterVolume);
             _audio.PlayPositional(ClientSurvivalCombatController.ResolveMobHurtOrDeathCue(ev.Type, ev.Died), ev.Position, gain: 0.75f * player.MasterVolume);
         }
@@ -276,16 +283,8 @@ internal sealed partial class ClientWorldSyncAndMobBridge
             }
         }
 
-        // Periodic PrimedTnt burning fuse hiss & Fire crackle!
-        if (WorldTicker.PrimedTnts.Count > 0)
-        {
-            _tntFuseAudioTimer += dt;
-            if (_tntFuseAudioTimer >= 0.65)
-            {
-                _tntFuseAudioTimer = 0.0;
-                _audio.PlayPositional(SoundCue.TntFuse, WorldTicker.PrimedTnts[0].FeetPosition, gain: 0.62f * player.MasterVolume, pitch: 1.08f);
-            }
-        }
+        // Active Fire crackle (PrimedTnt plays SoundCue.TntFuse once at ignition — no duplicate 0.65s re-trigger!)
+        _ = _tntFuseAudioTimer;
 
         if (WorldTicker.ActiveFirePositions.Count > 0)
         {

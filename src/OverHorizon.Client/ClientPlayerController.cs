@@ -127,8 +127,11 @@ public sealed partial class ClientPlayerController
     /// <summary>Gets screen sleep-vignette opacity (<c>0.0..1.0</c>) during a Bed night-skip transition.</summary>
     public float SleepFadeAlpha => _sleepAnimTimer <= 0.0f ? 0.0f : MathF.Sin(Math.Clamp(1.0f - (_sleepAnimTimer / 1.10f), 0.0f, 1.0f) * MathF.PI);
 
-    /// <summary>Gets whether the player has died in Survival mode.</summary>
-    public bool IsDead => Mode == GameMode.Survival && Health <= 0.0f;
+    /// <summary>Gets whether the player has died (Survival damage or Creative deep-Void hazard).</summary>
+    public bool IsDead => Mode != GameMode.Spectator && Health <= 0.0f;
+
+    /// <summary>Gets the active camera perspective (<c>0 = FirstPerson</c>, <c>1 = ThirdPersonBack</c>, <c>2 = ThirdPersonFront</c>).</summary>
+    public int CameraPerspectiveMode { get; private set; }
 
     /// <summary>Gets or sets whether a death inventory drop is pending extraction on the current death.</summary>
     public bool DeathDropsExtracted { get; set; }
@@ -304,10 +307,60 @@ public sealed partial class ClientPlayerController
         return true;
     }
 
-    /// <summary>Applies Survival damage (mitigated by equipped Armor + Absorption) and triggers red hurt feedback.</summary>
-    public bool ApplyDamage(float amount, IAudioSubsystem? audio = null, bool bypassArmor = false, SoundCue customCue = SoundCue.PlayerHurt)
+    /// <summary>Cycles camera perspective (<c>FirstPerson -&gt; ThirdPersonBack -&gt; ThirdPersonFront -&gt; FirstPerson</c>) on <c>F5</c>.</summary>
+    public int CycleCameraPerspective()
     {
-        if (Mode != GameMode.Survival || amount <= 0.0f || IsDead) return false;
+        CameraPerspectiveMode = (CameraPerspectiveMode + 1) % 3;
+        return CameraPerspectiveMode;
+    }
+
+    /// <summary>
+    /// Builds the active render camera for the current frame, pulling back up to <c>3.8m</c> behind or <c>3.6m</c> in front
+    /// in <c>F5</c> third-person modes while clamping against solid voxels so the camera never clips inside walls.
+    /// </summary>
+    public FirstPersonCamera BuildRenderCamera(ClientWorldCache world)
+    {
+        if (CameraPerspectiveMode == 0 || Mode == GameMode.Spectator)
+        {
+            return Camera;
+        }
+
+        var isFront = CameraPerspectiveMode == 2;
+        var fwd = Camera.Forward;
+        var rayDir = isFront
+            ? new Vec3d(fwd.X, fwd.Y, fwd.Z)
+            : new Vec3d(-fwd.X, -fwd.Y, -fwd.Z);
+        var maxDist = isFront ? 3.55 : 3.85;
+        var safeDist = maxDist;
+
+        if (VoxelRaycaster.TryRaycast(world, Camera.Position, new System.Numerics.Vector3((float)rayDir.X, (float)rayDir.Y, (float)rayDir.Z), maxDist + 0.30, out var wallHit))
+        {
+            safeDist = Math.Max(0.28, wallHit.Distance - 0.28);
+        }
+
+        var renderCam = new FirstPersonCamera
+        {
+            FieldOfViewDegrees = Camera.FieldOfViewDegrees,
+            AspectRatio = Camera.AspectRatio,
+            NearPlane = Camera.NearPlane,
+            FarPlane = Camera.FarPlane,
+            Position = Camera.Position + (rayDir * safeDist),
+        };
+        renderCam.SetRotation(
+            isFront ? Camera.YawDegrees + 180.0f : Camera.YawDegrees,
+            isFront ? -Camera.PitchDegrees : Camera.PitchDegrees);
+        return renderCam;
+    }
+
+    /// <summary>Applies Survival damage (or Creative Void damage when <paramref name="bypassInvulnerability"/> is set) and triggers red hurt feedback.</summary>
+    public bool ApplyDamage(
+        float amount,
+        IAudioSubsystem? audio = null,
+        bool bypassArmor = false,
+        SoundCue customCue = SoundCue.PlayerHurt,
+        bool bypassInvulnerability = false)
+    {
+        if ((!bypassInvulnerability && Mode != GameMode.Survival) || Mode == GameMode.Spectator || amount <= 0.0f || IsDead) return false;
         if (customCue == SoundCue.FireHurt && StatusEffects.HasEffect(StatusEffectType.FireResistance)) return false;
 
         var armorPoints = Math.Clamp(Hotbar.TotalArmorDefense - (Hotbar.SelectedIsShield || Hotbar.OffhandIsShield ? 2 : 0), 0, 20);

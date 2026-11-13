@@ -181,6 +181,13 @@ internal sealed class ClientInputBinder
             return;
         }
 
+        if (key == Key.F5 && _menu.IsGameplayActive)
+        {
+            _ = _player.CycleCameraPerspective();
+            _audio.PlayPositional(SoundCue.UiClick, _player.Camera.Position, gain: 0.30f * _player.MasterVolume, pitch: 1.08f);
+            return;
+        }
+
         if (key == Key.F4 && _menu.Mode is UiOverlayMode.InGame or UiOverlayMode.BlockInventory or UiOverlayMode.SurvivalInventory)
         {
             _menu.CloseContainerAndRefundCursor(_player);

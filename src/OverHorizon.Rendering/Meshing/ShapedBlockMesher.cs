@@ -44,6 +44,12 @@ internal static partial class ShapedBlockMesher
                key == BuiltInBlocks.RedstoneComparator ||
                key == BuiltInBlocks.Composter ||
                key == BuiltInBlocks.OakTrapdoor ||
+               key == BuiltInBlocks.IronTrapdoor ||
+               key == BuiltInBlocks.OakDoor ||
+               key == BuiltInBlocks.IronDoor ||
+               key == BuiltInBlocks.AmethystCluster ||
+               key == BuiltInBlocks.DirtPath ||
+               key == BuiltInBlocks.Farmland ||
                key == BuiltInBlocks.MonsterSpawner ||
                key == BuiltInBlocks.PistonHead ||
                key == BuiltInBlocks.Fire ||
@@ -118,9 +124,21 @@ internal static partial class ShapedBlockMesher
                         EmitFireFlames(opaqueVerts, opaqueIndices, origin, atlas.GetTileIndex(key, Direction.North), packedLight);
                     }
                     else if (key == BuiltInBlocks.RedstoneComparator || key == BuiltInBlocks.Composter ||
-                             key == BuiltInBlocks.OakTrapdoor || key == BuiltInBlocks.MonsterSpawner)
+                             key == BuiltInBlocks.OakTrapdoor || key == BuiltInBlocks.IronTrapdoor ||
+                             key == BuiltInBlocks.OakDoor || key == BuiltInBlocks.IronDoor ||
+                             key == BuiltInBlocks.AmethystCluster || key == BuiltInBlocks.DirtPath ||
+                             key == BuiltInBlocks.Farmland || key == BuiltInBlocks.MonsterSpawner)
                     {
-                        EmitComparatorComposterTrapdoorOrSpawner(opaqueVerts, opaqueIndices, origin, meta, packedLight);
+                        var shapeLight = packedLight;
+                        if (key == BuiltInBlocks.DirtPath || key == BuiltInBlocks.Farmland)
+                        {
+                            var (aboveSky, aboveBlk) = neighborhood.GetLight(lx, wy + 1, lz);
+                            var maxSky = Math.Max(sky, aboveSky);
+                            var maxBlk = Math.Max(effBlk, aboveBlk);
+                            shapeLight = (byte)(((maxSky & 0x0F) << 4) | (maxBlk & 0x0F));
+                        }
+
+                        EmitComparatorComposterTrapdoorOrSpawner(opaqueVerts, opaqueIndices, origin, meta, shapeLight);
                     }
                     else if (key == BuiltInBlocks.OakFence)
                     {

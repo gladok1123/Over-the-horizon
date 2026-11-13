@@ -133,8 +133,15 @@ internal static class ServerWorldTimeAndBlockSync
             return;
         }
 
-        var key = registries.Blocks.GetStateMetadata(state).BlockKey;
-        var drop = BlockDropResolver.ResolveDrop(key, heldTool: null, registries.Items);
+        var meta = registries.Blocks.GetStateMetadata(state);
+        // 2-block Doors and Beds drop a single item from their lower/foot anchor — never double-drop upper/head!
+        if ((meta.Properties.TryGetValue("half", out var halfVal) && string.Equals(halfVal, "upper", StringComparison.OrdinalIgnoreCase)) ||
+            (meta.Properties.TryGetValue("part", out var partVal) && string.Equals(partVal, "head", StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        var drop = BlockDropResolver.ResolveDrop(meta.BlockKey, heldTool: null, registries.Items);
         if (!drop.IsEmpty)
         {
             _ = droppedItems.SpawnBlockDrop(pos, drop);

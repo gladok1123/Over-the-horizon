@@ -117,24 +117,25 @@ internal sealed class ClientPlayerVitalsAndAudio
             _drownTimer = 0.0;
         }
 
-        if (player.Mode != GameMode.Survival)
-        {
-            return;
-        }
-
-        // The Void below Bedrock (Y < WorldMinY - 12 = -76): gradual 4.0 HP damage every 0.5s!
-        if (player.FeetPosition.Y < OverHorizon.Core.EngineConstants.WorldMinY - 12.0)
+        // The Void below Bedrock (Y < WorldMinY - 12 = -76): gradual 4.0 HP damage every 0.5s in BOTH Survival AND Creative!
+        if (player.Mode is GameMode.Survival or GameMode.Creative &&
+            player.FeetPosition.Y < OverHorizon.Core.EngineConstants.WorldMinY - 12.0)
         {
             _voidTickTimer += dt;
             if (_voidTickTimer >= 0.50)
             {
                 _voidTickTimer -= 0.50;
-                _ = player.ApplyDamage(4.0f, audio, bypassArmor: true);
+                _ = player.ApplyDamage(4.0f, audio, bypassArmor: true, bypassInvulnerability: true);
             }
         }
         else
         {
             _voidTickTimer = 0.0;
+        }
+
+        if (player.Mode != GameMode.Survival)
+        {
+            return;
         }
 
         if (feetBlockKey == BuiltInBlocks.Fire)
@@ -253,14 +254,15 @@ internal sealed class ClientPlayerVitalsAndAudio
 
     public static SoundCue ResolveFootstepCue(string blockPath) => blockPath switch
     {
-        "grass_block" or "dirt" or "farmland" or "hay_block" or "oak_leaves" or "birch_leaves" => SoundCue.FootstepGrass,
-        "sand" => SoundCue.FootstepSand,
+        "grass_block" or "dirt" or "dirt_path" or "farmland" or "hay_block" or "oak_leaves" or "birch_leaves" or "cherry_leaves" or "spruce_leaves" => SoundCue.FootstepGrass,
+        "sand" or "red_sand" => SoundCue.FootstepSand,
         "gravel" => SoundCue.FootstepGravel,
-        "snow_block" => SoundCue.FootstepSnow,
-        "iron_block" or "gold_block" or "copper_block" or "diamond_block" or "emerald_block" or "lantern" or "rail" or "powered_rail" => SoundCue.FootstepMetal,
+        "snow_block" or "packed_ice" => SoundCue.FootstepSnow,
+        "amethyst_block" or "budding_amethyst" or "amethyst_cluster" => SoundCue.FootstepAmethyst,
+        "iron_block" or "gold_block" or "copper_block" or "diamond_block" or "emerald_block" or "lantern" or "rail" or "powered_rail" or "iron_door" or "iron_trapdoor" => SoundCue.FootstepMetal,
         "crimson_wool" or "white_wool" or "blue_wool" or "red_bed" or "tnt" or "cobweb" => SoundCue.FootstepCloth,
         "ladder" => SoundCue.FootstepLadder,
-        "oak_log" or "birch_log" or "oak_planks" or "birch_planks" or "oak_fence" or "crafting_table" or "chest" or "barrel" or "bookshelf" or "piston" or "sticky_piston" or "piston_head" => SoundCue.FootstepWood,
+        "oak_log" or "birch_log" or "cherry_log" or "spruce_log" or "oak_planks" or "birch_planks" or "oak_fence" or "oak_door" or "oak_trapdoor" or "composter" or "crafting_table" or "chest" or "barrel" or "bookshelf" or "piston" or "sticky_piston" or "piston_head" => SoundCue.FootstepWood,
         _ => SoundCue.FootstepStone,
     };
 }

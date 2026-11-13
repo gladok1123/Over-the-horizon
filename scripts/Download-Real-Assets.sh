@@ -16,7 +16,16 @@ mkdir -p "${OUT_DIR}/assets/minecraft/textures/block" \
          "${OUT_DIR}/assets/minecraft/sounds/ambient/underwater" \
          "${OUT_DIR}/assets/minecraft/sounds/entity/player/attack" \
          "${OUT_DIR}/assets/minecraft/sounds/damage" \
-         "${OUT_DIR}/assets/minecraft/sounds/random"
+         "${OUT_DIR}/assets/minecraft/sounds/random" \
+         "${OUT_DIR}/assets/minecraft/sounds/block/amethyst" \
+         "${OUT_DIR}/assets/minecraft/sounds/block/amethyst_cluster" \
+         "${OUT_DIR}/assets/minecraft/sounds/block/wooden_door" \
+         "${OUT_DIR}/assets/minecraft/sounds/block/iron_door" \
+         "${OUT_DIR}/assets/minecraft/sounds/block/wooden_trapdoor" \
+         "${OUT_DIR}/assets/minecraft/sounds/block/iron_trapdoor" \
+         "${OUT_DIR}/assets/minecraft/sounds/block/deepslate" \
+         "${OUT_DIR}/assets/minecraft/sounds/item/hoe" \
+         "${OUT_DIR}/assets/minecraft/sounds/item/shovel"
 
 ASSETS=(
   "textures/block/grass_block_top.png" "textures/block/grass_block_side.png" "textures/block/dirt.png"
@@ -42,6 +51,17 @@ ASSETS=(
   "sounds/step/grass1.ogg" "sounds/dig/stone1.ogg" "sounds/dig/gravel1.ogg" "sounds/liquid/splash.ogg" "sounds/liquid/swim1.ogg"
   "sounds/ambient/underwater/underwater_ambience.ogg" "sounds/entity/player/attack/sweep1.ogg" "sounds/entity/player/attack/strong1.ogg"
   "sounds/entity/player/attack/crit1.ogg" "sounds/damage/hit1.ogg" "sounds/random/eat1.ogg" "sounds/random/click.ogg" "sounds/random/levelup.ogg"
+  "textures/block/oak_door_top.png" "textures/block/oak_door_bottom.png" "textures/block/iron_door_top.png" "textures/block/iron_door_bottom.png"
+  "textures/block/oak_trapdoor.png" "textures/block/iron_trapdoor.png" "textures/block/budding_amethyst.png" "textures/block/amethyst_cluster.png"
+  "textures/block/dirt_path_top.png" "textures/block/dirt_path_side.png" "textures/block/cherry_log.png" "textures/block/cherry_log_top.png"
+  "textures/block/cherry_leaves.png" "textures/block/spruce_log.png" "textures/block/spruce_log_top.png" "textures/block/spruce_leaves.png"
+  "textures/block/red_sand.png" "textures/block/terracotta.png" "textures/block/packed_ice.png"
+  "textures/item/potion.png" "textures/item/potion_overlay.png" "textures/item/spawn_egg.png" "textures/item/spawn_egg_overlay.png"
+  "textures/item/oak_door.png" "textures/item/iron_door.png" "textures/item/amethyst_shard.png" "textures/item/glass_bottle.png" "textures/item/experience_bottle.png"
+  "sounds/block/wooden_door/open1.ogg" "sounds/block/wooden_door/close1.ogg" "sounds/block/iron_door/open1.ogg" "sounds/block/iron_door/close1.ogg"
+  "sounds/block/wooden_trapdoor/open1.ogg" "sounds/block/wooden_trapdoor/close1.ogg" "sounds/block/iron_trapdoor/open1.ogg" "sounds/block/iron_trapdoor/close1.ogg"
+  "sounds/block/amethyst/break1.ogg" "sounds/block/amethyst/step1.ogg" "sounds/block/amethyst/shimmer.ogg" "sounds/block/amethyst_cluster/break1.ogg"
+  "sounds/block/deepslate/break1.ogg" "sounds/item/hoe/till1.ogg" "sounds/item/shovel/flatten1.ogg"
 )
 
 for rel in "${ASSETS[@]}"; do

@@ -46,4 +46,7 @@ public enum ItemUseAction : byte
 
     /// <summary>Applies <c>Bone Meal</c> to fertilize soil/grass or advance a <c>Composter</c>.</summary>
     ApplyBoneMeal = 13,
+
+    /// <summary>Flattens targeted Grass Block or Dirt into a <c>DirtPath</c> (Shovel).</summary>
+    FlattenPath = 14,
 }

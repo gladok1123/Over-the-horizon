@@ -68,7 +68,7 @@ internal static class UiTitleAndCreativeScreenBuilder
             UiGeometryBuilder.DrawCenteredText(v, state.StatusMessage, cx, height - 62.0f, 1.6f, new Vector4(1.0f, 0.76f, 0.42f, 1.0f), shadow: true);
         }
 
-        UiGeometryBuilder.DrawText(v, "Over-the-Horizon v0.8.0-alpha (C# / .NET 9)", 14.0f, height - 24.0f, 1.5f, new Vector4(0.92f, 0.94f, 0.98f, 0.94f), shadow: true);
+        UiGeometryBuilder.DrawText(v, "Over-the-Horizon v0.9.0-alpha (C# / .NET 9)", 14.0f, height - 24.0f, 1.5f, new Vector4(0.92f, 0.94f, 0.98f, 0.94f), shadow: true);
         const string rightNote = "Clean-Room Engine - 23w13a Assets";
         UiGeometryBuilder.DrawText(v, rightNote, width - UiGeometryBuilder.MeasureText(rightNote, 1.5f) - 14.0f, height - 24.0f, 1.5f, new Vector4(0.84f, 0.86f, 0.90f, 0.88f), shadow: true);
     }

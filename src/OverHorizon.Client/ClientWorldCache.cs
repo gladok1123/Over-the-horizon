@@ -17,7 +17,7 @@ namespace OverHorizon.Client;
 /// Lock-free client-side chunk snapshot cache, <see cref="IVoxelCollisionReader"/>, <see cref="IVoxelSelectionReader"/>,
 /// Copy-on-Write section-diff tracker, and instant single-section block-edit remesher.
 /// </summary>
-public sealed class ClientWorldCache : IVoxelSelectionReader
+public sealed partial class ClientWorldCache : IVoxelSelectionReader
 {
     private readonly IBlockRegistry _blocks;
     private readonly TextureAtlasData _atlas;
@@ -29,6 +29,7 @@ public sealed class ClientWorldCache : IVoxelSelectionReader
     private readonly sbyte[] _fluidLevelByStateId;
     private readonly bool[] _hasSelectionByStateId;
     private readonly BoundingBox[] _localSelectionBoxByStateId;
+    private readonly BlockCollisionShapeTable _collisionShapes;
 
     /// <summary>Initializes a new instance of the <see cref="ClientWorldCache"/> class.</summary>
     public ClientWorldCache(IBlockRegistry blocks, TextureAtlasData atlas)
@@ -38,6 +39,7 @@ public sealed class ClientWorldCache : IVoxelSelectionReader
 
         _blocks = blocks;
         _atlas = atlas;
+        _collisionShapes = new BlockCollisionShapeTable(blocks);
 
         var stateCount = blocks.StateCount;
         _isSolidByStateId = new bool[stateCount];
@@ -228,6 +230,66 @@ public sealed class ClientWorldCache : IVoxelSelectionReader
         }
     }
 
+    /// <summary>
+    /// Deduplicates and remeshes all <c>(ChunkPos, SectionIndex)</c> cells affected by a multi-block edit batch
+    /// (such as breaking/placing a 2-block Door, Bed, or Redstone cascade) so each section is meshed at most once.
+    /// </summary>
+    public void RemeshEditedBlocksBatchImmediate(ReadOnlySpan<BlockPos> editedPositions, IRenderSubsystem renderer)
+    {
+        ArgumentNullException.ThrowIfNull(renderer);
+        if (editedPositions.Length == 0)
+        {
+            return;
+        }
+
+        if (editedPositions.Length == 1)
+        {
+            RemeshAroundBlockImmediate(editedPositions[0], renderer);
+            return;
+        }
+
+        var sectionRanges = new Dictionary<ChunkPos, (int MinSec, int MaxSec)>(4);
+        void IncludeRange(ChunkPos cp, int s0, int s1)
+        {
+            if (sectionRanges.TryGetValue(cp, out var cur))
+            {
+                sectionRanges[cp] = (Math.Min(cur.MinSec, s0), Math.Max(cur.MaxSec, s1));
+            }
+            else
+            {
+                sectionRanges[cp] = (s0, s1);
+            }
+        }
+
+        for (var i = 0; i < editedPositions.Length; i++)
+        {
+            var editedPos = editedPositions[i];
+            if (editedPos.Y < EngineConstants.WorldMinY || editedPos.Y >= EngineConstants.WorldMaxY) continue;
+
+            var centerChunk = editedPos.ToChunkPos();
+            var secIdx = (editedPos.Y - EngineConstants.WorldMinY) >> 4;
+            var localY = (editedPos.Y - EngineConstants.WorldMinY) & 15;
+            var minSec = localY == 0 ? Math.Max(0, secIdx - 1) : secIdx;
+            var maxSec = localY == 15 ? Math.Min(ChunkColumn.SectionCount - 1, secIdx + 1) : secIdx;
+
+            IncludeRange(centerChunk, minSec, maxSec);
+            _ = _dirtyMeshColumns.Remove(centerChunk);
+
+            var lx = editedPos.SectionLocalX;
+            var lz = editedPos.SectionLocalZ;
+            if (lx <= 1) IncludeRange(new ChunkPos(centerChunk.X - 1, centerChunk.Z), minSec, maxSec);
+            if (lx >= 14) IncludeRange(new ChunkPos(centerChunk.X + 1, centerChunk.Z), minSec, maxSec);
+            if (lz <= 1) IncludeRange(new ChunkPos(centerChunk.X, centerChunk.Z - 1), minSec, maxSec);
+            if (lz >= 14) IncludeRange(new ChunkPos(centerChunk.X, centerChunk.Z + 1), minSec, maxSec);
+        }
+
+        foreach (var (cp, (minSec, maxSec)) in sectionRanges)
+        {
+            BumpGeneration(cp);
+            RemeshColumnSectionRange(cp, minSec, maxSec, renderer);
+        }
+    }
+
     /// <summary>Evicts cached chunk columns outside Chebyshev distance <paramref name="keepRadius"/>.</summary>
     public int EvictOutOfRangeChunks(ChunkPos center, int keepRadius, IRenderSubsystem renderer)
     {
@@ -361,6 +423,16 @@ public sealed class ClientWorldCache : IVoxelSelectionReader
     }
 
     /// <inheritdoc />
+    public bool TryGetCollisionBox(BlockPos pos, out BoundingBox worldBox)
+    {
+        worldBox = default;
+        if (pos.Y < EngineConstants.WorldMinY || pos.Y >= EngineConstants.WorldMaxY) return false;
+        if (!_publishedSnapshots.TryGetValue(pos.ToChunkPos(), out var snap)) return false;
+        var state = snap.GetBlockState(pos.SectionLocalX, pos.Y, pos.SectionLocalZ);
+        return _collisionShapes.TryGetWorldBox(state, pos, out worldBox);
+    }
+
+    /// <inheritdoc />
     public int GetFluidLevelOrNegative(BlockPos pos)
     {
         if (pos.Y < EngineConstants.WorldMinY || pos.Y >= EngineConstants.WorldMaxY) return -1;
@@ -396,78 +468,4 @@ public sealed class ClientWorldCache : IVoxelSelectionReader
         sbyte.TryParse(lvlStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var lvl)
             ? lvl
             : (sbyte)0;
-
-    private bool TryBuildNeighborhood(ChunkPos pos, out ChunkNeighborhood nb)
-    {
-        if (!_publishedSnapshots.TryGetValue(pos, out var center))
-        {
-            nb = default;
-            return false;
-        }
-
-        _ = _publishedSnapshots.TryGetValue(new ChunkPos(pos.X, pos.Z - 1), out var north);
-        _ = _publishedSnapshots.TryGetValue(new ChunkPos(pos.X, pos.Z + 1), out var south);
-        _ = _publishedSnapshots.TryGetValue(new ChunkPos(pos.X - 1, pos.Z), out var west);
-        _ = _publishedSnapshots.TryGetValue(new ChunkPos(pos.X + 1, pos.Z), out var east);
-        nb = new ChunkNeighborhood(center, north, south, west, east);
-        return true;
-    }
-
-    private void RemeshColumnSectionRange(ChunkPos pos, int minSec, int maxSec, IRenderSubsystem renderer)
-    {
-        if (!TryBuildNeighborhood(pos, out var nb)) return;
-        for (var s = minSec; s <= maxSec; s++)
-        {
-            var mesh = GreedySectionMesher.MeshSection(in nb, s, _blocks, _atlas);
-            renderer.UploadOrReplaceSectionMesh(mesh);
-        }
-    }
-
-    private void RelightMutableColumnAndCardinals(ChunkPos pos, ChunkColumn center, int minY, int maxY)
-    {
-        _ = _mutableColumns.TryGetValue(new ChunkPos(pos.X, pos.Z - 1), out var north);
-        _ = _mutableColumns.TryGetValue(new ChunkPos(pos.X, pos.Z + 1), out var south);
-        _ = _mutableColumns.TryGetValue(new ChunkPos(pos.X - 1, pos.Z), out var west);
-        _ = _mutableColumns.TryGetValue(new ChunkPos(pos.X + 1, pos.Z), out var east);
-
-        LightingEngine.RefreshChunkLightBand(center, minY, maxY, _blocks);
-        _ = LightingEngine.PropagateCrossChunkLightBand(center, north, south, west, east, minY, maxY, _blocks);
-        _publishedSnapshots[pos] = center.CreateSnapshot();
-
-        RelightSingleNeighbor(north, minY, maxY);
-        RelightSingleNeighbor(south, minY, maxY);
-        RelightSingleNeighbor(west, minY, maxY);
-        RelightSingleNeighbor(east, minY, maxY);
-    }
-
-    private void RelightSingleNeighbor(ChunkColumn? neighbor, int minY, int maxY)
-    {
-        if (neighbor is null) return;
-        var np = neighbor.Position;
-        _ = _mutableColumns.TryGetValue(new ChunkPos(np.X, np.Z - 1), out var nn);
-        _ = _mutableColumns.TryGetValue(new ChunkPos(np.X, np.Z + 1), out var ns);
-        _ = _mutableColumns.TryGetValue(new ChunkPos(np.X - 1, np.Z), out var nw);
-        _ = _mutableColumns.TryGetValue(new ChunkPos(np.X + 1, np.Z), out var ne);
-
-        LightingEngine.RefreshChunkLightBand(neighbor, minY, maxY, _blocks);
-        _ = LightingEngine.PropagateCrossChunkLightBand(neighbor, nn, ns, nw, ne, minY, maxY, _blocks);
-        _publishedSnapshots[np] = neighbor.CreateSnapshot();
-    }
-
-    private void MarkColumnAndCardinalsDirty(ChunkPos pos)
-    {
-        _ = _dirtyMeshColumns.Add(pos);
-        MarkIfLoaded(new ChunkPos(pos.X, pos.Z - 1));
-        MarkIfLoaded(new ChunkPos(pos.X, pos.Z + 1));
-        MarkIfLoaded(new ChunkPos(pos.X - 1, pos.Z));
-        MarkIfLoaded(new ChunkPos(pos.X + 1, pos.Z));
-    }
-
-    private void MarkIfLoaded(ChunkPos pos)
-    {
-        if (_publishedSnapshots.ContainsKey(pos))
-        {
-            _ = _dirtyMeshColumns.Add(pos);
-        }
-    }
 }

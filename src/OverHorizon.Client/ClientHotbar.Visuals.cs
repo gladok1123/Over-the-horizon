@@ -81,6 +81,7 @@ public sealed partial class ClientHotbar
     private static bool IsBlock3DCube(ItemDefinition? item) =>
         item?.PlacedBlockKey is { } bk &&
         !IsTorchStyleKey(bk) &&
+        bk != BuiltInBlocks.OakFence &&
         bk != BuiltInBlocks.Rail &&
         bk != BuiltInBlocks.PoweredRail &&
         bk != BuiltInBlocks.RedBed &&
@@ -89,7 +90,11 @@ public sealed partial class ClientHotbar
         bk != BuiltInBlocks.RedstoneWire &&
         bk != BuiltInBlocks.RedstoneRepeater &&
         bk != BuiltInBlocks.RedstoneComparator &&
-        bk != BuiltInBlocks.OakTrapdoor;
+        bk != BuiltInBlocks.OakTrapdoor &&
+        bk != BuiltInBlocks.IronTrapdoor &&
+        bk != BuiltInBlocks.OakDoor &&
+        bk != BuiltInBlocks.IronDoor &&
+        bk != BuiltInBlocks.AmethystCluster;
 
     private int GetFaceTile(ItemDefinition? item, Direction face) =>
         _atlas is not null && item?.PlacedBlockKey is { } bk ? _atlas.GetTileIndex(bk, face) : -1;

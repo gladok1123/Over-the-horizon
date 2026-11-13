@@ -83,12 +83,15 @@ public static partial class BlockAttachmentAndShapeRules
             return true;
         }
 
-        if (key == BuiltInBlocks.OakTrapdoor)
+        if (key == BuiltInBlocks.OakTrapdoor || key == BuiltInBlocks.IronTrapdoor)
         {
             var isOpen = meta.Properties.TryGetValue("open", out var ov) && string.Equals(ov, "true", StringComparison.OrdinalIgnoreCase);
+            var isTop = meta.Properties.TryGetValue("half", out var hv) && string.Equals(hv, "top", StringComparison.OrdinalIgnoreCase);
             if (!isOpen)
             {
-                localBounds = new BoundingBox(0.0, 0.0, 0.0, 1.0, 0.1875, 1.0);
+                localBounds = isTop
+                    ? new BoundingBox(0.0, 0.8125, 0.0, 1.0, 1.0, 1.0)
+                    : new BoundingBox(0.0, 0.0, 0.0, 1.0, 0.1875, 1.0);
                 return true;
             }
 
@@ -99,6 +102,57 @@ public static partial class BlockAttachmentAndShapeRules
                 "west" => new BoundingBox(0.8125, 0.0, 0.0, 1.0, 1.0, 1.0),
                 _ => new BoundingBox(0.0, 0.0, 0.0, 0.1875, 1.0, 1.0),
             };
+            return true;
+        }
+
+        if (key == BuiltInBlocks.OakDoor || key == BuiltInBlocks.IronDoor)
+        {
+            var facing = GetFacing(meta, "north");
+            var isOpen = meta.Properties.TryGetValue("open", out var ov) && string.Equals(ov, "true", StringComparison.OrdinalIgnoreCase);
+            var rightHinge = meta.Properties.TryGetValue("hinge", out var hg) && string.Equals(hg, "right", StringComparison.OrdinalIgnoreCase);
+            var edge = !isOpen
+                ? facing
+                : facing switch
+                {
+                    "north" => rightHinge ? "east" : "west",
+                    "south" => rightHinge ? "west" : "east",
+                    "west" => rightHinge ? "north" : "south",
+                    _ => rightHinge ? "south" : "north",
+                };
+
+            localBounds = edge switch
+            {
+                "north" => new BoundingBox(0.0, 0.0, 0.0, 1.0, 1.0, 0.1875),
+                "south" => new BoundingBox(0.0, 0.0, 0.8125, 1.0, 1.0, 1.0),
+                "west" => new BoundingBox(0.0, 0.0, 0.0, 0.1875, 1.0, 1.0),
+                _ => new BoundingBox(0.8125, 0.0, 0.0, 1.0, 1.0, 1.0),
+            };
+            return true;
+        }
+
+        if (key == BuiltInBlocks.AmethystCluster)
+        {
+            localBounds = GetFacing(meta, "up") switch
+            {
+                "down" => new BoundingBox(0.1875, 0.3125, 0.1875, 0.8125, 1.0, 0.8125),
+                "north" => new BoundingBox(0.1875, 0.1875, 0.3125, 0.8125, 0.8125, 1.0),
+                "south" => new BoundingBox(0.1875, 0.1875, 0.0, 0.8125, 0.8125, 0.6875),
+                "west" => new BoundingBox(0.3125, 0.1875, 0.1875, 1.0, 0.8125, 0.8125),
+                "east" => new BoundingBox(0.0, 0.1875, 0.1875, 0.6875, 0.8125, 0.8125),
+                _ => new BoundingBox(0.1875, 0.0, 0.1875, 0.8125, 0.6875, 0.8125),
+            };
+            return true;
+        }
+
+        if (key == BuiltInBlocks.DirtPath || key == BuiltInBlocks.Farmland)
+        {
+            localBounds = new BoundingBox(0.0, 0.0, 0.0, 1.0, 0.9375, 1.0);
+            return true;
+        }
+
+        if (key == BuiltInBlocks.OakFence)
+        {
+            localBounds = new BoundingBox(0.25, 0.0, 0.25, 0.75, 1.0, 0.75);
             return true;
         }
 
@@ -153,7 +207,8 @@ public static partial class BlockAttachmentAndShapeRules
         Direction clickedFace,
         Vector3 playerForward,
         out BlockState resolvedState,
-        out (BlockPos Pos, BlockState State)? secondaryBlock)
+        out (BlockPos Pos, BlockState State)? secondaryBlock,
+        double hitPointLocalY = 0.0)
     {
         ArgumentNullException.ThrowIfNull(blocks);
         ArgumentNullException.ThrowIfNull(getBlock);
@@ -283,8 +338,10 @@ public static partial class BlockAttachmentAndShapeRules
             return true;
         }
 
-        // 6. PILLAR / AXIS BLOCKS: Oak Log, Birch Log, and Hay Block align along the clicked voxel face axis like vanilla!
-        if (blockKey == BuiltInBlocks.OakLog || blockKey == BuiltInBlocks.BirchLog || blockKey == BuiltInBlocks.HayBlock)
+        // 6. PILLAR / AXIS BLOCKS: Oak/Birch/Cherry/Spruce Logs and Hay Block align along the clicked voxel face axis like vanilla!
+        if (blockKey == BuiltInBlocks.OakLog || blockKey == BuiltInBlocks.BirchLog ||
+            blockKey == BuiltInBlocks.CherryLog || blockKey == BuiltInBlocks.SpruceLog ||
+            blockKey == BuiltInBlocks.HayBlock)
         {
             var axisToken = clickedFace.GetAxis() switch
             {
@@ -296,12 +353,65 @@ public static partial class BlockAttachmentAndShapeRules
             return true;
         }
 
-        // 7. HORIZONTAL FRONT-FACING BLOCKS: Furnace, Lit Furnace, Chest, and Oak Trapdoor face horizontally toward the player!
+        // 6b. AMETHYST CLUSTER: Mounts onto any solid face along clickedFace!
+        if (blockKey == BuiltInBlocks.AmethystCluster)
+        {
+            var supportPos = placePos.Offset(clickedFace.Opposite());
+            if (!IsFullSupportBlock(blocks, getBlock(supportPos)))
+            {
+                return false;
+            }
+
+            resolvedState = blocks.WithProperty(resolvedState, "facing", DirectionName(clickedFace));
+            return true;
+        }
+
+        // 7. HORIZONTAL FRONT-FACING BLOCKS: Furnace, Lit Furnace, Chest, and Oak/Iron Trapdoors!
         if (blockKey == BuiltInBlocks.Furnace || blockKey == BuiltInBlocks.LitFurnace ||
-            blockKey == BuiltInBlocks.Chest || blockKey == BuiltInBlocks.OakTrapdoor)
+            blockKey == BuiltInBlocks.Chest || blockKey == BuiltInBlocks.OakTrapdoor || blockKey == BuiltInBlocks.IronTrapdoor)
         {
             var frontDir = HorizontalLookDirection(playerForward).Opposite();
             resolvedState = blocks.WithProperty(resolvedState, "facing", DirectionName(frontDir));
+            if (blockKey == BuiltInBlocks.OakTrapdoor || blockKey == BuiltInBlocks.IronTrapdoor)
+            {
+                var placeTop = clickedFace == Direction.Down ||
+                               (clickedFace.GetAxis() != Axis.Y && hitPointLocalY >= 0.5);
+                resolvedState = blocks.WithProperty(resolvedState, "half", placeTop ? "top" : "bottom");
+            }
+
+            return true;
+        }
+
+        // 7b. 2-BLOCK HINGED DOORS: Oak Door & Iron Door (lower half at placePos, upper half at placePos + Up)
+        if (blockKey == BuiltInBlocks.OakDoor || blockKey == BuiltInBlocks.IronDoor)
+        {
+            var upperPos = placePos.Offset(Direction.Up);
+            var upperExisting = getBlock(upperPos);
+            var upperMeta = blocks.GetStateMetadata(upperExisting);
+            if ((!upperExisting.IsAir && !upperMeta.IsFluid && upperMeta.BlockKey != BuiltInBlocks.Fire) ||
+                !IsFullSupportBlock(blocks, getBlock(placePos.Offset(Direction.Down))))
+            {
+                return false;
+            }
+
+            var doorDir = HorizontalLookDirection(playerForward);
+            var fName = DirectionName(doorDir);
+            var rightNeighborDir = RotateClockwise(doorDir);
+            var rightNeighborKey = blocks.GetStateMetadata(getBlock(placePos.Offset(rightNeighborDir))).BlockKey;
+            var hinge = rightNeighborKey == blockKey ? "left" : "right";
+            var leftNeighborKey = blocks.GetStateMetadata(getBlock(placePos.Offset(rightNeighborDir.Opposite()))).BlockKey;
+            if (leftNeighborKey == blockKey)
+            {
+                hinge = "right";
+            }
+            else if (rightNeighborKey != blockKey)
+            {
+                hinge = "left";
+            }
+
+            resolvedState = blocks.WithProperty(blocks.WithProperty(blocks.WithProperty(resolvedState, "facing", fName), "half", "lower"), "hinge", hinge);
+            var upperState = blocks.WithProperty(blocks.WithProperty(blocks.WithProperty(blocks.GetDefaultState(blockKey), "facing", fName), "half", "upper"), "hinge", hinge);
+            secondaryBlock = (upperPos, upperState);
             return true;
         }
 

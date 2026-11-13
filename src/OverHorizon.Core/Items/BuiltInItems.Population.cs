@@ -107,11 +107,11 @@ public static partial class BuiltInItems
         RegisterTool(registry, GoldenAxe, "Golden Axe", ToolKind.Axe, damage: 5.0f, speed: 12.0f, tier: 0);
         RegisterTool(registry, DiamondAxe, "Diamond Axe", ToolKind.Axe, damage: 7.5f, speed: 9.0f, tier: 3);
 
-        RegisterTool(registry, WoodenShovel, "Wooden Shovel", ToolKind.Shovel, damage: 2.5f, speed: 2.5f, tier: 0);
-        RegisterTool(registry, StoneShovel, "Stone Shovel", ToolKind.Shovel, damage: 3.5f, speed: 4.5f, tier: 1);
-        RegisterTool(registry, IronShovel, "Iron Shovel", ToolKind.Shovel, damage: 4.5f, speed: 6.5f, tier: 2);
-        RegisterTool(registry, GoldenShovel, "Golden Shovel", ToolKind.Shovel, damage: 2.5f, speed: 12.0f, tier: 0);
-        RegisterTool(registry, DiamondShovel, "Diamond Shovel", ToolKind.Shovel, damage: 5.5f, speed: 9.0f, tier: 3);
+        RegisterTool(registry, WoodenShovel, "Wooden Shovel", ToolKind.Shovel, damage: 2.5f, speed: 2.5f, tier: 0, action: ItemUseAction.FlattenPath);
+        RegisterTool(registry, StoneShovel, "Stone Shovel", ToolKind.Shovel, damage: 3.5f, speed: 4.5f, tier: 1, action: ItemUseAction.FlattenPath);
+        RegisterTool(registry, IronShovel, "Iron Shovel", ToolKind.Shovel, damage: 4.5f, speed: 6.5f, tier: 2, action: ItemUseAction.FlattenPath);
+        RegisterTool(registry, GoldenShovel, "Golden Shovel", ToolKind.Shovel, damage: 2.5f, speed: 12.0f, tier: 0, action: ItemUseAction.FlattenPath);
+        RegisterTool(registry, DiamondShovel, "Diamond Shovel", ToolKind.Shovel, damage: 5.5f, speed: 9.0f, tier: 3, action: ItemUseAction.FlattenPath);
 
         RegisterTool(registry, WoodenHoe, "Wooden Hoe", ToolKind.Hoe, damage: 1.5f, speed: 2.5f, tier: 0, action: ItemUseAction.TillSoil);
         RegisterTool(registry, StoneHoe, "Stone Hoe", ToolKind.Hoe, damage: 2.0f, speed: 4.5f, tier: 1, action: ItemUseAction.TillSoil);
@@ -176,6 +176,10 @@ public static partial class BuiltInItems
         RegisterSpawnEgg(registry, SkeletonSpawnEgg, "Skeleton Spawn Egg");
         RegisterSpawnEgg(registry, CreeperSpawnEgg, "Creeper Spawn Egg");
         RegisterSpawnEgg(registry, SpiderSpawnEgg, "Spider Spawn Egg");
+
+        RegisterMaterial(registry, AmethystShard, "Amethyst Shard");
+        RegisterMaterial(registry, GlassBottle, "Glass Bottle");
+        RegisterMaterial(registry, ExperienceBottle, "Bottle o' Enchanting");
     }
 
     /// <summary>Creates, populates, and freezes the default item registry.</summary>
@@ -193,20 +197,27 @@ public static partial class BuiltInItems
             key == BuiltInBlocks.Lever || key == BuiltInBlocks.StoneButton ||
             key == BuiltInBlocks.StonePressurePlate || key == BuiltInBlocks.RedstoneRepeater ||
             key == BuiltInBlocks.RedstoneComparator || key == BuiltInBlocks.OakTrapdoor ||
-            key == BuiltInBlocks.RedstoneLamp || key == BuiltInBlocks.Piston ||
-            key == BuiltInBlocks.StickyPiston || key == BuiltInBlocks.Tnt ||
-            key == BuiltInBlocks.Rail || key == BuiltInBlocks.PoweredRail)
+            key == BuiltInBlocks.IronTrapdoor || key == BuiltInBlocks.OakDoor ||
+            key == BuiltInBlocks.IronDoor || key == BuiltInBlocks.RedstoneLamp ||
+            key == BuiltInBlocks.Piston || key == BuiltInBlocks.StickyPiston ||
+            key == BuiltInBlocks.Tnt || key == BuiltInBlocks.Rail ||
+            key == BuiltInBlocks.PoweredRail)
         {
             return ItemCategory.Redstone;
         }
 
-        if (key == BuiltInBlocks.GrassBlock || key == BuiltInBlocks.Dirt || key == BuiltInBlocks.Sand ||
+        if (key == BuiltInBlocks.GrassBlock || key == BuiltInBlocks.Dirt || key == BuiltInBlocks.DirtPath ||
+            key == BuiltInBlocks.Sand || key == BuiltInBlocks.RedSand || key == BuiltInBlocks.Terracotta ||
             key == BuiltInBlocks.Gravel || key == BuiltInBlocks.OakLog || key == BuiltInBlocks.OakLeaves ||
-            key == BuiltInBlocks.BirchLog || key == BuiltInBlocks.BirchLeaves || key == BuiltInBlocks.Deepslate ||
+            key == BuiltInBlocks.BirchLog || key == BuiltInBlocks.BirchLeaves ||
+            key == BuiltInBlocks.CherryLog || key == BuiltInBlocks.CherryLeaves ||
+            key == BuiltInBlocks.SpruceLog || key == BuiltInBlocks.SpruceLeaves ||
+            key == BuiltInBlocks.Deepslate || key == BuiltInBlocks.PackedIce ||
             key == BuiltInBlocks.CoalOre || key == BuiltInBlocks.IronOre || key == BuiltInBlocks.GoldOre ||
             key == BuiltInBlocks.DiamondOre || key == BuiltInBlocks.CopperOre || key == BuiltInBlocks.LapisOre ||
             key == BuiltInBlocks.RedstoneOre || key == BuiltInBlocks.EmeraldOre || key == BuiltInBlocks.SnowBlock ||
-            key == BuiltInBlocks.Farmland || key == BuiltInBlocks.HayBlock || key == BuiltInBlocks.AmethystBlock)
+            key == BuiltInBlocks.Farmland || key == BuiltInBlocks.HayBlock || key == BuiltInBlocks.AmethystBlock ||
+            key == BuiltInBlocks.BuddingAmethyst || key == BuiltInBlocks.AmethystCluster)
         {
             return ItemCategory.NaturalBlocks;
         }

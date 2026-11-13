@@ -9,7 +9,7 @@ namespace OverHorizon.World.Generation;
 /// Deterministic cross-chunk cave and surface structure generator producing Underground Monster Dungeons,
 /// Amethyst Crystal Geodes, Desert Sandstone Pyramids, Forest/Plains Ranger Cabins, and Ruined Obsidian Portals.
 /// </summary>
-internal sealed class WorldStructurePopulator
+internal sealed partial class WorldStructurePopulator
 {
     private const int UndergroundGridSize = 64;
     private const int SurfaceGridSize = 96;
@@ -27,6 +27,9 @@ internal sealed class WorldStructurePopulator
     private readonly BlockState _obsidian;
     private readonly BlockState _cobbledDeepslate;
     private readonly BlockState _amethyst;
+    private readonly BlockState _buddingAmethyst;
+    private readonly BlockState _clusterUp;
+    private readonly BlockState _clusterDown;
     private readonly BlockState _sandstone;
     private readonly BlockState _chiseledSandstone;
     private readonly BlockState _crimsonWool;
@@ -42,6 +45,9 @@ internal sealed class WorldStructurePopulator
     private readonly BlockState _lantern;
     private readonly BlockState _hangingLantern;
     private readonly BlockState _trapdoor;
+    private readonly BlockState _oakDoorLower;
+    private readonly BlockState _oakDoorUpper;
+    private readonly BlockState _dirtPath;
 
     public WorldStructurePopulator(long seed, IBlockRegistry blocks)
     {
@@ -58,6 +64,10 @@ internal sealed class WorldStructurePopulator
         _obsidian = blocks.GetDefaultState(BuiltInBlocks.Obsidian);
         _cobbledDeepslate = blocks.GetDefaultState(BuiltInBlocks.CobbledDeepslate);
         _amethyst = blocks.GetDefaultState(BuiltInBlocks.AmethystBlock);
+        _buddingAmethyst = blocks.GetDefaultState(BuiltInBlocks.BuddingAmethyst);
+        var defaultCluster = blocks.GetDefaultState(BuiltInBlocks.AmethystCluster);
+        _clusterUp = blocks.WithProperty(defaultCluster, "facing", "up");
+        _clusterDown = blocks.WithProperty(defaultCluster, "facing", "down");
         _sandstone = blocks.GetDefaultState(BuiltInBlocks.Sandstone);
         _chiseledSandstone = blocks.GetDefaultState(BuiltInBlocks.ChiseledSandstone);
         _crimsonWool = blocks.GetDefaultState(BuiltInBlocks.CrimsonWool);
@@ -73,6 +83,10 @@ internal sealed class WorldStructurePopulator
         _lantern = blocks.GetDefaultState(BuiltInBlocks.Lantern);
         _hangingLantern = blocks.WithProperty(_lantern, "hanging", "true");
         _trapdoor = blocks.GetDefaultState(BuiltInBlocks.OakTrapdoor);
+        var defaultDoor = blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.OakDoor), "facing", "south");
+        _oakDoorLower = blocks.WithProperty(defaultDoor, "half", "lower");
+        _oakDoorUpper = blocks.WithProperty(defaultDoor, "half", "upper");
+        _dirtPath = blocks.GetDefaultState(BuiltInBlocks.DirtPath);
     }
 
     public bool IsSurfaceStructureFootprint(int worldX, int worldZ, Func<int, int, (int Height, ResourceKey Biome)> surfaceSampler)
@@ -210,11 +224,24 @@ internal sealed class WorldStructurePopulator
                     var isCrackOpening = dx * crackDirX >= 2 && Math.Abs(dy) <= 1 && Math.Abs(dz) <= 1;
                     if (isCrackOpening || distSq <= 11)
                     {
-                        _ = chunk.SetBlockStateRaw(lx, y, lz, _air);
+                        var isFloorCrystal = !isCrackOpening && dy == -3 && (dx * dx) + (dz * dz) <= 2 && (((wx * 7) ^ (wz * 13)) & 1) == 0;
+                        var isCeilingCrystal = !isCrackOpening && dy == 3 && (dx * dx) + (dz * dz) <= 2 && (((wx * 11) ^ (wz * 5)) & 1) == 0;
+                        BlockState cavityBlock = _air;
+                        if (isFloorCrystal)
+                        {
+                            cavityBlock = _clusterUp;
+                        }
+                        else if (isCeilingCrystal)
+                        {
+                            cavityBlock = _clusterDown;
+                        }
+
+                        _ = chunk.SetBlockStateRaw(lx, y, lz, cavityBlock);
                     }
                     else if (distSq <= 19)
                     {
-                        _ = chunk.SetBlockStateRaw(lx, y, lz, _amethyst);
+                        var isBudding = (((wx * 17) + (y * 31) + (wz * 23)) & 3) == 0;
+                        _ = chunk.SetBlockStateRaw(lx, y, lz, isBudding ? _buddingAmethyst : _amethyst);
                     }
                     else if (distSq <= 26)
                     {
@@ -351,130 +378,5 @@ internal sealed class WorldStructurePopulator
                 }
             }
         }
-    }
-
-    private void BuildRangerCabinAndTower(ChunkColumn chunk, int cMinX, int cMinZ, int ax, int baseY, int az)
-    {
-        for (var wz = az - 4; wz <= az + 4; wz++)
-        {
-            var lz = wz - cMinZ;
-            if ((uint)lz >= 16U) continue;
-            for (var wx = ax - 4; wx <= ax + 4; wx++)
-            {
-                var lx = wx - cMinX;
-                if ((uint)lx >= 16U) continue;
-
-                var dx = wx - ax;
-                var dz = wz - az;
-                var inCabin = Math.Abs(dx) <= 3 && Math.Abs(dz) <= 3;
-                if (!inCabin)
-                {
-                    if (dx == 4 && dz == 0)
-                    {
-                        _ = chunk.SetBlockStateRaw(lx, baseY, lz, _cobblestone);
-                        _ = chunk.SetBlockStateRaw(lx, baseY + 1, lz, _composter);
-                    }
-
-                    continue;
-                }
-
-                for (var fy = baseY - 4; fy <= baseY; fy++)
-                {
-                    _ = chunk.SetBlockStateRaw(lx, fy, lz, fy == baseY ? _oakPlanks : _stoneBricks);
-                }
-
-                for (var cy = baseY + 1; cy <= baseY + 9; cy++)
-                {
-                    _ = chunk.SetBlockStateRaw(lx, cy, lz, _air);
-                }
-
-                var isCorner = Math.Abs(dx) == 3 && Math.Abs(dz) == 3;
-                var isWall = Math.Abs(dx) == 3 || Math.Abs(dz) == 3;
-                var isFrontDoor = dz == 3 && dx == 0;
-                var isWindow = isWall && !isCorner && !isFrontDoor && (dx == 0 || dz == 0);
-
-                for (var h = 1; h <= 4; h++)
-                {
-                    if (isCorner) _ = chunk.SetBlockStateRaw(lx, baseY + h, lz, _oakLog);
-                    else if (isFrontDoor && h <= 2) _ = chunk.SetBlockStateRaw(lx, baseY + h, lz, _air);
-                    else if (isWindow && h == 2) _ = chunk.SetBlockStateRaw(lx, baseY + h, lz, _glass);
-                    else if (isWall) _ = chunk.SetBlockStateRaw(lx, baseY + h, lz, h == 1 ? _stoneBricks : _oakPlanks);
-                }
-
-                // Watchtower battlement roof + trapdoor hatch
-                _ = chunk.SetBlockStateRaw(lx, baseY + 5, lz, (dx == -2 && dz == -2) ? _trapdoor : _oakPlanks);
-                if (isWall)
-                {
-                    _ = chunk.SetBlockStateRaw(lx, baseY + 6, lz, isCorner ? _oakLog : _oakFence);
-                }
-
-                if (dx == 0 && dz == 0) _ = chunk.SetBlockStateRaw(lx, baseY + 4, lz, _hangingLantern);
-                else if (dx == -2 && dz == 1) _ = chunk.SetBlockStateRaw(lx, baseY + 1, lz, _craftingTable);
-                else if (dx == -2 && dz == 2) _ = chunk.SetBlockStateRaw(lx, baseY + 1, lz, _furnace);
-                else if (dx == 2 && dz == -2) _ = chunk.SetBlockStateRaw(lx, baseY + 1, lz, _chest);
-            }
-        }
-    }
-
-    private void BuildRuinedObsidianPortal(ChunkColumn chunk, int cMinX, int cMinZ, int ax, int baseY, int az)
-    {
-        for (var wz = az - 3; wz <= az + 3; wz++)
-        {
-            var lz = wz - cMinZ;
-            if ((uint)lz >= 16U) continue;
-            for (var wx = ax - 3; wx <= ax + 3; wx++)
-            {
-                var lx = wx - cMinX;
-                if ((uint)lx >= 16U) continue;
-
-                var dx = wx - ax;
-                var dz = wz - az;
-                if ((dx * dx) + (dz * dz) > 10) continue;
-
-                _ = chunk.SetBlockStateRaw(lx, baseY, lz, ((wx + wz) & 1) == 0 ? _mossyStoneBricks : _stoneBricks);
-                for (var cy = baseY + 1; cy <= baseY + 6; cy++)
-                {
-                    _ = chunk.SetBlockStateRaw(lx, cy, lz, _air);
-                }
-
-                if (dz == 0 && Math.Abs(dx) <= 2)
-                {
-                    for (var py = 1; py <= 5; py++)
-                    {
-                        var isFrame = py == 1 || py == 5 || Math.Abs(dx) == 2;
-                        var brokenCorner = dx == 2 && py >= 4;
-                        if (isFrame && !brokenCorner)
-                        {
-                            _ = chunk.SetBlockStateRaw(lx, baseY + py, lz, (dx == -2 && py == 5) ? _goldBlock : _obsidian);
-                        }
-                    }
-                }
-                else if (dx == 1 && dz == 2)
-                {
-                    _ = chunk.SetBlockStateRaw(lx, baseY + 1, lz, _chest);
-                }
-                else if (dx == -1 && dz == 2)
-                {
-                    _ = chunk.SetBlockStateRaw(lx, baseY + 1, lz, _lantern);
-                }
-            }
-        }
-    }
-
-    private void GetSurfaceAnchor(int gx, int gz, out int ax, out int az, out ulong hash)
-    {
-        hash = Hash(_seed, gx, gz, 0x77C3);
-        ax = (gx * SurfaceGridSize) + 28 + (int)(hash % 40UL);
-        az = (gz * SurfaceGridSize) + 28 + (int)((hash >> 10) % 40UL);
-    }
-
-    private static int FloorDiv(int a, int b) => a >= 0 ? a / b : ((a - b + 1) / b);
-
-    private static ulong Hash(long seed, int a, int b, int c)
-    {
-        var z = (ulong)seed ^ ((ulong)(uint)a * 0xBF58476D1CE4E5B9UL) ^ ((ulong)(uint)b * 0x94D049BB133111EBUL) ^ ((ulong)(uint)c * 0x9E3779B97F4A7C15UL);
-        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9UL;
-        z = (z ^ (z >> 27)) * 0x94D049BB133111EBUL;
-        return z ^ (z >> 31);
     }
 }

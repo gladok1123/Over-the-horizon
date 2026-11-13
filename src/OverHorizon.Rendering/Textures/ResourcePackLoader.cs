@@ -1,13 +1,10 @@
-using System.IO.Compression;
-using System.Text.Json;
-
 namespace OverHorizon.Rendering.Textures;
 
 /// <summary>
 /// Loads external <c>16x16</c> block &amp; item PNG textures, <c>256x256</c> GUI sheets (<c>widgets.png</c>, <c>icons.png</c>,
 /// <c>slider.png</c>, <c>container/*.png</c>), and <c>lang/*.json</c> translations from <c>minecraft-assets</c> (<c>23w13a__or__b</c>) or user packs.
 /// </summary>
-public sealed class ResourcePackLoader : IDisposable
+public sealed partial class ResourcePackLoader : IDisposable
 {
     private readonly Dictionary<string, byte[]> _blockTextures = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, byte[]> _itemTextures = new(StringComparer.OrdinalIgnoreCase);
@@ -116,6 +113,123 @@ public sealed class ResourcePackLoader : IDisposable
         }
 
         WriteTileToAtlas(atlas, tileIndex, rgba, tintR, tintG, tintB, 255);
+        return true;
+    }
+
+    /// <summary>
+    /// Composites authentic two-layer <c>23w13a__or__b</c> <c>potion.png</c> (glass bottle + cork) + tinted <c>potion_overlay.png</c> (liquid).
+    /// </summary>
+    public bool TryBlitPotionTile(byte[] atlas, ushort tileIndex, byte liquidR, byte liquidG, byte liquidB)
+    {
+        ArgumentNullException.ThrowIfNull(atlas);
+
+        if (!_itemTextures.TryGetValue("potion", out var bottlePng) ||
+            !PngImageDecoder.TryDecodeTo16x16Rgba(bottlePng, out var bottleRgba))
+        {
+            return false;
+        }
+
+        if (_itemTextures.TryGetValue("potion_overlay", out var overlayPng) &&
+            PngImageDecoder.TryDecodeTo16x16Rgba(overlayPng, out var overlayRgba))
+        {
+            var outRgba = new byte[16 * 16 * 4];
+            for (var i = 0; i < outRgba.Length; i += 4)
+            {
+                var liqA = overlayRgba[i + 3];
+                var botA = bottleRgba[i + 3];
+                if (liqA == 0 && botA == 0)
+                {
+                    continue;
+                }
+
+                var lr = (overlayRgba[i + 0] * liquidR) / 255;
+                var lg = (overlayRgba[i + 1] * liquidG) / 255;
+                var lb = (overlayRgba[i + 2] * liquidB) / 255;
+
+                // Blend untinted glass rim/cork/highlights on top of tinted potion liquid!
+                if (liqA > 0 && botA > 0)
+                {
+                    outRgba[i + 0] = (byte)Math.Clamp(((lr * 185) + (bottleRgba[i + 0] * 95)) / 255, 0, 255);
+                    outRgba[i + 1] = (byte)Math.Clamp(((lg * 185) + (bottleRgba[i + 1] * 95)) / 255, 0, 255);
+                    outRgba[i + 2] = (byte)Math.Clamp(((lb * 185) + (bottleRgba[i + 2] * 95)) / 255, 0, 255);
+                    outRgba[i + 3] = Math.Max(liqA, botA);
+                }
+                else if (liqA > 0)
+                {
+                    outRgba[i + 0] = (byte)lr;
+                    outRgba[i + 1] = (byte)lg;
+                    outRgba[i + 2] = (byte)lb;
+                    outRgba[i + 3] = liqA;
+                }
+                else
+                {
+                    outRgba[i + 0] = bottleRgba[i + 0];
+                    outRgba[i + 1] = bottleRgba[i + 1];
+                    outRgba[i + 2] = bottleRgba[i + 2];
+                    outRgba[i + 3] = botA;
+                }
+            }
+
+            WriteTileToAtlas(atlas, tileIndex, outRgba, 255, 255, 255, 255);
+            return true;
+        }
+
+        WriteTileToAtlas(atlas, tileIndex, bottleRgba, liquidR, liquidG, liquidB, 255);
+        return true;
+    }
+
+    /// <summary>
+    /// Composites authentic two-layer <c>23w13a__or__b</c> <c>spawn_egg.png</c> (primary shell) + <c>spawn_egg_overlay.png</c> (secondary spots).
+    /// </summary>
+    public bool TryBlitSpawnEggTile(
+        byte[] atlas,
+        ushort tileIndex,
+        byte baseR,
+        byte baseG,
+        byte baseB,
+        byte spotR,
+        byte spotG,
+        byte spotB)
+    {
+        ArgumentNullException.ThrowIfNull(atlas);
+
+        if (!_itemTextures.TryGetValue("spawn_egg", out var basePng) ||
+            !PngImageDecoder.TryDecodeTo16x16Rgba(basePng, out var baseRgba))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < baseRgba.Length; i += 4)
+        {
+            baseRgba[i + 0] = (byte)((baseRgba[i + 0] * baseR) / 255);
+            baseRgba[i + 1] = (byte)((baseRgba[i + 1] * baseG) / 255);
+            baseRgba[i + 2] = (byte)((baseRgba[i + 2] * baseB) / 255);
+        }
+
+        if (_itemTextures.TryGetValue("spawn_egg_overlay", out var overlayPng) &&
+            PngImageDecoder.TryDecodeTo16x16Rgba(overlayPng, out var overlayRgba))
+        {
+            for (var i = 0; i < baseRgba.Length; i += 4)
+            {
+                var oa = overlayRgba[i + 3];
+                if (oa < 12)
+                {
+                    continue;
+                }
+
+                var sr = (overlayRgba[i + 0] * spotR) / 255;
+                var sg = (overlayRgba[i + 1] * spotG) / 255;
+                var sb = (overlayRgba[i + 2] * spotB) / 255;
+                var invA = 255 - oa;
+
+                baseRgba[i + 0] = (byte)(((sr * oa) + (baseRgba[i + 0] * invA)) / 255);
+                baseRgba[i + 1] = (byte)(((sg * oa) + (baseRgba[i + 1] * invA)) / 255);
+                baseRgba[i + 2] = (byte)(((sb * oa) + (baseRgba[i + 2] * invA)) / 255);
+                baseRgba[i + 3] = Math.Max(baseRgba[i + 3], oa);
+            }
+        }
+
+        WriteTileToAtlas(atlas, tileIndex, baseRgba, 255, 255, 255, 255);
         return true;
     }
 
@@ -243,212 +357,6 @@ public sealed class ResourcePackLoader : IDisposable
                 atlas[dst + 2] = (byte)((rgba16x16[src + 2] * tintB) / 255);
                 atlas[dst + 3] = (byte)((rgba16x16[src + 3] * alphaOverride) / 255);
             }
-        }
-    }
-
-    private static byte[] ReadEntryBytes(ZipArchiveEntry entry)
-    {
-        var buffer = new byte[entry.Length];
-        using var stream = entry.Open();
-        var total = 0;
-        while (total < buffer.Length)
-        {
-            var n = stream.Read(buffer, total, buffer.Length - total);
-            if (n <= 0)
-            {
-                break;
-            }
-
-            total += n;
-        }
-
-        return buffer;
-    }
-
-    private void LoadFromPath(string fullPath)
-    {
-        if (File.Exists(fullPath))
-        {
-            var ext = Path.GetExtension(fullPath);
-            if (string.Equals(ext, ".zip", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(ext, ".jar", StringComparison.OrdinalIgnoreCase))
-            {
-                LoadFromArchive(fullPath);
-            }
-
-            return;
-        }
-
-        if (!Directory.Exists(fullPath))
-        {
-            return;
-        }
-
-        LoadFromDirectoryTree(fullPath);
-        foreach (var archive in Directory.EnumerateFiles(fullPath)
-                     .Where(static f =>
-                         f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ||
-                         f.EndsWith(".jar", StringComparison.OrdinalIgnoreCase)))
-        {
-            LoadFromArchive(archive);
-        }
-    }
-
-    private void LoadFromDirectoryTree(string rootDir)
-    {
-        foreach (var ns in new[] { "minecraft", "overhorizon" })
-        {
-            foreach (var relPrefix in new[] { Path.Combine(rootDir, "assets", ns), Path.Combine(rootDir, ns) })
-            {
-                LoadPngFolder(Path.Combine(relPrefix, "textures", "block"), _blockTextures);
-                LoadPngFolder(Path.Combine(relPrefix, "textures", "blocks"), _blockTextures);
-                LoadPngFolder(Path.Combine(relPrefix, "textures", "item"), _itemTextures);
-                LoadPngFolder(Path.Combine(relPrefix, "textures", "items"), _itemTextures);
-                LoadSubPngTree(Path.Combine(relPrefix, "textures", "gui"), string.Empty, _guiTextures);
-                LoadSubPngTree(Path.Combine(relPrefix, "textures", "entity"), string.Empty, _entityTextures);
-                LoadSubPngTree(Path.Combine(relPrefix, "textures", "models"), "models", _entityTextures);
-
-                var langDir = Path.Combine(relPrefix, "lang");
-                if (Directory.Exists(langDir))
-                {
-                    foreach (var langName in new[] { "en_us.json", "ru_ru.json" })
-                    {
-                        var langFile = Path.Combine(langDir, langName);
-                        if (File.Exists(langFile))
-                        {
-                            ParseLangJson(File.ReadAllBytes(langFile));
-                        }
-                    }
-                }
-            }
-        }
-
-        foreach (var subDir in Directory.EnumerateDirectories(rootDir)
-                     .Where(static d => Directory.Exists(Path.Combine(d, "assets"))))
-        {
-            LoadFromDirectoryTree(subDir);
-        }
-    }
-
-    private static void LoadSubPngTree(string rootDir, string prefix, Dictionary<string, byte[]> sink)
-    {
-        if (!Directory.Exists(rootDir))
-        {
-            return;
-        }
-
-        foreach (var pngFile in Directory.EnumerateFiles(rootDir, "*.png"))
-        {
-            var stem = Path.GetFileNameWithoutExtension(pngFile);
-            var key = string.IsNullOrEmpty(prefix) ? stem : $"{prefix}/{stem}";
-            sink[key] = File.ReadAllBytes(pngFile);
-        }
-
-        foreach (var sub in Directory.EnumerateDirectories(rootDir))
-        {
-            var subName = Path.GetFileName(sub);
-            var nextPrefix = string.IsNullOrEmpty(prefix) ? subName : $"{prefix}/{subName}";
-            LoadSubPngTree(sub, nextPrefix, sink);
-        }
-    }
-
-    private static void LoadPngFolder(string dir, Dictionary<string, byte[]> sink)
-    {
-        if (!Directory.Exists(dir))
-        {
-            return;
-        }
-
-        foreach (var pngFile in Directory.EnumerateFiles(dir, "*.png"))
-        {
-            sink[Path.GetFileNameWithoutExtension(pngFile)] = File.ReadAllBytes(pngFile);
-        }
-    }
-
-    private void LoadFromArchive(string archivePath)
-    {
-        try
-        {
-            using var zip = ZipFile.OpenRead(archivePath);
-            foreach (var entry in zip.Entries)
-            {
-                if (entry.Length is <= 0 or > 4_194_304)
-                {
-                    continue;
-                }
-
-                var norm = entry.FullName.Replace('\\', '/');
-                if (norm.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
-                {
-                    var guiMarker = "/textures/gui/";
-                    var entityMarker = "/textures/entity/";
-                    var modelsMarker = "/textures/models/";
-                    var guiIdx = norm.IndexOf(guiMarker, StringComparison.OrdinalIgnoreCase);
-                    var entIdx = norm.IndexOf(entityMarker, StringComparison.OrdinalIgnoreCase);
-                    var modIdx = norm.IndexOf(modelsMarker, StringComparison.OrdinalIgnoreCase);
-                    if (guiIdx >= 0)
-                    {
-                        var relGui = norm[(guiIdx + guiMarker.Length)..];
-                        _guiTextures[relGui[..^4]] = ReadEntryBytes(entry);
-                    }
-                    else if (entIdx >= 0)
-                    {
-                        var relEnt = norm[(entIdx + entityMarker.Length)..];
-                        _entityTextures[relEnt[..^4]] = ReadEntryBytes(entry);
-                    }
-                    else if (modIdx >= 0)
-                    {
-                        var relMod = norm[(modIdx + modelsMarker.Length)..];
-                        _entityTextures[$"models/{relMod[..^4]}"] = ReadEntryBytes(entry);
-                    }
-                    else if (norm.Contains("/textures/block/", StringComparison.OrdinalIgnoreCase) ||
-                             norm.Contains("/textures/blocks/", StringComparison.OrdinalIgnoreCase) ||
-                             norm.StartsWith("assets/minecraft/textures/block/", StringComparison.OrdinalIgnoreCase))
-                    {
-                        _blockTextures[Path.GetFileNameWithoutExtension(norm)] = ReadEntryBytes(entry);
-                    }
-                    else if (norm.Contains("/textures/item/", StringComparison.OrdinalIgnoreCase) ||
-                             norm.Contains("/textures/items/", StringComparison.OrdinalIgnoreCase) ||
-                             norm.StartsWith("assets/minecraft/textures/item/", StringComparison.OrdinalIgnoreCase))
-                    {
-                        _itemTextures[Path.GetFileNameWithoutExtension(norm)] = ReadEntryBytes(entry);
-                    }
-                }
-                else if (norm.EndsWith("/lang/en_us.json", StringComparison.OrdinalIgnoreCase) ||
-                         norm.EndsWith("/lang/ru_ru.json", StringComparison.OrdinalIgnoreCase) ||
-                         string.Equals(norm, "assets/minecraft/lang/en_us.json", StringComparison.OrdinalIgnoreCase))
-                {
-                    ParseLangJson(ReadEntryBytes(entry));
-                }
-            }
-        }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
-        {
-            // Ignore unreadable or corrupted archives gracefully.
-        }
-    }
-
-    private void ParseLangJson(ReadOnlySpan<byte> utf8Json)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(utf8Json.ToArray());
-            if (doc.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                return;
-            }
-
-            foreach (var prop in doc.RootElement.EnumerateObject())
-            {
-                if (prop.Value.ValueKind == JsonValueKind.String && prop.Value.GetString() is { Length: > 0 } val)
-                {
-                    _translations[prop.Name] = val;
-                }
-            }
-        }
-        catch (JsonException)
-        {
-            // Ignore malformed external language JSON.
         }
     }
 }

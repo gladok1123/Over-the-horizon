@@ -40,12 +40,16 @@ public static class BlockDropResolver
             speed = Math.Max(1.5f, heldTool.MiningSpeedMultiplier);
         }
         else if (heldTool is { ToolType: ToolKind.Sword } &&
-                 (block.Key == BuiltInBlocks.OakLeaves || block.Key == BuiltInBlocks.BirchLeaves || block.Key == BuiltInBlocks.Cobweb))
+                 (block.Key == BuiltInBlocks.OakLeaves || block.Key == BuiltInBlocks.BirchLeaves ||
+                  block.Key == BuiltInBlocks.CherryLeaves || block.Key == BuiltInBlocks.SpruceLeaves ||
+                  block.Key == BuiltInBlocks.Cobweb))
         {
             speed = block.Key == BuiltInBlocks.Cobweb ? 15.0f : 2.5f;
         }
         else if (heldTool is { ToolType: ToolKind.Hoe } &&
-                 (block.Key == BuiltInBlocks.OakLeaves || block.Key == BuiltInBlocks.BirchLeaves || block.Key == BuiltInBlocks.HayBlock))
+                 (block.Key == BuiltInBlocks.OakLeaves || block.Key == BuiltInBlocks.BirchLeaves ||
+                  block.Key == BuiltInBlocks.CherryLeaves || block.Key == BuiltInBlocks.SpruceLeaves ||
+                  block.Key == BuiltInBlocks.HayBlock))
         {
             speed = Math.Max(2.5f, heldTool.MiningSpeedMultiplier);
         }
@@ -76,9 +80,16 @@ public static class BlockDropResolver
         ArgumentNullException.ThrowIfNull(items);
 
         if (blockKey == BuiltInBlocks.Air || blockKey == BuiltInBlocks.Bedrock || blockKey == BuiltInBlocks.Water ||
-            blockKey == BuiltInBlocks.Fire || blockKey == BuiltInBlocks.PistonHead || blockKey == BuiltInBlocks.MonsterSpawner)
+            blockKey == BuiltInBlocks.Fire || blockKey == BuiltInBlocks.PistonHead || blockKey == BuiltInBlocks.MonsterSpawner ||
+            blockKey == BuiltInBlocks.BuddingAmethyst || blockKey == BuiltInBlocks.PackedIce)
         {
             return ItemStack.Empty;
+        }
+
+        if (blockKey == BuiltInBlocks.AmethystCluster)
+        {
+            var shardCount = heldTool is { ToolType: ToolKind.Pickaxe } ? 4 : 2;
+            return MakeStack(items, BuiltInItems.AmethystShard, shardCount);
         }
 
         if (blockKey == BuiltInBlocks.RedstoneWire)
@@ -115,7 +126,8 @@ public static class BlockDropResolver
                 : ItemStack.Empty;
         }
 
-        if (blockKey == BuiltInBlocks.OakLeaves || blockKey == BuiltInBlocks.BirchLeaves)
+        if (blockKey == BuiltInBlocks.OakLeaves || blockKey == BuiltInBlocks.BirchLeaves ||
+            blockKey == BuiltInBlocks.CherryLeaves || blockKey == BuiltInBlocks.SpruceLeaves)
         {
             if (heldTool is { ToolType: ToolKind.Shears })
             {
@@ -147,7 +159,7 @@ public static class BlockDropResolver
             return MakeStack(items, BuiltInBlocks.CobbledDeepslate, 1);
         }
 
-        if (blockKey == BuiltInBlocks.GrassBlock || blockKey == BuiltInBlocks.Farmland)
+        if (blockKey == BuiltInBlocks.GrassBlock || blockKey == BuiltInBlocks.Farmland || blockKey == BuiltInBlocks.DirtPath)
         {
             return MakeStack(items, BuiltInBlocks.Dirt, 1);
         }
@@ -220,7 +232,7 @@ public static class BlockDropResolver
         if (key == BuiltInBlocks.RedstoneTorchOff) return BuiltInBlocks.RedstoneTorch;
         if (key == BuiltInBlocks.LitRedstoneLamp) return BuiltInBlocks.RedstoneLamp;
         if (key == BuiltInBlocks.LitFurnace) return BuiltInBlocks.Furnace;
-        if (key == BuiltInBlocks.Farmland) return BuiltInBlocks.Dirt;
+        if (key == BuiltInBlocks.Farmland || key == BuiltInBlocks.DirtPath) return BuiltInBlocks.Dirt;
         if (key == BuiltInBlocks.PistonHead)
         {
             return meta.Properties.TryGetValue("sticky", out var s) && string.Equals(s, "true", StringComparison.OrdinalIgnoreCase)
@@ -242,11 +254,13 @@ public static class BlockDropResolver
         key == BuiltInBlocks.Cobblestone || key == BuiltInBlocks.MossyCobblestone ||
         key == BuiltInBlocks.StoneBricks || key == BuiltInBlocks.MossyStoneBricks || key == BuiltInBlocks.Bricks ||
         key == BuiltInBlocks.Sandstone || key == BuiltInBlocks.ChiseledSandstone || key == BuiltInBlocks.AmethystBlock ||
+        key == BuiltInBlocks.Terracotta || key == BuiltInBlocks.IronDoor || key == BuiltInBlocks.IronTrapdoor ||
         key == BuiltInBlocks.MonsterSpawner ||
         key == BuiltInBlocks.Furnace || key == BuiltInBlocks.LitFurnace || key == BuiltInBlocks.Lantern ||
-        key == BuiltInBlocks.CoalOre || key == BuiltInBlocks.IronOre || key == BuiltInBlocks.GoldOre ||
-        key == BuiltInBlocks.CopperOre || key == BuiltInBlocks.RedstoneOre || key == BuiltInBlocks.LapisOre ||
-        key == BuiltInBlocks.DiamondOre || key == BuiltInBlocks.EmeraldOre || key == BuiltInBlocks.Obsidian ||
+        key == BuiltInBlocks.CoalOre || key == BuiltInBlocks.IronOre ||
+        key == BuiltInBlocks.GoldOre || key == BuiltInBlocks.CopperOre || key == BuiltInBlocks.RedstoneOre ||
+        key == BuiltInBlocks.LapisOre || key == BuiltInBlocks.DiamondOre ||
+        key == BuiltInBlocks.EmeraldOre || key == BuiltInBlocks.Obsidian ||
         key == BuiltInBlocks.CoalBlock || key == BuiltInBlocks.IronBlock || key == BuiltInBlocks.GoldBlock ||
         key == BuiltInBlocks.DiamondBlock || key == BuiltInBlocks.EmeraldBlock || key == BuiltInBlocks.LapisBlock ||
         key == BuiltInBlocks.CopperBlock || key == BuiltInBlocks.RedstoneBlock;
@@ -254,27 +268,31 @@ public static class BlockDropResolver
     private static ToolKind GetPreferredTool(ResourceKey key)
     {
         if (RequiresPickaxeForFastHarvest(key) || key == BuiltInBlocks.Rail || key == BuiltInBlocks.PoweredRail ||
-            key == BuiltInBlocks.Piston || key == BuiltInBlocks.StickyPiston)
+            key == BuiltInBlocks.Piston || key == BuiltInBlocks.StickyPiston ||
+            key == BuiltInBlocks.BuddingAmethyst || key == BuiltInBlocks.AmethystCluster || key == BuiltInBlocks.PackedIce)
         {
             return ToolKind.Pickaxe;
         }
 
         if (key == BuiltInBlocks.OakLog || key == BuiltInBlocks.BirchLog ||
+            key == BuiltInBlocks.CherryLog || key == BuiltInBlocks.SpruceLog ||
             key == BuiltInBlocks.OakPlanks || key == BuiltInBlocks.BirchPlanks ||
-            key == BuiltInBlocks.OakFence || key == BuiltInBlocks.Chest ||
+            key == BuiltInBlocks.OakFence || key == BuiltInBlocks.OakDoor || key == BuiltInBlocks.OakTrapdoor ||
+            key == BuiltInBlocks.Composter || key == BuiltInBlocks.Chest ||
             key == BuiltInBlocks.Barrel || key == BuiltInBlocks.Ladder ||
             key == BuiltInBlocks.CraftingTable || key == BuiltInBlocks.Bookshelf)
         {
             return ToolKind.Axe;
         }
 
-        if (key == BuiltInBlocks.Dirt || key == BuiltInBlocks.GrassBlock || key == BuiltInBlocks.Farmland ||
-            key == BuiltInBlocks.Sand || key == BuiltInBlocks.Gravel || key == BuiltInBlocks.SnowBlock)
+        if (key == BuiltInBlocks.Dirt || key == BuiltInBlocks.GrassBlock || key == BuiltInBlocks.Farmland || key == BuiltInBlocks.DirtPath ||
+            key == BuiltInBlocks.Sand || key == BuiltInBlocks.RedSand || key == BuiltInBlocks.Gravel || key == BuiltInBlocks.SnowBlock)
         {
             return ToolKind.Shovel;
         }
 
         if (key == BuiltInBlocks.OakLeaves || key == BuiltInBlocks.BirchLeaves ||
+            key == BuiltInBlocks.CherryLeaves || key == BuiltInBlocks.SpruceLeaves ||
             key == BuiltInBlocks.Cobweb || key == BuiltInBlocks.CrimsonWool ||
             key == BuiltInBlocks.WhiteWool || key == BuiltInBlocks.BlueWool)
         {

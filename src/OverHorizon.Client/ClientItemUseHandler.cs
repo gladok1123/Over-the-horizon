@@ -116,16 +116,24 @@ internal sealed partial class ClientItemUseHandler
                 clickedKey == BuiltInBlocks.StoneButton ||
                 clickedKey == BuiltInBlocks.RedstoneRepeater ||
                 clickedKey == BuiltInBlocks.RedstoneComparator ||
-                clickedKey == BuiltInBlocks.OakTrapdoor)
+                clickedKey == BuiltInBlocks.OakTrapdoor ||
+                clickedKey == BuiltInBlocks.OakDoor)
             {
                 useCooldown = 0.16;
                 player.TriggerHandSwing(isOffhand: false);
                 var center = new Vec3d(targetHit.BlockPosition.X + 0.5, targetHit.BlockPosition.Y + 0.5, targetHit.BlockPosition.Z + 0.5);
+                var wasOpen = targetMeta.Properties.TryGetValue("open", out var openStr) &&
+                              string.Equals(openStr, "true", StringComparison.OrdinalIgnoreCase);
                 if (transport.IsConnected)
                 {
                     transport.EnqueueOutbound(new PlayerWorldInteractionPacket(
                         PlayerWorldInteractionKind.InteractWorldComponent, center, Vec3d.Zero, 0, 0));
-                    _audio.PlayPositional(clickedKey == BuiltInBlocks.OakTrapdoor ? SoundCue.WoodPlace : SoundCue.UiClick, center, gain: 0.68f * player.MasterVolume);
+                    var mpCue = clickedKey == BuiltInBlocks.OakDoor
+                        ? (wasOpen ? SoundCue.WoodenDoorClose : SoundCue.WoodenDoorOpen)
+                        : clickedKey == BuiltInBlocks.OakTrapdoor
+                            ? (wasOpen ? SoundCue.WoodenTrapdoorClose : SoundCue.WoodenTrapdoorOpen)
+                            : SoundCue.UiClick;
+                    _audio.PlayPositional(mpCue, center, gain: 0.72f * player.MasterVolume);
                     return true;
                 }
 
@@ -232,10 +240,24 @@ internal sealed partial class ClientItemUseHandler
             case ItemUseAction.TillSoil:
                 if (player.CurrentTarget is not { } hoeHit) return false;
                 var soilKey = _blocks.GetStateMetadata(world.GetBlockState(hoeHit.BlockPosition)).BlockKey;
-                if (soilKey != BuiltInBlocks.GrassBlock && soilKey != BuiltInBlocks.Dirt) return false;
+                if (soilKey != BuiltInBlocks.GrassBlock && soilKey != BuiltInBlocks.Dirt && soilKey != BuiltInBlocks.DirtPath) return false;
+                if (!world.GetBlockState(hoeHit.BlockPosition.Offset(Direction.Up)).IsAir) return false;
                 useCooldown = 0.20;
                 player.TriggerHandSwing(isOffhand);
-                return applyWorldBlockChange(hoeHit.BlockPosition, hoeHit.HitFace, _blocks.GetDefaultState(BuiltInBlocks.Farmland));
+                if (!applyWorldBlockChange(hoeHit.BlockPosition, hoeHit.HitFace, _blocks.GetDefaultState(BuiltInBlocks.Farmland))) return false;
+                _audio.PlayPositional(SoundCue.HoeTill, new Vec3d(hoeHit.BlockPosition.X + 0.5, hoeHit.BlockPosition.Y + 0.9, hoeHit.BlockPosition.Z + 0.5), gain: 0.72f * player.MasterVolume);
+                return true;
+
+            case ItemUseAction.FlattenPath:
+                if (player.CurrentTarget is not { } shovelHit) return false;
+                var pathSoilKey = _blocks.GetStateMetadata(world.GetBlockState(shovelHit.BlockPosition)).BlockKey;
+                if (pathSoilKey != BuiltInBlocks.GrassBlock && pathSoilKey != BuiltInBlocks.Dirt) return false;
+                if (!world.GetBlockState(shovelHit.BlockPosition.Offset(Direction.Up)).IsAir) return false;
+                useCooldown = 0.20;
+                player.TriggerHandSwing(isOffhand);
+                if (!applyWorldBlockChange(shovelHit.BlockPosition, shovelHit.HitFace, _blocks.GetDefaultState(BuiltInBlocks.DirtPath))) return false;
+                _audio.PlayPositional(SoundCue.ShovelFlatten, new Vec3d(shovelHit.BlockPosition.X + 0.5, shovelHit.BlockPosition.Y + 0.9, shovelHit.BlockPosition.Z + 0.5), gain: 0.74f * player.MasterVolume);
+                return true;
 
             case ItemUseAction.ApplyBoneMeal:
                 if (player.CurrentTarget is not { } bmHit) return false;
@@ -345,8 +367,9 @@ internal sealed partial class ClientItemUseHandler
             case ItemUseAction.PlaceBlock:
                 if (itemDef.PlacedBlockKey is not { } placeKey || player.CurrentTarget is not { } placeHit) return false;
                 var placePos = placeHit.AdjacentPosition;
+                var hitLocalY = placeHit.HitPoint.Y - Math.Floor(placeHit.HitPoint.Y);
                 if (!BlockAttachmentAndShapeRules.TryResolvePlacementState(
-                    _blocks, world.GetBlockState, placeKey, placePos, placeHit.HitFace, player.Camera.Forward, out var resolvedState, out var secondaryBlock))
+                    _blocks, world.GetBlockState, placeKey, placePos, placeHit.HitFace, player.Camera.Forward, out var resolvedState, out var secondaryBlock, hitLocalY))
                 {
                     return false;
                 }
@@ -355,8 +378,18 @@ internal sealed partial class ClientItemUseHandler
                 {
                     var playerBox = BoundingBox.FromEntityFeet(
                         player.FeetPosition, ClientPlayerController.PlayerWidth, ClientPlayerController.PlayerHeight).Inflate(-1e-4, -1e-4, -1e-4);
-                    if (playerBox.Intersects(BoundingBox.FromBlock(placePos))) return false;
-                    if (secondaryBlock is { } sec && playerBox.Intersects(BoundingBox.FromBlock(sec.Pos))) return false;
+                    if (OverHorizon.Physics.BlockCollisionShapeTable.TryGetCollisionBox(_blocks.GetStateMetadata(resolvedState), placePos, out var primBox) &&
+                        playerBox.Intersects(primBox))
+                    {
+                        return false;
+                    }
+
+                    if (secondaryBlock is { } sec &&
+                        OverHorizon.Physics.BlockCollisionShapeTable.TryGetCollisionBox(_blocks.GetStateMetadata(sec.State), sec.Pos, out var secBox) &&
+                        playerBox.Intersects(secBox))
+                    {
+                        return false;
+                    }
                 }
 
                 useCooldown = 0.14;
@@ -371,6 +404,20 @@ internal sealed partial class ClientItemUseHandler
                 return true;
 
             default:
+                if (itemDef.Key == BuiltInItems.ExperienceBottle)
+                {
+                    useCooldown = 0.24;
+                    player.TriggerHandSwing(isOffhand);
+                    var xpSpot = player.CurrentTarget is { } xpHit
+                        ? xpHit.HitPoint
+                        : player.Camera.Position + (new Vec3d(player.Camera.Forward.X, player.Camera.Forward.Y, player.Camera.Forward.Z) * 1.6);
+                    worldBridge.Particles.EmitBurst(xpSpot, ParticleKind.GrowthSparkle, 16);
+                    _audio.PlayPositional(SoundCue.GlassBreak, xpSpot, gain: 0.72f * player.MasterVolume, pitch: 1.06f);
+                    _audio.PlayPositional(SoundCue.AmethystChime, player.Camera.Position, gain: 0.68f * player.MasterVolume, pitch: 1.18f);
+                    ConsumeOneFromSlotInSurvival(player, invSlot);
+                    return true;
+                }
+
                 return false;
         }
     }

@@ -63,6 +63,34 @@ public static partial class BlockAttachmentAndShapeRules
                 IsMatchingBedPartner(blocks, getBlock(partnerPos), GetFacing(meta, "north"), expectedPartnerPart);
         }
 
+        if (key == BuiltInBlocks.OakDoor || key == BuiltInBlocks.IronDoor)
+        {
+            var isUpper = meta.Properties.TryGetValue("half", out var hv) && string.Equals(hv, "upper", StringComparison.OrdinalIgnoreCase);
+            if (!isUpper && !IsFullSupportBlock(blocks, getBlock(pos.Offset(Direction.Down))))
+            {
+                return false;
+            }
+
+            var partnerPos = pos.Offset(isUpper ? Direction.Down : Direction.Up);
+            var partnerState = getBlock(partnerPos);
+            if (partnerState.IsAir)
+            {
+                return false;
+            }
+
+            var pm = blocks.GetStateMetadata(partnerState);
+            var expectedHalf = isUpper ? "lower" : "upper";
+            return pm.BlockKey == key &&
+                pm.Properties.TryGetValue("half", out var ph) &&
+                string.Equals(ph, expectedHalf, StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (key == BuiltInBlocks.AmethystCluster)
+        {
+            var facingDir = ParseDirection(GetFacing(meta, "up"));
+            return IsFullSupportBlock(blocks, getBlock(pos.Offset(facingDir.Opposite())));
+        }
+
         if (key == BuiltInBlocks.RedstoneWire ||
             key == BuiltInBlocks.RedstoneRepeater ||
             key == BuiltInBlocks.RedstoneComparator ||
@@ -98,6 +126,26 @@ public static partial class BlockAttachmentAndShapeRules
         return true;
     }
 
+    /// <summary>Resolves the vertical partner cell and expected <c>half</c> (<c>upper</c> or <c>lower</c>) of a 2-block Door.</summary>
+    public static bool TryGetPartnerDoorPosition(
+        BlockStateMetadata meta,
+        BlockPos pos,
+        out BlockPos partnerPos,
+        out string expectedPartnerHalf)
+    {
+        if (meta.BlockKey != BuiltInBlocks.OakDoor && meta.BlockKey != BuiltInBlocks.IronDoor)
+        {
+            partnerPos = default;
+            expectedPartnerHalf = string.Empty;
+            return false;
+        }
+
+        var isUpper = meta.Properties.TryGetValue("half", out var h) && string.Equals(h, "upper", StringComparison.OrdinalIgnoreCase);
+        partnerPos = pos.Offset(isUpper ? Direction.Down : Direction.Up);
+        expectedPartnerHalf = isUpper ? "lower" : "upper";
+        return true;
+    }
+
     /// <summary>Gets whether <paramref name="state"/> can support attached Torches, Ladders, or Redstone components.</summary>
     public static bool IsFullSupportBlock(IBlockRegistry blocks, BlockState state)
     {
@@ -110,8 +158,22 @@ public static partial class BlockAttachmentAndShapeRules
         return meta.IsSolid &&
             meta.BlockKey != BuiltInBlocks.Lantern &&
             meta.BlockKey != BuiltInBlocks.RedBed &&
+            meta.BlockKey != BuiltInBlocks.OakDoor &&
+            meta.BlockKey != BuiltInBlocks.IronDoor &&
+            meta.BlockKey != BuiltInBlocks.OakTrapdoor &&
+            meta.BlockKey != BuiltInBlocks.IronTrapdoor &&
+            meta.BlockKey != BuiltInBlocks.OakFence &&
             meta.BlockKey != BuiltInBlocks.PistonHead;
     }
+
+    /// <summary>Rotates a horizontal <see cref="Direction"/> 90 degrees clockwise around +Y.</summary>
+    public static Direction RotateClockwise(Direction dir) => dir switch
+    {
+        Direction.North => Direction.East,
+        Direction.East => Direction.South,
+        Direction.South => Direction.West,
+        _ => Direction.North,
+    };
 
     /// <summary>Resolves the dominant horizontal <see cref="Direction"/> of a camera forward vector.</summary>
     public static Direction HorizontalLookDirection(Vector3 forward)

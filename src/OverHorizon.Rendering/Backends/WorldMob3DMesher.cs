@@ -16,7 +16,8 @@ public static partial class WorldMob3DMesher
     public static void AppendWorldMobs(
         List<OverlayVertex> dst,
         Vec3d cameraPos,
-        IReadOnlyList<WorldMobVisual>? mobs)
+        IReadOnlyList<WorldMobVisual>? mobs,
+        TextureAtlasData? atlas = null)
     {
         if (mobs is null || mobs.Count == 0) return;
 
@@ -57,7 +58,7 @@ public static partial class WorldMob3DMesher
                     AppendZombie(dst, root, swing, tint);
                     break;
                 case 5:
-                    AppendSkeleton(dst, root, swing, tint);
+                    AppendSkeleton(dst, root, swing, tint, atlas);
                     break;
                 case 6:
                     AppendSpider(dst, root, swing, tint);
@@ -204,7 +205,7 @@ public static partial class WorldMob3DMesher
         EntityBoxUvBuilder.EmitEntityBox(dst, c, 40, 16, 4, 12, 4, new Vector3(-0.125f, -0.72f, -0.125f), new Vector3(0.25f, 0.75f, 0.25f), armR, t);
     }
 
-    private static void AppendSkeleton(List<OverlayVertex> dst, Matrix4x4 root, float swing, Vector4 t)
+    private static void AppendSkeleton(List<OverlayVertex> dst, Matrix4x4 root, float swing, Vector4 t, TextureAtlasData? atlas)
     {
         const int c = EntityTextureAtlasGenerator.CellSkeleton;
         EntityBoxUvBuilder.EmitEntityBox(dst, c, 0, 16, 2, 12, 2, new Vector3(-0.0625f, -0.75f, -0.0625f), new Vector3(0.125f, 0.75f, 0.125f), Limb(root, new Vector3(-0.125f, 0.75f, 0.0f), swing), t);
@@ -214,7 +215,7 @@ public static partial class WorldMob3DMesher
         EntityBoxUvBuilder.EmitEntityBox(dst, c, 40, 16, 2, 12, 2, new Vector3(-0.0625f, -0.72f, -0.0625f), new Vector3(0.125f, 0.75f, 0.125f), Limb(root, new Vector3(-0.3125f, 1.44f, 0.0f), -swing * 0.7f), t);
         var rightArmXform = Matrix4x4.CreateRotationX(-1.15f) * Matrix4x4.CreateTranslation(0.3125f, 1.44f, 0.0f) * root;
         EntityBoxUvBuilder.EmitEntityBox(dst, c, 40, 16, 2, 12, 2, new Vector3(-0.0625f, -0.72f, -0.0625f), new Vector3(0.125f, 0.75f, 0.125f), rightArmXform, t);
-        AppendSkeletonHeldBow(dst, rightArmXform, t);
+        AppendSkeletonHeldBow(dst, rightArmXform, t, atlas);
     }
 
     private static void AppendSpider(List<OverlayVertex> dst, Matrix4x4 root, float swing, Vector4 t)

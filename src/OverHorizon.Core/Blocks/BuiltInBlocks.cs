@@ -250,6 +250,45 @@ public static class BuiltInBlocks
     /// <summary>Key for <c>overhorizon:chiseled_sandstone</c> (carved desert pyramid sandstone).</summary>
     public static readonly ResourceKey ChiseledSandstone = ResourceKey.OverHorizon("chiseled_sandstone");
 
+    /// <summary>Key for <c>overhorizon:oak_door</c> (2-block hinged wooden door toggled by hand or Redstone).</summary>
+    public static readonly ResourceKey OakDoor = ResourceKey.OverHorizon("oak_door");
+
+    /// <summary>Key for <c>overhorizon:iron_door</c> (2-block heavy iron door opened exclusively by Redstone).</summary>
+    public static readonly ResourceKey IronDoor = ResourceKey.OverHorizon("iron_door");
+
+    /// <summary>Key for <c>overhorizon:iron_trapdoor</c> (hinged iron trapdoor opened exclusively by Redstone).</summary>
+    public static readonly ResourceKey IronTrapdoor = ResourceKey.OverHorizon("iron_trapdoor");
+
+    /// <summary>Key for <c>overhorizon:budding_amethyst</c> (geode crystal growth matrix).</summary>
+    public static readonly ResourceKey BuddingAmethyst = ResourceKey.OverHorizon("budding_amethyst");
+
+    /// <summary>Key for <c>overhorizon:amethyst_cluster</c> (directional glowing crystal cluster dropping shards).</summary>
+    public static readonly ResourceKey AmethystCluster = ResourceKey.OverHorizon("amethyst_cluster");
+
+    /// <summary>Key for <c>overhorizon:dirt_path</c> (<c>15/16</c>-height path flattened by a Shovel).</summary>
+    public static readonly ResourceKey DirtPath = ResourceKey.OverHorizon("dirt_path");
+
+    /// <summary>Key for <c>overhorizon:cherry_log</c>.</summary>
+    public static readonly ResourceKey CherryLog = ResourceKey.OverHorizon("cherry_log");
+
+    /// <summary>Key for <c>overhorizon:cherry_leaves</c>.</summary>
+    public static readonly ResourceKey CherryLeaves = ResourceKey.OverHorizon("cherry_leaves");
+
+    /// <summary>Key for <c>overhorizon:spruce_log</c>.</summary>
+    public static readonly ResourceKey SpruceLog = ResourceKey.OverHorizon("spruce_log");
+
+    /// <summary>Key for <c>overhorizon:spruce_leaves</c>.</summary>
+    public static readonly ResourceKey SpruceLeaves = ResourceKey.OverHorizon("spruce_leaves");
+
+    /// <summary>Key for <c>overhorizon:red_sand</c>.</summary>
+    public static readonly ResourceKey RedSand = ResourceKey.OverHorizon("red_sand");
+
+    /// <summary>Key for <c>overhorizon:terracotta</c>.</summary>
+    public static readonly ResourceKey Terracotta = ResourceKey.OverHorizon("terracotta");
+
+    /// <summary>Key for <c>overhorizon:packed_ice</c>.</summary>
+    public static readonly ResourceKey PackedIce = ResourceKey.OverHorizon("packed_ice");
+
     /// <summary>
     /// Registers all built-in blocks into an unfrozen <see cref="BlockRegistry"/>.
     /// </summary>
@@ -334,7 +373,7 @@ public static class BuiltInBlocks
         _ = registry.Register(new BlockDefinition(Rail, isSolid: false, isOpaque: false, hardness: 0.5f, properties: [railShape]));
         _ = registry.Register(new BlockDefinition(Cobweb, isSolid: false, isOpaque: false, hardness: 2.5f));
         _ = registry.Register(new BlockDefinition(OakFence, isSolid: true, isOpaque: false, hardness: 2.0f));
-        _ = registry.Register(new BlockDefinition(Farmland, hardness: 0.6f));
+        _ = registry.Register(new BlockDefinition(Farmland, isSolid: true, isOpaque: false, hardness: 0.6f));
         _ = registry.Register(new BlockDefinition(HayBlock, hardness: 0.5f, properties: [pillarAxis]));
 
         _ = registry.Register(new BlockDefinition(Deepslate, hardness: 3.0f));
@@ -385,16 +424,56 @@ public static class BuiltInBlocks
             isOpaque: false,
             hardness: 0.6f,
             properties: [BlockProperty.IntegerRange("level", 0, 8)]));
+        var trapdoorHalf = new BlockProperty("half", ["bottom", "top"]);
+        var doorHalf = new BlockProperty("half", ["lower", "upper"]);
+        var doorHinge = new BlockProperty("hinge", ["left", "right"]);
+
         _ = registry.Register(new BlockDefinition(
             OakTrapdoor,
-            isSolid: false,
+            isSolid: true,
             isOpaque: false,
             hardness: 2.0f,
-            properties: [horizFacing, BlockProperty.Boolean("open"), BlockProperty.Boolean("powered")]));
+            properties: [horizFacing, trapdoorHalf, BlockProperty.Boolean("open"), BlockProperty.Boolean("powered")]));
         _ = registry.Register(new BlockDefinition(MonsterSpawner, isSolid: true, isOpaque: false, lightEmission: 4, hardness: 5.0f));
         _ = registry.Register(new BlockDefinition(AmethystBlock, lightEmission: 5, hardness: 1.5f));
         _ = registry.Register(new BlockDefinition(MossyStoneBricks, hardness: 1.5f));
         _ = registry.Register(new BlockDefinition(ChiseledSandstone, hardness: 0.8f));
+
+        // v0.9.0-alpha Real 2-Block Doors, Iron Trapdoor, Amethyst Geodes, Dirt Path & Extended Biomes
+        _ = registry.Register(new BlockDefinition(
+            OakDoor,
+            isSolid: true,
+            isOpaque: false,
+            hardness: 3.0f,
+            properties: [horizFacing, doorHalf, BlockProperty.Boolean("open"), doorHinge, BlockProperty.Boolean("powered")]));
+        _ = registry.Register(new BlockDefinition(
+            IronDoor,
+            isSolid: true,
+            isOpaque: false,
+            hardness: 5.0f,
+            properties: [horizFacing, doorHalf, BlockProperty.Boolean("open"), doorHinge, BlockProperty.Boolean("powered")]));
+        _ = registry.Register(new BlockDefinition(
+            IronTrapdoor,
+            isSolid: true,
+            isOpaque: false,
+            hardness: 5.0f,
+            properties: [horizFacing, trapdoorHalf, BlockProperty.Boolean("open"), BlockProperty.Boolean("powered")]));
+        _ = registry.Register(new BlockDefinition(BuddingAmethyst, lightEmission: 4, hardness: 1.5f));
+        _ = registry.Register(new BlockDefinition(
+            AmethystCluster,
+            isSolid: false,
+            isOpaque: false,
+            lightEmission: 5,
+            hardness: 1.5f,
+            properties: [new BlockProperty("facing", ["up", "down", "north", "south", "west", "east"])]));
+        _ = registry.Register(new BlockDefinition(DirtPath, isSolid: true, isOpaque: false, hardness: 0.65f));
+        _ = registry.Register(new BlockDefinition(CherryLog, hardness: 2.0f, properties: [pillarAxis]));
+        _ = registry.Register(new BlockDefinition(CherryLeaves, isSolid: true, isOpaque: false, hardness: 0.2f));
+        _ = registry.Register(new BlockDefinition(SpruceLog, hardness: 2.0f, properties: [pillarAxis]));
+        _ = registry.Register(new BlockDefinition(SpruceLeaves, isSolid: true, isOpaque: false, hardness: 0.2f));
+        _ = registry.Register(new BlockDefinition(RedSand, hardness: 0.5f));
+        _ = registry.Register(new BlockDefinition(Terracotta, hardness: 1.25f));
+        _ = registry.Register(new BlockDefinition(PackedIce, hardness: 0.5f));
     }
 
     /// <summary>Creates, populates, and freezes the default <see cref="BlockRegistry"/>.</summary>

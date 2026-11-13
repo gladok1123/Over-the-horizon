@@ -100,6 +100,30 @@ public static class ProceduralSoundBank
         (SoundCue.StonePlace, "sounds/dig/stone2.ogg"),
         (SoundCue.PotionDrink, "sounds/random/drink.ogg"),
         (SoundCue.ComposterReady, "sounds/block/composter/ready1.ogg"),
+        (SoundCue.GravelBreak, "sounds/dig/gravel1.ogg"),
+        (SoundCue.GravelPlace, "sounds/dig/gravel2.ogg"),
+        (SoundCue.SnowBreak, "sounds/dig/snow1.ogg"),
+        (SoundCue.SnowPlace, "sounds/dig/snow2.ogg"),
+        (SoundCue.ClothBreak, "sounds/dig/cloth2.ogg"),
+        (SoundCue.DeepslateBreak, "sounds/block/deepslate/break1.ogg"),
+        (SoundCue.DeepslatePlace, "sounds/block/deepslate/place1.ogg"),
+        (SoundCue.FootstepDeepslate, "sounds/block/deepslate/step1.ogg"),
+        (SoundCue.AmethystBreak, "sounds/block/amethyst/break1.ogg"),
+        (SoundCue.AmethystPlace, "sounds/block/amethyst/place1.ogg"),
+        (SoundCue.FootstepAmethyst, "sounds/block/amethyst/step1.ogg"),
+        (SoundCue.AmethystChime, "sounds/block/amethyst/shimmer.ogg"),
+        (SoundCue.AmethystClusterBreak, "sounds/block/amethyst_cluster/break1.ogg"),
+        (SoundCue.AmethystClusterPlace, "sounds/block/amethyst_cluster/place1.ogg"),
+        (SoundCue.WoodenDoorOpen, "sounds/block/wooden_door/open1.ogg"),
+        (SoundCue.WoodenDoorClose, "sounds/block/wooden_door/close1.ogg"),
+        (SoundCue.IronDoorOpen, "sounds/block/iron_door/open1.ogg"),
+        (SoundCue.IronDoorClose, "sounds/block/iron_door/close1.ogg"),
+        (SoundCue.WoodenTrapdoorOpen, "sounds/block/wooden_trapdoor/open1.ogg"),
+        (SoundCue.WoodenTrapdoorClose, "sounds/block/wooden_trapdoor/close1.ogg"),
+        (SoundCue.IronTrapdoorOpen, "sounds/block/iron_trapdoor/open1.ogg"),
+        (SoundCue.IronTrapdoorClose, "sounds/block/iron_trapdoor/close1.ogg"),
+        (SoundCue.HoeTill, "sounds/item/hoe/till1.ogg"),
+        (SoundCue.ShovelFlatten, "sounds/item/shovel/flatten1.ogg"),
     ];
 
     /// <summary>
@@ -140,12 +164,12 @@ public static class ProceduralSoundBank
             clips[cue] = decoded ?? SynthesizeFallbackClip(cue);
         }
 
-        // Populate clean-room fallback clips for all extended v0.6.0 cues so offline/CI always has every cue ready!
+        // Populate organic filtered-percussion/embedded fallbacks (zero harsh sine beeps!) before overlaying 23w13a__or__b .ogg clips!
         foreach (var cue in Enum.GetValues<SoundCue>())
         {
             if (!clips.ContainsKey(cue))
             {
-                clips[cue] = SynthesizeFallbackClip(cue);
+                clips[cue] = DeriveOrganicFallbackFromEmbedded(cue, clips);
             }
         }
 
@@ -217,6 +241,38 @@ public static class ProceduralSoundBank
             }
         }
     }
+
+    private static PcmSoundClip DeriveOrganicFallbackFromEmbedded(SoundCue cue, Dictionary<SoundCue, PcmSoundClip> baseClips)
+    {
+        // Map extended cues to real recorded embedded foley with subtle pitch/envelope shaping instead of harsh synthetic sine tones!
+        var (donorCue, rateFactor) = cue switch
+        {
+            SoundCue.FootstepSand or SoundCue.FootstepSnow or SoundCue.LandSoft or SoundCue.PlayerJump or SoundCue.FootstepCloth => (SoundCue.FootstepGrass, 1.05),
+            SoundCue.FootstepGravel or SoundCue.FootstepDeepslate or SoundCue.FootstepMetal or SoundCue.FootstepAmethyst => (SoundCue.FootstepStone, 0.92),
+            SoundCue.FootstepLadder => (SoundCue.FootstepWood, 1.12),
+            SoundCue.WoodBreak or SoundCue.ClothBreak => (SoundCue.FootstepWood, 0.85),
+            SoundCue.WoodPlace or SoundCue.ClothPlace or SoundCue.WoodenDoorOpen or SoundCue.WoodenDoorClose or SoundCue.WoodenTrapdoorOpen or SoundCue.WoodenTrapdoorClose => (SoundCue.BlockPlace, 0.96),
+            SoundCue.GrassBreak or SoundCue.SandBreak or SoundCue.GravelBreak or SoundCue.SnowBreak or SoundCue.HoeTill or SoundCue.ShovelFlatten => (SoundCue.FootstepGrass, 0.86),
+            SoundCue.GrassPlace or SoundCue.SandPlace or SoundCue.GravelPlace or SoundCue.SnowPlace or SoundCue.ComposterReady => (SoundCue.FootstepGrass, 0.98),
+            SoundCue.StonePlace or SoundCue.DeepslatePlace or SoundCue.MetalPlace or SoundCue.AmethystPlace or SoundCue.AmethystClusterPlace or SoundCue.IronDoorOpen or SoundCue.IronDoorClose or SoundCue.IronTrapdoorOpen or SoundCue.IronTrapdoorClose => (SoundCue.FootstepStone, 0.95),
+            SoundCue.DeepslateBreak or SoundCue.MetalBreak or SoundCue.GlassBreak or SoundCue.AmethystBreak or SoundCue.AmethystClusterBreak or SoundCue.AmethystChime => (SoundCue.BlockBreak, 1.08),
+            SoundCue.FallSmall or SoundCue.FallBig or SoundCue.ShieldBlock => (SoundCue.PlayerHit, 0.88),
+            SoundCue.WaterSwim or SoundCue.UnderwaterExit or SoundCue.UnderwaterAmbience or SoundCue.PotionDrink => (SoundCue.WaterSplash, 0.94),
+            _ => (AirFallbackMarker(cue), 1.0),
+        };
+
+        if (baseClips.TryGetValue(donorCue, out var donor) && donor.Samples.Length > 1000)
+        {
+            var span = donor.Samples.Span;
+            var copied = span.ToArray();
+            var tunedRate = Math.Clamp((int)Math.Round(donor.SampleRate * rateFactor), 16_000, 48_000);
+            return new PcmSoundClip(cue, tunedRate, copied);
+        }
+
+        return SynthesizeFallbackClip(cue);
+    }
+
+    private static SoundCue AirFallbackMarker(SoundCue cue) => cue;
 
     private static PcmSoundClip SynthesizeFallbackClip(SoundCue cue)
     {

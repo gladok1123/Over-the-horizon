@@ -205,6 +205,25 @@ public sealed partial class ClientHotbar
         (BuiltInItems.SkeletonSpawnEgg, "Skeleton Spawn Egg", ItemCategory.CombatAndTools, new Vector3(0.76f, 0.76f, 0.76f)),
         (BuiltInItems.SpiderSpawnEgg, "Spider Spawn Egg", ItemCategory.CombatAndTools, new Vector3(0.32f, 0.24f, 0.22f)),
         (BuiltInItems.CreeperSpawnEgg, "Creeper Spawn Egg", ItemCategory.CombatAndTools, new Vector3(0.12f, 0.72f, 0.12f)),
+
+        // v0.9.0-alpha Doors, Iron Trapdoor, Geode Crystals, Dirt Path, Cherry/Spruce/Badlands/Ice Biomes & Bottles (172+)
+        (BuiltInBlocks.OakDoor, "Oak Door", ItemCategory.Redstone, new Vector3(0.70f, 0.54f, 0.33f)),
+        (BuiltInBlocks.IronDoor, "Iron Door", ItemCategory.Redstone, new Vector3(0.86f, 0.88f, 0.90f)),
+        (BuiltInBlocks.IronTrapdoor, "Iron Trapdoor", ItemCategory.Redstone, new Vector3(0.84f, 0.86f, 0.88f)),
+        (BuiltInBlocks.BuddingAmethyst, "Budding Amethyst", ItemCategory.NaturalBlocks, new Vector3(0.68f, 0.44f, 0.92f)),
+        (BuiltInBlocks.AmethystCluster, "Amethyst Cluster", ItemCategory.NaturalBlocks, new Vector3(0.78f, 0.56f, 0.98f)),
+        (BuiltInBlocks.DirtPath, "Dirt Path", ItemCategory.NaturalBlocks, new Vector3(0.64f, 0.52f, 0.30f)),
+        (BuiltInBlocks.CherryLog, "Cherry Log", ItemCategory.NaturalBlocks, new Vector3(0.28f, 0.16f, 0.20f)),
+        (BuiltInBlocks.CherryLeaves, "Cherry Leaves", ItemCategory.NaturalBlocks, new Vector3(0.96f, 0.68f, 0.82f)),
+        (BuiltInBlocks.SpruceLog, "Spruce Log", ItemCategory.NaturalBlocks, new Vector3(0.26f, 0.18f, 0.11f)),
+        (BuiltInBlocks.SpruceLeaves, "Spruce Leaves", ItemCategory.NaturalBlocks, new Vector3(0.20f, 0.38f, 0.24f)),
+        (BuiltInBlocks.RedSand, "Red Sand", ItemCategory.NaturalBlocks, new Vector3(0.82f, 0.42f, 0.16f)),
+        (BuiltInBlocks.Terracotta, "Terracotta", ItemCategory.NaturalBlocks, new Vector3(0.62f, 0.37f, 0.27f)),
+        (BuiltInBlocks.PackedIce, "Packed Ice", ItemCategory.NaturalBlocks, new Vector3(0.56f, 0.74f, 0.96f)),
+        (BuiltInItems.FireResistancePotion, "Potion of Fire Resistance", ItemCategory.FoodAndMaterials, new Vector3(0.96f, 0.60f, 0.18f)),
+        (BuiltInItems.AmethystShard, "Amethyst Shard", ItemCategory.FoodAndMaterials, new Vector3(0.74f, 0.50f, 0.94f)),
+        (BuiltInItems.GlassBottle, "Glass Bottle", ItemCategory.FoodAndMaterials, new Vector3(0.78f, 0.92f, 0.96f)),
+        (BuiltInItems.ExperienceBottle, "Bottle o' Enchanting", ItemCategory.FoodAndMaterials, new Vector3(0.68f, 0.96f, 0.34f)),
     ];
 
     /// <summary>Builds a concise gameplay stats line for hover tooltips.</summary>
@@ -228,8 +247,13 @@ public sealed partial class ClientHotbar
             ItemUseAction.IgniteTnt => "Right-Click: Spark Fire or ignite physics TNT",
             ItemUseAction.DrawBow => "Hold Right-Click to draw & release 3D ballistic Arrows!",
             ItemUseAction.PlaceMinecart => "Right-Click on Rail / Powered Rail to place & ride!",
+            ItemUseAction.FlattenPath => "Right-Click Grass/Dirt to flatten into 15/16 Dirt Path!",
             ItemUseAction.PlaceBlock => "Placeable Voxel Block (Right-Click / Middle-Click Pick)",
-            _ => key == BuiltInItems.Arrow ? "Ammunition for Bow (consumed in Survival)" : "Crafting & Smelting Material",
+            _ => key == BuiltInItems.Arrow
+                ? "Ammunition for Bow (consumed in Survival)"
+                : key == BuiltInItems.ExperienceBottle
+                    ? "Right-Click: Shatter Bottle o' Enchanting for XP!"
+                    : "Crafting & Smelting Material",
         };
     }
 }

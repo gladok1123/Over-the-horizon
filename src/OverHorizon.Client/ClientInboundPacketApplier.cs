@@ -109,13 +109,35 @@ internal static class ClientInboundPacketApplier
                 break;
 
             case MultiBlockUpdatePacket multiPkt:
-                for (var i = 0; i < multiPkt.Updates.Count; i++)
+                if (multiPkt.Updates.Count <= 24)
                 {
-                    var (pos, stateId) = multiPkt.Updates[i];
-                    var st = new BlockState(stateId);
-                    if (worldCache.GetBlockState(pos) != st && worldCache.ApplyBlockUpdate(pos, st) && multiPkt.Updates.Count <= 24)
+                    Span<BlockPos> editedBatch = stackalloc BlockPos[multiPkt.Updates.Count];
+                    var editedCount = 0;
+                    for (var i = 0; i < multiPkt.Updates.Count; i++)
                     {
-                        worldCache.RemeshAroundBlockImmediate(pos, renderer);
+                        var (pos, stateId) = multiPkt.Updates[i];
+                        var st = new BlockState(stateId);
+                        if (worldCache.GetBlockState(pos) != st && worldCache.ApplyBlockUpdate(pos, st))
+                        {
+                            editedBatch[editedCount++] = pos;
+                        }
+                    }
+
+                    if (editedCount > 0)
+                    {
+                        worldCache.RemeshEditedBlocksBatchImmediate(editedBatch[..editedCount], renderer);
+                    }
+                }
+                else
+                {
+                    for (var i = 0; i < multiPkt.Updates.Count; i++)
+                    {
+                        var (pos, stateId) = multiPkt.Updates[i];
+                        var st = new BlockState(stateId);
+                        if (worldCache.GetBlockState(pos) != st)
+                        {
+                            _ = worldCache.ApplyBlockUpdate(pos, st);
+                        }
                     }
                 }
 

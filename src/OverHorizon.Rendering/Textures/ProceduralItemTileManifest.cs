@@ -19,6 +19,30 @@ internal static class ProceduralItemTileManifest
     /// <summary>Sprite tile index for bow draw stage 2 (<c>bow_pulling_2</c>).</summary>
     public const ushort TileBowPulling2 = 222;
 
+    /// <summary>Sprite tile index for isometric 3D Oak Fence inventory icon.</summary>
+    public const ushort TileOakFenceItem = 248;
+
+    public static readonly (ushort Tile, byte BaseR, byte BaseG, byte BaseB, byte SpotR, byte SpotG, byte SpotB)[] SpawnEggOverlays =
+    [
+        (231, 240, 165, 162, 219, 99, 95),   // Pig
+        (232, 231, 231, 231, 255, 181, 181), // Sheep
+        (233, 68, 54, 38, 161, 161, 161),    // Cow
+        (234, 225, 225, 225, 255, 0, 0),     // Chicken
+        (235, 0, 175, 175, 121, 156, 101),   // Zombie
+        (236, 193, 193, 193, 73, 73, 73),    // Skeleton
+        (237, 52, 45, 39, 168, 14, 14),      // Spider
+        (238, 13, 167, 11, 0, 0, 0),         // Creeper
+    ];
+
+    public static readonly (ushort Tile, byte LiquidR, byte LiquidG, byte LiquidB)[] PotionOverlays =
+    [
+        (227, 124, 175, 198), // Swiftness
+        (228, 248, 36, 35),   // Healing / Regeneration
+        (229, 147, 36, 35),   // Strength
+        (230, 31, 31, 161),   // Night Vision
+        (240, 228, 154, 58),  // Fire Resistance
+    ];
+
     public static readonly (ResourceKey ItemKey, ushort Tile, string PngStem, byte TintR, byte TintG, byte TintB)[] BuiltInItemTiles =
     [
         (BuiltInItems.Stick, 128, "stick", 255, 255, 255),
@@ -130,5 +154,13 @@ internal static class ProceduralItemTileManifest
         (BuiltInItems.SpiderSpawnEgg, 237, "spawn_egg", 68, 56, 48),
         (BuiltInItems.CreeperSpawnEgg, 238, "spawn_egg", 22, 172, 18),
         (BuiltInBlocks.OakTrapdoor, 239, "oak_trapdoor", 255, 255, 255),
+        (BuiltInItems.FireResistancePotion, 240, "potion", 228, 154, 58),
+        (BuiltInItems.GlassBottle, 241, "glass_bottle", 255, 255, 255),
+        (BuiltInItems.ExperienceBottle, 242, "experience_bottle", 255, 255, 255),
+        (BuiltInItems.AmethystShard, 243, "amethyst_shard", 255, 255, 255),
+        (BuiltInBlocks.OakDoor, 244, "oak_door", 255, 255, 255),
+        (BuiltInBlocks.IronDoor, 245, "iron_door", 255, 255, 255),
+        (BuiltInBlocks.IronTrapdoor, 246, "iron_trapdoor", 255, 255, 255),
+        (BuiltInBlocks.AmethystCluster, 247, "amethyst_cluster", 255, 255, 255),
     ];
 }

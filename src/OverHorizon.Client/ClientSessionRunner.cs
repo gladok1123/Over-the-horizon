@@ -18,6 +18,7 @@ using OverHorizon.Rendering.Hud;
 using OverHorizon.Rendering.Meshing;
 using OverHorizon.Rendering.Textures;
 using OverHorizon.World;
+using OverHorizon.World.Generation;
 using OverHorizon.World.Storage;
 
 namespace OverHorizon.Client;
@@ -59,6 +60,7 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
     private CancellationTokenSource? _sessionCts;
     private Task? _backgroundWorldStreamTask;
     private long _currentSeed = DefaultPanoramaSeed;
+    private BiomeSampler _biomeSampler;
     private double _lastFps = 60.0;
     private double _localSpawnY = 76.0;
     private double _moveSendTimer;
@@ -120,6 +122,7 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
         _worldBridge = new ClientWorldSyncAndMobBridge(_blocks, registries.Items, _panoramaWorld, _worldCache, _renderer, _audio, _mobManager, _atlas);
         _survivalCombat = new ClientSurvivalCombatController(blocks, registries.Items, _audio);
         _meshQueue = new ClientAsyncMeshQueue(blocks, _atlas);
+        _biomeSampler = new BiomeSampler(_currentSeed, registries.Biomes);
     }
 
     /// <summary>Gets the client-side world chunk &amp; light cache.</summary>
@@ -166,7 +169,7 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
             _worldBridge.SeedInitialStarterMobs();
             if (_menu.Mode == UiOverlayMode.InGame)
             {
-                _chatHistory.AddMessage("Welcome to Over-the-Horizon v0.8.0-alpha! Type /help for commands.");
+                _chatHistory.AddMessage("Welcome to Over-the-Horizon v0.9.0-alpha! Type /help for commands.");
             }
         }
     }
@@ -308,14 +311,17 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
             onUpdate: dt => UpdateInteractiveFrame(silkRenderer, dt, sessionToken),
             onRender: dt =>
             {
-                var metrics = silkRenderer.RenderFrame(_player.Camera, _worldBridge.TimeCycle.SkyBrightness, BuildOverlayState(silkRenderer.WindowPixelSize));
+                var renderCam = _menu.Mode is UiOverlayMode.TitleMenu or UiOverlayMode.WorldSelectMenu or UiOverlayMode.CreateWorldMenu
+                    ? _player.Camera
+                    : _player.BuildRenderCamera(_worldCache);
+                var metrics = silkRenderer.RenderFrame(renderCam, _worldBridge.TimeCycle.SkyBrightness, BuildOverlayState(silkRenderer.WindowPixelSize));
                 RefreshDebugTelemetry(metrics, dt);
                 var flyTag = _player.IsFlying ? " [FLY]" : string.Empty;
                 var xrayTag = _menu.XRayEnabled ? " [X-RAY]" : string.Empty;
                 var lanTag = _menuActions.IsLanOpen ? " [LAN:25565]" : string.Empty;
                 silkRenderer.WindowTitle = _menu.Mode == UiOverlayMode.TitleMenu
-                    ? "Over-the-Horizon: C# EDITION (v0.8.0-alpha)"
-                    : $"Over-the-Horizon v0.8.0 | {_lastFps:F0} FPS | {_player.Mode}{flyTag}{xrayTag}{lanTag} | RD:{_menu.ActiveViewDistance} | [{_player.Hotbar.SelectedSlot + 1}: {_player.Hotbar.SelectedBlockDisplayName}]";
+                    ? "Over-the-Horizon: C# EDITION (v0.9.0-alpha)"
+                    : $"Over-the-Horizon v0.9.0 | {_lastFps:F0} FPS | {_player.Mode}{flyTag}{xrayTag}{lanTag} | RD:{_menu.ActiveViewDistance} | [{_player.Hotbar.SelectedSlot + 1}: {_player.Hotbar.SelectedBlockDisplayName}]";
             },
             onResize: (w, h) => _player.Camera.SetAspectRatio(w, h),
             cancellationToken: cancellationToken);
@@ -378,10 +384,13 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
     private void RefreshDebugTelemetry(RenderFrameMetrics metrics, double dt)
     {
         if (dt > 1e-6) _lastFps = (_lastFps * 0.85) + ((1.0 / dt) * 0.15);
+        var bx = (int)Math.Floor(_player.FeetPosition.X);
+        var bz = (int)Math.Floor(_player.FeetPosition.Z);
+        var biomeKey = _registries.Biomes.GetById(_biomeSampler.SampleBiomeId(bx, bz)).Key;
         var snapshot = new F3DebugSnapshot(
             _renderer.BackendName, _lastFps, dt * 1000.0, _player.FeetPosition,
             _player.Camera.CardinalFacing, _player.Camera.YawDegrees, _player.Camera.PitchDegrees,
-            BuiltInBiomes.Plains, metrics.VisibleSections, _renderer.UploadedSectionCount,
+            biomeKey, metrics.VisibleSections, _renderer.UploadedSectionCount,
             metrics.TrianglesSubmitted * 3, GC.GetTotalMemory(forceFullCollection: false));
         _latestDebugText = F3OverlayFormatter.Format(in snapshot);
     }

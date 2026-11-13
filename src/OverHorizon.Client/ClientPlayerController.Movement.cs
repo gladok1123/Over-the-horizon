@@ -23,7 +23,7 @@ public sealed partial class ClientPlayerController
     /// <summary>Applies authoritative multiplayer PvP/mob/void combat damage and knockback impulse.</summary>
     public void ApplyAuthoritativeCombatHit(float newHealth, Vec3d knockbackVelocity, bool targetDied)
     {
-        if (Mode != GameMode.Survival) return;
+        if (Mode == GameMode.Spectator || (Mode != GameMode.Survival && !targetDied && newHealth > 0.01f)) return;
         HurtFlashStrength = targetDied ? 0.0f : 1.0f;
         if (targetDied)
         {
@@ -220,7 +220,6 @@ public sealed partial class ClientPlayerController
             vy = JumpImpulse;
             OnGround = false;
             AddExhaustion(canSprint ? 0.20f : 0.05f);
-            audio.PlayPositional(SoundCue.PlayerJump, FeetPosition, gain: 0.44f * MasterVolume, pitch: 0.96f + (WalkBobPhase % 0.10f));
         }
 
         var groundOrAirAccel = OnGround ? 24.0 : 8.5;

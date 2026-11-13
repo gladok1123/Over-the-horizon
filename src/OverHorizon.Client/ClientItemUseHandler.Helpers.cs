@@ -26,7 +26,8 @@ internal sealed partial class ClientItemUseHandler
 
     private static bool IsCompostable(ResourceKey key) =>
         key == BuiltInItems.Wheat || key == BuiltInItems.Apple || key == BuiltInItems.Bread ||
-        key == BuiltInItems.SugarCane || key == BuiltInBlocks.OakLeaves || key == BuiltInBlocks.BirchLeaves || key == BuiltInBlocks.HayBlock;
+        key == BuiltInItems.SugarCane || key == BuiltInBlocks.OakLeaves || key == BuiltInBlocks.BirchLeaves ||
+        key == BuiltInBlocks.CherryLeaves || key == BuiltInBlocks.SpruceLeaves || key == BuiltInBlocks.HayBlock;
 
     private static bool TryHitMultiplayerMinecart(Vec3d eye, Vec3d dir, double maxReach, ClientWorldSyncAndMobBridge bridge)
     {
@@ -135,8 +136,7 @@ internal sealed partial class ClientItemUseHandler
             player.TriggerHandSwing(isOffhand);
             _ = applyWorldBlockChange(hit.BlockPosition, Direction.Up, BlockState.Air);
             _ = worldBridge.WorldTicker.SpawnPrimedTnt(hit.BlockPosition);
-            _audio.PlayPositional(SoundCue.FireIgnite, hitCenter, gain: 0.90f * player.MasterVolume);
-            _audio.PlayPositional(SoundCue.TntFuse, hitCenter, gain: 0.95f * player.MasterVolume);
+            _audio.PlayPositional(SoundCue.TntFuse, hitCenter, gain: 0.92f * player.MasterVolume);
             return true;
         }
 

@@ -28,4 +28,22 @@ public interface IVoxelCollisionReader
     /// <param name="pos">World block coordinate.</param>
     /// <returns>Fluid level in <c>[0, 15]</c>, or <c>-1</c> if non-fluid.</returns>
     int GetFluidLevelOrNegative(BlockPos pos);
+
+    /// <summary>
+    /// Resolves the exact world-space collision <see cref="BoundingBox"/> at <paramref name="pos"/> (including sub-voxel Doors, Trapdoors, Fences, Paths, and Beds).
+    /// </summary>
+    /// <param name="pos">World block coordinate.</param>
+    /// <param name="box">Resolved world-space AABB when returning <see langword="true"/>.</param>
+    /// <returns><see langword="true"/> when <paramref name="pos"/> opposes movement; otherwise <see langword="false"/>.</returns>
+    bool TryGetCollisionBox(BlockPos pos, out BoundingBox box)
+    {
+        if (IsSolidBlock(pos))
+        {
+            box = BoundingBox.FromBlock(pos);
+            return true;
+        }
+
+        box = default;
+        return false;
+    }
 }

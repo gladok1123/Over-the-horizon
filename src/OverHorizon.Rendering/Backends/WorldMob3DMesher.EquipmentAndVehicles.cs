@@ -154,13 +154,30 @@ public static partial class WorldMob3DMesher
         }
     }
 
-    private static void AppendSkeletonHeldBow(List<OverlayVertex> dst, Matrix4x4 rightArmXform, Vector4 tint)
+    private static void AppendSkeletonHeldBow(List<OverlayVertex> dst, Matrix4x4 rightArmXform, Vector4 tint, TextureAtlasData? atlas)
     {
-        var bowXform = Matrix4x4.CreateRotationX(1.15f) * Matrix4x4.CreateTranslation(0.0f, -0.64f, 0.04f) * rightArmXform;
+        // Skeleton faces +Z in local model space; undo the -1.15f arm pitch, rotate bow.png (+45 deg Z, +90 deg Y)
+        // so curved wooden limbs point forward (+Z) and bowstring faces back (-Z) toward the Skeleton's grip!
+        var bowXform = Matrix4x4.CreateRotationZ(0.7854f) *
+                       Matrix4x4.CreateRotationY(1.5708f) *
+                       Matrix4x4.CreateRotationX(1.15f) *
+                       Matrix4x4.CreateTranslation(0.0f, -0.62f, 0.06f) *
+                       rightArmXform;
+
+        if (atlas is not null)
+        {
+            var brightness = Math.Clamp((tint.X + tint.Y + tint.Z) / 3.0f, 0.10f, 1.0f);
+            HeldItem3DMesher.EmitExtruded16x16Mesh(dst, atlas, ProceduralItemTileManifest.TileBow, 0.62f, bowXform, brightness);
+            return;
+        }
+
+        var fallbackXform = Matrix4x4.CreateRotationX(1.15f) * Matrix4x4.CreateTranslation(0.0f, -0.64f, 0.04f) * rightArmXform;
         var wood = tint * new Vector4(0.52f, 0.36f, 0.18f, 1.0f);
         var str = tint * new Vector4(0.84f, 0.84f, 0.86f, 1.0f);
-        EmitSolidBox(dst, new Vector3(-0.025f, -0.26f, 0.08f), new Vector3(0.05f, 0.52f, 0.05f), bowXform, wood);
-        EmitSolidBox(dst, new Vector3(-0.015f, -0.25f, -0.06f), new Vector3(0.03f, 0.50f, 0.02f), bowXform, str);
+        EmitSolidBox(dst, new Vector3(-0.022f, -0.10f, 0.09f), new Vector3(0.044f, 0.20f, 0.045f), fallbackXform, wood);
+        EmitSolidBox(dst, new Vector3(-0.020f, 0.09f, 0.03f), new Vector3(0.040f, 0.18f, 0.045f), fallbackXform, wood);
+        EmitSolidBox(dst, new Vector3(-0.020f, -0.27f, 0.03f), new Vector3(0.040f, 0.18f, 0.045f), fallbackXform, wood);
+        EmitSolidBox(dst, new Vector3(-0.012f, -0.26f, -0.05f), new Vector3(0.024f, 0.52f, 0.018f), fallbackXform, str);
     }
 
     private static void EmitSolidBox(List<OverlayVertex> dst, Vector3 min, Vector3 size, Matrix4x4 m, Vector4 col)

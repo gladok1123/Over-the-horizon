@@ -117,6 +117,24 @@ public static partial class ProceduralAtlasGenerator
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileAmethystBlock, 142, 92, 198, variation: 28, alpha: 255);
         ProceduralBlockTilePainter.PaintCobblestoneTile(pixels, TileMossyStoneBricks, mossy: true);
         ProceduralBlockTilePainter.PaintSandstoneSideTile(pixels, TileChiseledSandstone);
+        ProceduralItemTilePainter.PaintTrapdoorOrSpawnerTile(pixels, TileOakDoorTop, isSpawner: false);
+        ProceduralBlockTilePainter.PaintPlanksTile(pixels, TileOakDoorBottom);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileIronDoorTop, 214, 218, 224, variation: 14, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileIronDoorBottom, 198, 202, 208, variation: 12, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileIronTrapdoor, 208, 212, 218, variation: 16, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileBuddingAmethyst, 152, 86, 214, variation: 34, alpha: 255);
+        ProceduralItemTilePainter.PaintTorchTile(pixels, TileAmethystCluster);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileDirtPathTop, 166, 134, 78, variation: 16, alpha: 255);
+        ProceduralBlockTilePainter.PaintGrassSideTile(pixels, TileDirtPathSide);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileCherryLogSide, 62, 34, 42, variation: 18, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileCherryLogTop, 224, 174, 182, variation: 14, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileCherryLeaves, 244, 176, 204, variation: 24, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileSpruceLogSide, 66, 46, 28, variation: 18, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileSpruceLogTop, 126, 94, 56, variation: 14, alpha: 255);
+        ProceduralBlockTilePainter.PaintLeavesTile(pixels, TileSpruceLeaves);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileRedSand, 194, 104, 42, variation: 16, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileTerracotta, 152, 94, 68, variation: 12, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TilePackedIce, 146, 184, 244, variation: 14, alpha: 255);
 
         for (var stage = 0; stage < 10; stage++)
         {
@@ -237,6 +255,14 @@ public static partial class ProceduralAtlasGenerator
         ProceduralItemTilePainter.PaintSpawnEgg(pixels, 237, 52, 45, 39, 168, 14, 14);
         ProceduralItemTilePainter.PaintSpawnEgg(pixels, 238, 13, 167, 11, 16, 16, 16);
         ProceduralItemTilePainter.PaintTrapdoorOrSpawnerTile(pixels, 239, isSpawner: false);
+        ProceduralItemTilePainter.PaintPotionBottle(pixels, 240, 228, 154, 58);
+        ProceduralItemTilePainter.PaintPotionBottle(pixels, 241, 200, 224, 242);
+        ProceduralItemTilePainter.PaintPotionBottle(pixels, 242, 178, 244, 96);
+        ProceduralItemTilePainter.PaintDiscOrGem(pixels, 243, 176, 112, 236);
+        ProceduralItemTilePainter.PaintIngot(pixels, 244, 168, 126, 74);
+        ProceduralItemTilePainter.PaintIngot(pixels, 245, 214, 218, 224);
+        ProceduralItemTilePainter.PaintTrapdoorOrSpawnerTile(pixels, 246, isSpawner: false);
+        ProceduralItemTilePainter.PaintDiscOrGem(pixels, 247, 192, 128, 248);
     }
 
     private static Dictionary<(ResourceKey, Direction), ushort> BuildFaceLookup()
@@ -326,137 +352,19 @@ public static partial class ProceduralAtlasGenerator
         MapAllFaces(lookup, BuiltInBlocks.AmethystBlock, TileAmethystBlock);
         MapAllFaces(lookup, BuiltInBlocks.MossyStoneBricks, TileMossyStoneBricks);
         MapBlockTopBottomSide(lookup, BuiltInBlocks.ChiseledSandstone, TileSandstoneTop, TileSandstoneBottom, TileChiseledSandstone);
+        MapAllFaces(lookup, BuiltInBlocks.OakDoor, TileOakDoorTop);
+        MapAllFaces(lookup, BuiltInBlocks.IronDoor, TileIronDoorTop);
+        MapAllFaces(lookup, BuiltInBlocks.IronTrapdoor, TileIronTrapdoor);
+        MapAllFaces(lookup, BuiltInBlocks.BuddingAmethyst, TileBuddingAmethyst);
+        MapAllFaces(lookup, BuiltInBlocks.AmethystCluster, TileAmethystCluster);
+        MapBlockTopBottomSide(lookup, BuiltInBlocks.DirtPath, TileDirtPathTop, TileDirt, TileDirtPathSide);
+        MapBlockTopBottomSide(lookup, BuiltInBlocks.CherryLog, TileCherryLogTop, TileCherryLogTop, TileCherryLogSide);
+        MapAllFaces(lookup, BuiltInBlocks.CherryLeaves, TileCherryLeaves);
+        MapBlockTopBottomSide(lookup, BuiltInBlocks.SpruceLog, TileSpruceLogTop, TileSpruceLogTop, TileSpruceLogSide);
+        MapAllFaces(lookup, BuiltInBlocks.SpruceLeaves, TileSpruceLeaves);
+        MapAllFaces(lookup, BuiltInBlocks.RedSand, TileRedSand);
+        MapAllFaces(lookup, BuiltInBlocks.Terracotta, TileTerracotta);
+        MapAllFaces(lookup, BuiltInBlocks.PackedIce, TilePackedIce);
         return lookup;
-    }
-
-    private static void ApplyBlockPackOverrides(byte[] pixels, ResourcePackLoader pack)
-    {
-        _ = pack.TryBlitTile(pixels, TileStone, "stone");
-        _ = pack.TryBlitTile(pixels, TileDirt, "dirt");
-        _ = pack.TryBlitTile(pixels, TileGrassTop, "grass_block_top", 118, 190, 92);
-        _ = pack.TryBlitTile(pixels, TileGrassSide, "grass_block_side");
-        _ = pack.TryBlitTile(pixels, TileCobblestone, "cobblestone");
-        _ = pack.TryBlitTile(pixels, TileOakLogSide, "oak_log");
-        _ = pack.TryBlitTile(pixels, TileOakLogTop, "oak_log_top");
-        _ = pack.TryBlitTile(pixels, TileOakLeaves, "oak_leaves", 96, 172, 72);
-        _ = pack.TryBlitTile(pixels, TileSand, "sand");
-        _ = pack.TryBlitTile(pixels, TileWater, "water_still", 63, 118, 228, alphaOverride: 205);
-        _ = pack.TryBlitTile(pixels, TileGlowstone, "glowstone");
-        _ = pack.TryBlitTile(pixels, TileBedrock, "bedrock");
-        _ = pack.TryBlitTile(pixels, TileOakPlanks, "oak_planks");
-        _ = pack.TryBlitTile(pixels, TileCraftingTop, "crafting_table_top");
-        if (!pack.TryBlitTile(pixels, TileCraftingSide, "crafting_table_front")) _ = pack.TryBlitTile(pixels, TileCraftingSide, "crafting_table_side");
-        _ = pack.TryBlitTile(pixels, TileStoneBricks, "stone_bricks");
-        _ = pack.TryBlitTile(pixels, TileClayBricks, "bricks");
-        _ = pack.TryBlitTile(pixels, TileGlass, "glass");
-        _ = pack.TryBlitTile(pixels, TileSandstoneSide, "sandstone");
-        _ = pack.TryBlitTile(pixels, TileSandstoneTop, "sandstone_top");
-        _ = pack.TryBlitTile(pixels, TileSandstoneBottom, "sandstone_bottom");
-        _ = pack.TryBlitTile(pixels, TileBookshelfSide, "bookshelf");
-        _ = pack.TryBlitTile(pixels, TileCoalOre, "coal_ore");
-        _ = pack.TryBlitTile(pixels, TileIronOre, "iron_ore");
-        _ = pack.TryBlitTile(pixels, TileGoldOre, "gold_ore");
-        _ = pack.TryBlitTile(pixels, TileDiamondOre, "diamond_ore");
-        _ = pack.TryBlitTile(pixels, TileMossyCobblestone, "mossy_cobblestone");
-        if (!pack.TryBlitTile(pixels, TileSnowBlock, "snow")) _ = pack.TryBlitTile(pixels, TileSnowBlock, "snow_block");
-        if (!pack.TryBlitTile(pixels, TileCrimsonWool, "red_wool")) _ = pack.TryBlitTile(pixels, TileCrimsonWool, "crimson_wool");
-        _ = pack.TryBlitTile(pixels, TileGravel, "gravel");
-        _ = pack.TryBlitTile(pixels, TileObsidian, "obsidian");
-        _ = pack.TryBlitTile(pixels, TileTntSide, "tnt_side");
-        _ = pack.TryBlitTile(pixels, TileTntTop, "tnt_top");
-        _ = pack.TryBlitTile(pixels, TileTntBottom, "tnt_bottom");
-        _ = pack.TryBlitTile(pixels, TileWhiteWool, "white_wool");
-        _ = pack.TryBlitTile(pixels, TileBlueWool, "blue_wool");
-
-        _ = pack.TryBlitTile(pixels, TileTorch, "torch");
-        _ = pack.TryBlitTile(pixels, TileLantern, "lantern");
-        _ = pack.TryBlitTile(pixels, TileFurnaceFront, "furnace_front");
-        _ = pack.TryBlitTile(pixels, TileFurnaceFrontLit, "furnace_front_on");
-        _ = pack.TryBlitTile(pixels, TileFurnaceSide, "furnace_side");
-        _ = pack.TryBlitTile(pixels, TileFurnaceTop, "furnace_top");
-        _ = pack.TryBlitTile(pixels, TileBarrelSide, "barrel_side");
-        _ = pack.TryBlitTile(pixels, TileBarrelTop, "barrel_top");
-        _ = pack.TryBlitTile(pixels, TileLadder, "ladder");
-        _ = pack.TryBlitTile(pixels, TileRail, "rail");
-        _ = pack.TryBlitTile(pixels, TileRailCorner, "rail_corner");
-        _ = pack.TryBlitTile(pixels, TilePoweredRailOff, "powered_rail");
-        _ = pack.TryBlitTile(pixels, TilePoweredRailOn, "powered_rail_on");
-        _ = pack.TryBlitTile(pixels, TileCobweb, "cobweb");
-        _ = pack.TryBlitTile(pixels, TileFarmland, "farmland_moist");
-        _ = pack.TryBlitTile(pixels, TileHaySide, "hay_block_side");
-        _ = pack.TryBlitTile(pixels, TileHayTop, "hay_block_top");
-        _ = pack.TryBlitTile(pixels, TileDeepslate, "deepslate");
-        _ = pack.TryBlitTile(pixels, TileCobbledDeepslate, "cobbled_deepslate");
-        _ = pack.TryBlitTile(pixels, TileCopperOre, "copper_ore");
-        _ = pack.TryBlitTile(pixels, TileLapisOre, "lapis_ore");
-        _ = pack.TryBlitTile(pixels, TileRedstoneOre, "redstone_ore");
-        _ = pack.TryBlitTile(pixels, TileEmeraldOre, "emerald_ore");
-        _ = pack.TryBlitTile(pixels, TileBirchLogSide, "birch_log");
-        _ = pack.TryBlitTile(pixels, TileBirchLogTop, "birch_log_top");
-        _ = pack.TryBlitTile(pixels, TileBirchLeaves, "birch_leaves", 128, 168, 86);
-        _ = pack.TryBlitTile(pixels, TileBirchPlanks, "birch_planks");
-        _ = pack.TryBlitTile(pixels, TileCoalBlock, "coal_block");
-        _ = pack.TryBlitTile(pixels, TileIronBlock, "iron_block");
-        _ = pack.TryBlitTile(pixels, TileGoldBlock, "gold_block");
-        _ = pack.TryBlitTile(pixels, TileDiamondBlock, "diamond_block");
-
-        _ = pack.TryBlitTile(pixels, TileRedstoneBlock, "redstone_block");
-        _ = pack.TryBlitTile(pixels, TileRedstoneTorch, "redstone_torch");
-        _ = pack.TryBlitTile(pixels, TileRedstoneTorchOff, "redstone_torch_off");
-        _ = pack.TryBlitTile(pixels, TileRedstoneWireDot, "redstone_dust_dot", 224, 28, 28);
-        _ = pack.TryBlitTile(pixels, TileRedstoneWireLine, "redstone_dust_line0", 224, 28, 28);
-        _ = pack.TryBlitTile(pixels, TileLever, "lever");
-        _ = pack.TryBlitTile(pixels, TileRepeaterOff, "repeater");
-        _ = pack.TryBlitTile(pixels, TileRepeaterOn, "repeater_on");
-        _ = pack.TryBlitTile(pixels, TileRedstoneLampOff, "redstone_lamp");
-        _ = pack.TryBlitTile(pixels, TileRedstoneLampOn, "redstone_lamp_on");
-        _ = pack.TryBlitTile(pixels, TilePistonBottom, "piston_bottom");
-        _ = pack.TryBlitTile(pixels, TilePistonSide, "piston_side");
-        _ = pack.TryBlitTile(pixels, TilePistonTop, "piston_top");
-        _ = pack.TryBlitTile(pixels, TilePistonTopSticky, "piston_top_sticky");
-        _ = pack.TryBlitTile(pixels, TilePistonInner, "piston_inner");
-        _ = pack.TryBlitTile(pixels, TileFire, "fire_0");
-        _ = pack.TryBlitTile(pixels, TileCopperBlock, "copper_block");
-        _ = pack.TryBlitTile(pixels, TileEmeraldBlock, "emerald_block");
-        _ = pack.TryBlitTile(pixels, TileLapisBlock, "lapis_block");
-        _ = pack.TryBlitTile(pixels, TileComparatorOff, "comparator");
-        _ = pack.TryBlitTile(pixels, TileComparatorOn, "comparator_on");
-        _ = pack.TryBlitTile(pixels, TileComposterSide, "composter_side");
-        _ = pack.TryBlitTile(pixels, TileComposterTop, "composter_top");
-        _ = pack.TryBlitTile(pixels, TileComposterBottom, "composter_bottom");
-        _ = pack.TryBlitTile(pixels, TileComposterCompost, "composter_compost");
-        _ = pack.TryBlitTile(pixels, TileOakTrapdoor, "oak_trapdoor");
-        _ = pack.TryBlitTile(pixels, TileMonsterSpawner, "spawner");
-        _ = pack.TryBlitTile(pixels, TileAmethystBlock, "amethyst_block");
-        _ = pack.TryBlitTile(pixels, TileMossyStoneBricks, "mossy_stone_bricks");
-        _ = pack.TryBlitTile(pixels, TileChiseledSandstone, "chiseled_sandstone");
-
-        for (var stage = 0; stage < 10; stage++)
-        {
-            _ = pack.TryBlitTile(pixels, (ushort)(FirstDestroyStageTile + stage), $"destroy_stage_{stage}");
-        }
-    }
-
-    private static void MapAllFaces(Dictionary<(ResourceKey, Direction), ushort> map, ResourceKey key, ushort tile)
-    {
-        foreach (var dir in DirectionExtensions.All)
-        {
-            map[(key, dir)] = tile;
-        }
-    }
-
-    private static void MapBlockTopBottomSide(
-        Dictionary<(ResourceKey, Direction), ushort> map,
-        ResourceKey key,
-        ushort topTile,
-        ushort bottomTile,
-        ushort sideTile)
-    {
-        map[(key, Direction.Up)] = topTile;
-        map[(key, Direction.Down)] = bottomTile;
-        map[(key, Direction.North)] = sideTile;
-        map[(key, Direction.South)] = sideTile;
-        map[(key, Direction.West)] = sideTile;
-        map[(key, Direction.East)] = sideTile;
     }
 }

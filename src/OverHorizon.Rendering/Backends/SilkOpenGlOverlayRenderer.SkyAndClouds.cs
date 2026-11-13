@@ -15,7 +15,9 @@ internal sealed partial class SilkOpenGlOverlayRenderer
         var frac = (((worldTimeTicks % 24000L) + 24000L) % 24000L) / 24000.0f;
         var angle = (frac - 0.25f) * MathF.Tau;
         const float radius = 220.0f;
-        var sunDir = Vector3.Normalize(new Vector3(MathF.Cos(angle), -MathF.Sin(angle), -0.14f));
+        // At Noon (worldTimeTicks = 6000, frac = 0.25, angle = 0), Cos(0) = +1 puts the Sun overhead at zenith (+Y);
+        // at Midnight (18000, angle = pi), Cos(pi) = -1 puts the Moon overhead at zenith!
+        var sunDir = Vector3.Normalize(new Vector3(-MathF.Sin(angle), MathF.Cos(angle), -0.14f));
         var moonDir = -sunDir;
 
         if (sunDir.Y > -0.28f)
@@ -73,15 +75,35 @@ internal sealed partial class SilkOpenGlOverlayRenderer
         }
     }
 
-    internal static void AppendWorldClouds(List<OverlayVertex> dst, Vec3d cameraPos, long worldTimeTicks, float driftOffset)
+    internal static void AppendWorldClouds(List<OverlayVertex> dst, Vec3d cameraPos, long worldTimeTicks, float driftOffset, float skyBrightness = 1.0f)
     {
-        var frac = (((worldTimeTicks % 24000L) + 24000L) % 24000L) / 24000.0f;
-        var sunY = -MathF.Sin((frac - 0.25f) * MathF.Tau);
-        var dayFactor = Math.Clamp(0.20f + ((sunY + 0.25f) * 0.85f), 0.14f, 1.0f);
-        var topCol = new Vector4(0.99f * dayFactor, 0.99f * dayFactor, 1.0f * dayFactor, 0.84f);
-        var botCol = new Vector4(0.76f * dayFactor, 0.80f * dayFactor, 0.88f * dayFactor, 0.82f);
-        var nsCol = new Vector4(0.90f * dayFactor, 0.92f * dayFactor, 0.97f * dayFactor, 0.83f);
-        var ewCol = new Vector4(0.83f * dayFactor, 0.86f * dayFactor, 0.93f * dayFactor, 0.83f);
+        var tod = (int)(((worldTimeTicks % 24000L) + 24000L) % 24000L);
+        var frac = tod / 24000.0f;
+        var sunY = MathF.Cos((frac - 0.25f) * MathF.Tau);
+        var solarFactor = Math.Clamp(0.065f + (MathF.Max(0.0f, sunY + 0.16f) * 0.88f), 0.065f, 1.0f);
+        var dayFactor = Math.Clamp(MathF.Min(solarFactor, MathF.Max(0.065f, skyBrightness * 1.04f)), 0.065f, 1.0f);
+
+        var sunsetFactor = 0.0f;
+        if (tod is >= 11600 and <= 13800)
+        {
+            sunsetFactor = 1.0f - (MathF.Abs(tod - 12700.0f) / 1100.0f);
+        }
+        else if (tod is >= 22200 or <= 400)
+        {
+            var wrapped = tod >= 22200 ? tod - 24000 : tod;
+            sunsetFactor = 1.0f - (MathF.Abs(wrapped + 700.0f) / 1100.0f);
+        }
+
+        sunsetFactor = Math.Clamp(sunsetFactor, 0.0f, 1.0f) * 0.52f;
+        var nightFactor = Math.Clamp(1.0f - ((dayFactor - 0.065f) / 0.30f), 0.0f, 1.0f);
+        var tintR = (1.0f - (nightFactor * 0.24f)) + (sunsetFactor * 0.30f);
+        var tintG = (1.0f - (nightFactor * 0.14f)) - (sunsetFactor * 0.10f);
+        var tintB = (1.0f + (nightFactor * 0.16f)) - (sunsetFactor * 0.28f);
+
+        var topCol = new Vector4(0.99f * dayFactor * tintR, 0.99f * dayFactor * tintG, 1.0f * dayFactor * tintB, 0.84f);
+        var botCol = new Vector4(0.74f * dayFactor * tintR, 0.78f * dayFactor * tintG, 0.88f * dayFactor * tintB, 0.82f);
+        var nsCol = new Vector4(0.89f * dayFactor * tintR, 0.91f * dayFactor * tintG, 0.97f * dayFactor * tintB, 0.83f);
+        var ewCol = new Vector4(0.82f * dayFactor * tintR, 0.85f * dayFactor * tintG, 0.93f * dayFactor * tintB, 0.83f);
 
         const double cellSize = 16.0;
         var worldXWithDrift = cameraPos.X - driftOffset;

@@ -335,6 +335,15 @@ public static partial class BuiltInItems
     /// <summary>Key for <c>overhorizon:spider_spawn_egg</c>.</summary>
     public static readonly ResourceKey SpiderSpawnEgg = ResourceKey.OverHorizon("spider_spawn_egg");
 
+    /// <summary>Key for <c>overhorizon:amethyst_shard</c>.</summary>
+    public static readonly ResourceKey AmethystShard = ResourceKey.OverHorizon("amethyst_shard");
+
+    /// <summary>Key for <c>overhorizon:glass_bottle</c>.</summary>
+    public static readonly ResourceKey GlassBottle = ResourceKey.OverHorizon("glass_bottle");
+
+    /// <summary>Key for <c>overhorizon:experience_bottle</c>.</summary>
+    public static readonly ResourceKey ExperienceBottle = ResourceKey.OverHorizon("experience_bottle");
+
     /// <summary>Attempts to map a Spawn Egg item key to its zero-based mob archetype index (<c>0..7</c>).</summary>
     /// <param name="key">Candidate item resource key.</param>
     /// <param name="mobTypeByte">Resolved mob archetype index when returning <see langword="true"/>.</param>
@@ -376,13 +385,13 @@ public static partial class BuiltInItems
             return true;
         }
 
-        if (key == CreeperSpawnEgg)
+        if (key == SpiderSpawnEgg)
         {
             mobTypeByte = 6;
             return true;
         }
 
-        if (key == SpiderSpawnEgg)
+        if (key == CreeperSpawnEgg)
         {
             mobTypeByte = 7;
             return true;
@@ -402,7 +411,7 @@ public static partial class BuiltInItems
         3 => ChickenSpawnEgg,
         4 => ZombieSpawnEgg,
         5 => SkeletonSpawnEgg,
-        6 => CreeperSpawnEgg,
-        _ => SpiderSpawnEgg,
+        6 => SpiderSpawnEgg,
+        _ => CreeperSpawnEgg,
     };
 }

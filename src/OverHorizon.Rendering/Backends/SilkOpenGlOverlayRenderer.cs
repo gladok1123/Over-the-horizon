@@ -119,7 +119,7 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
 
         if (!state.IsUnderwater && camera.Position.Y > OverHorizon.Core.EngineConstants.WorldMinY - 2.0)
         {
-            AppendWorldClouds(_cloudVertices, camera.Position, state.WorldTimeTicks, state.CloudDriftOffset);
+            AppendWorldClouds(_cloudVertices, camera.Position, state.WorldTimeTicks, state.CloudDriftOffset, state.CameraSkyLightNormalized);
         }
 
         if (camera.Position.Y < 24.0)
@@ -139,15 +139,20 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
         }
 
         WorldMob3DMesher.AppendRemotePlayers(_worldTriangleVertices, camera.Position, state.RemotePlayers);
-        WorldMob3DMesher.AppendWorldMobs(_worldTriangleVertices, camera.Position, state.WorldMobs);
+        if (state.IsThirdPersonCamera && state.LocalThirdPersonPlayer is { } localThirdPerson)
+        {
+            WorldMob3DMesher.AppendSingleRemotePlayer(_worldTriangleVertices, camera.Position, localThirdPerson);
+        }
+
+        WorldMob3DMesher.AppendWorldMobs(_worldTriangleVertices, camera.Position, state.WorldMobs, atlasData);
         WorldMob3DMesher.AppendMinecarts(_worldTriangleVertices, camera.Position, state.Minecarts);
         WorldMob3DMesher.AppendArrows(_worldTriangleVertices, camera.Position, state.Arrows);
         WorldMob3DMesher.AppendPrimedTnts(_worldTriangleVertices, camera.Position, state.PrimedTnts);
         WorldMob3DMesher.AppendFallingBlocks(_worldTriangleVertices, camera.Position, state.FallingBlocks);
-        WorldMob3DMesher.AppendDroppedItems(_worldTriangleVertices, camera.Position, state.DroppedItems);
+        WorldMob3DMesher.AppendDroppedItems(_worldTriangleVertices, camera.Position, state.DroppedItems, atlasData);
         WorldMob3DMesher.AppendWorldParticles(_worldTriangleVertices, camera, state.Particles);
 
-        if (state.Mode is UiOverlayMode.InGame or UiOverlayMode.ChatInput)
+        if (!state.IsThirdPersonCamera && state.Mode is UiOverlayMode.InGame or UiOverlayMode.ChatInput)
         {
             HeldItem3DMesher.AppendHeldViewmodel(_viewModelVertices, state, atlasData);
         }
