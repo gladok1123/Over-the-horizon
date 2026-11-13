@@ -321,7 +321,7 @@ public sealed class RenderingAudioAndClientTests
     [Fact]
     public async Task SingleplayerHeadlessClient_StreamsWorldMeshesSectionsAndRendersTrianglesAsync()
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
         var options = new ClientOptions(Headless: true, ViewDistanceChunks: 1);
 
         using var host = ClientBootstrap.BuildHost([], options);

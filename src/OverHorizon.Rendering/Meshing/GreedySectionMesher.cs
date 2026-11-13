@@ -25,7 +25,8 @@ public static class GreedySectionMesher
         in ChunkNeighborhood neighborhood,
         int sectionIndex,
         IBlockRegistry blocks,
-        TextureAtlasData atlas)
+        TextureAtlasData atlas,
+        bool? xrayOverride = null)
     {
         ArgumentNullException.ThrowIfNull(blocks);
         ArgumentNullException.ThrowIfNull(atlas);
@@ -52,6 +53,7 @@ public static class GreedySectionMesher
         var baseWorldY = EngineConstants.WorldMinY + (sectionIndex * 16);
         Span<ulong> mask = stackalloc ulong[256];
 
+        var xray = xrayOverride ?? XRayEnabled;
         foreach (var face in DirectionExtensions.All)
         {
             var faceShade = QuadGeometryBuilder.GetDirectionalFaceShade(face);
@@ -59,7 +61,7 @@ public static class GreedySectionMesher
             for (var slice = 0; slice < 16; slice++)
             {
                 mask.Clear();
-                if (!PopulateSliceMask(in neighborhood, baseWorldY, face, slice, blocks, atlas, mask))
+                if (!PopulateSliceMask(in neighborhood, baseWorldY, face, slice, blocks, atlas, xray, mask))
                 {
                     continue;
                 }
@@ -99,6 +101,7 @@ public static class GreedySectionMesher
         int slice,
         IBlockRegistry blocks,
         TextureAtlasData atlas,
+        bool xray,
         Span<ulong> mask)
     {
         var any = false;
@@ -123,7 +126,6 @@ public static class GreedySectionMesher
                     continue;
                 }
 
-                var xray = XRayEnabled;
                 if (xray && IsXRayHiddenBlock(meta.BlockKey))
                 {
                     continue;

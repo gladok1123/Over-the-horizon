@@ -362,17 +362,9 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
         _ = col.SetBlockState(8, 66, 8, logZ, blocks);
         var nb = new ChunkNeighborhood(col.CreateSnapshot());
 
-        var normalMesh = GreedySectionMesher.MeshSection(nb, 8, blocks, atlas);
-        try
-        {
-            GreedySectionMesher.XRayEnabled = true;
-            var xrayMesh = GreedySectionMesher.MeshSection(nb, 8, blocks, atlas);
-            xrayMesh.OpaqueVertices.Length.Should().BeLessThan(normalMesh.OpaqueVertices.Length, "X-Ray culls Stone while keeping DiamondOre & Logs visible");
-        }
-        finally
-        {
-            GreedySectionMesher.XRayEnabled = false;
-        }
+        var normalMesh = GreedySectionMesher.MeshSection(nb, 8, blocks, atlas, xrayOverride: false);
+        var xrayMesh = GreedySectionMesher.MeshSection(nb, 8, blocks, atlas, xrayOverride: true);
+        xrayMesh.OpaqueVertices.Length.Should().BeLessThan(normalMesh.OpaqueVertices.Length, "X-Ray culls Stone while keeping DiamondOre & Logs visible");
 
         // 3. Persistent options.json round-trip
         var tmpOpt = Path.Combine(Path.GetTempPath(), $"oh_opts_{Guid.NewGuid():N}.json");

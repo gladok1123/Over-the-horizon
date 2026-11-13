@@ -70,17 +70,29 @@ public static class ParallelChunkMesher
 
         var perChunkResults = new IReadOnlyList<SectionMeshData>[neighborhoods.Count];
 
-        await Parallel.ForAsync(
-            0,
-            neighborhoods.Count,
-            cancellationToken,
-            (index, ct) =>
+        if (neighborhoods.Count <= 2)
+        {
+            for (var i = 0; i < neighborhoods.Count; i++)
             {
-                ct.ThrowIfCancellationRequested();
-                var nb = neighborhoods[index];
-                perChunkResults[index] = MeshColumn(in nb, blocks, atlas);
-                return ValueTask.CompletedTask;
-            }).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                var nb = neighborhoods[i];
+                perChunkResults[i] = MeshColumn(in nb, blocks, atlas);
+            }
+        }
+        else
+        {
+            await Parallel.ForAsync(
+                0,
+                neighborhoods.Count,
+                cancellationToken,
+                (index, ct) =>
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var nb = neighborhoods[index];
+                    perChunkResults[index] = MeshColumn(in nb, blocks, atlas);
+                    return ValueTask.CompletedTask;
+                }).ConfigureAwait(false);
+        }
 
         var totalCount = 0;
         for (var i = 0; i < perChunkResults.Length; i++)
