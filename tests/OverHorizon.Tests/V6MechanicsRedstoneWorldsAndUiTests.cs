@@ -18,6 +18,7 @@ using OverHorizon.Gameplay.Survival;
 using OverHorizon.Networking;
 using OverHorizon.Networking.Codec;
 using OverHorizon.Networking.Framing;
+using OverHorizon.Networking.Packets;
 using OverHorizon.Networking.Packets.Clientbound;
 using OverHorizon.Physics;
 using OverHorizon.Rendering;
@@ -249,7 +250,7 @@ public sealed class V6MechanicsRedstoneWorldsAndUiTests
             var listed = WorldSaveManager.ListWorlds(tempRoot);
             listed.Should().ContainSingle(w => w.WorldName == "My Test Kingdom" && w.DefaultGameMode == GameMode.Creative);
 
-            await using var savedWorld = WorldSaveManager.OpenWorldSubsystem(createdMeta, registries, tempRoot);
+            await using var savedWorld = WorldSaveManager.OpenWorldSubsystem(createdMeta, registries);
             var cache = new ClientWorldCache(blocks, atlas);
             var col = new ChunkColumn(new ChunkPos(0, 0));
             for (var x = 0; x < 16; x++)
@@ -414,11 +415,13 @@ public sealed class V6MechanicsRedstoneWorldsAndUiTests
         var batchPkt = new MultiBlockUpdatePacket([(new BlockPos(3, 64, -2), (ushort)17), (new BlockPos(4, 64, -2), (ushort)0)]);
         var timePkt = new WorldTimeUpdatePacket(13_500L);
 
-        foreach (var pkt in new OverHorizon.Networking.Packets.IPacket[] { batchPkt, timePkt })
+        foreach (var pkt in new IClientboundPacket[] { batchPkt, timePkt })
         {
-            var writer = new ArrayBufferWriter<byte>();
-            PacketFramer.WriteFrame(writer, codec, ConnectionState.Play, pkt, compressionThreshold: 64);
-            var seq = new ReadOnlySequence<byte>(writer.WrittenMemory);
+            var scratch = new ArrayBufferWriter<byte>();
+            codec.EncodeClientbound(ConnectionState.Play, pkt, scratch);
+            var wire = new ArrayBufferWriter<byte>();
+            PacketFramer.WriteFrame(wire, scratch.WrittenSpan, compressionThreshold: 64);
+            var seq = new ReadOnlySequence<byte>(wire.WrittenMemory);
             PacketFramer.TryReadFrame(ref seq, 64, out var rented, out var len).Should().BeTrue();
             var decoded = codec.DecodeClientbound(ConnectionState.Play, rented.AsSpan(0, len));
             ArrayPool<byte>.Shared.Return(rented);
