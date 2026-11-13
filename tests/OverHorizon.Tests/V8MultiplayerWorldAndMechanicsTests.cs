@@ -263,6 +263,7 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
         ticker.NotifyWorldBlockChanged(new BlockPos(2, 68, 2), cache.GetBlockState, SetWorld);
         ticker.Step(0.07, cache, new Vec3d(6, 64, 5), cache.GetBlockState, cache.GetLight, SetWorld, []);
         ticker.FallingBlocks.Should().ContainSingle("Sand converts into smooth 3D FallingBlockEntity");
+        ticker.Step(0.05, cache, new Vec3d(6, 64, 5), cache.GetBlockState, cache.GetLight, SetWorld, []);
         var midFallY = ticker.FallingBlocks[0].CurrentY;
         midFallY.Should().BeLessThan(68.0).And.BeGreaterThan(64.0, "FallingBlockEntity interpolates smoothly at fractional Y");
 
