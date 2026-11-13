@@ -275,7 +275,7 @@ public sealed class PrimedTntAndWorldTicker
         for (var i = 0; i < changes.Count; i++)
         {
             var ch = changes[i];
-            if (ch.IsRemoval)
+            if (ch.NewLevel == FluidChange.RemoveFluidSentinel)
             {
                 setBlock(ch.Position, BlockState.Air);
             }

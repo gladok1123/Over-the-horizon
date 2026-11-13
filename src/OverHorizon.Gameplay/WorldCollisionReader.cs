@@ -12,7 +12,7 @@ namespace OverHorizon.Gameplay;
 /// Lock-free <see cref="IVoxelCollisionReader"/> and <see cref="IVoxelSelectionReader"/> adapter backed by
 /// <see cref="IChunkManager"/> snapshots and L1-cache-resident precomputed solidity, fluid, and sub-voxel selection tables.
 /// </summary>
-public sealed class WorldCollisionReader : IVoxelCollisionReader, IVoxelSelectionReader
+public sealed class WorldCollisionReader : IVoxelSelectionReader
 {
     private readonly IChunkManager _chunks;
     private readonly bool[] _isSolidByStateId;
@@ -40,12 +40,7 @@ public sealed class WorldCollisionReader : IVoxelCollisionReader, IVoxelSelectio
             var state = new BlockState(id);
             var meta = blocks.GetStateMetadata(state);
             _isSolidByStateId[id] = meta.IsSolid;
-            _fluidLevelByStateId[id] = meta.IsFluid
-                ? (meta.Properties.TryGetValue("level", out var lvlStr) &&
-                   sbyte.TryParse(lvlStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var lvl)
-                    ? lvl
-                    : (sbyte)0)
-                : (sbyte)-1;
+            _fluidLevelByStateId[id] = meta.IsFluid ? ParseFluidLevel(meta) : (sbyte)-1;
 
             if (BlockAttachmentAndShapeRules.TryGetLocalSelectionBox(blocks, state, out var localBox))
             {
@@ -114,7 +109,13 @@ public sealed class WorldCollisionReader : IVoxelCollisionReader, IVoxelSelectio
         }
 
         var local = _localSelectionBoxByStateId[state.Id];
-        worldBox = local.Translate(new Vec3d(pos.X, pos.Y, pos.Z));
+        worldBox = local.Move(new Vec3d(pos.X, pos.Y, pos.Z));
         return true;
     }
+
+    private static sbyte ParseFluidLevel(BlockStateMetadata meta) =>
+        meta.Properties.TryGetValue("level", out var lvlStr) &&
+        sbyte.TryParse(lvlStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out var lvl)
+            ? lvl
+            : (sbyte)0;
 }

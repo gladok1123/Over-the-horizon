@@ -65,19 +65,16 @@ public static class EntityTextureAtlasGenerator
         PaintProceduralFallbacks(atlas);
 
         using var pack = ResourcePackLoader.Discover(externalAssetsPath);
-        if (pack.LoadedEntityTextureCount > 0)
-        {
-            TryBlitEntitySkin(atlas, pack, CellSteve, "player/wide/steve");
-            TryBlitEntitySkin(atlas, pack, CellZombie, "zombie/zombie");
-            TryBlitEntitySkin(atlas, pack, CellSkeleton, "skeleton/skeleton");
-            TryBlitEntitySkin(atlas, pack, CellCreeper, "creeper/creeper");
-            TryBlitEntitySkin(atlas, pack, CellSpider, "spider/spider");
-            TryBlitEntitySkin(atlas, pack, CellPig, "pig/pig");
-            TryBlitEntitySkin(atlas, pack, CellCow, "cow/cow");
-            TryBlitEntitySkin(atlas, pack, CellSheep, "sheep/sheep");
-            TryBlitEntitySkin(atlas, pack, CellSheepFur, "sheep/sheep_fur");
-            TryBlitEntitySkin(atlas, pack, CellChicken, "chicken");
-        }
+        TryBlitEntitySkin(atlas, pack, CellSteve, "player/wide/steve");
+        TryBlitEntitySkin(atlas, pack, CellZombie, "zombie/zombie");
+        TryBlitEntitySkin(atlas, pack, CellSkeleton, "skeleton/skeleton");
+        TryBlitEntitySkin(atlas, pack, CellCreeper, "creeper/creeper");
+        TryBlitEntitySkin(atlas, pack, CellSpider, "spider/spider");
+        TryBlitEntitySkin(atlas, pack, CellPig, "pig/pig");
+        TryBlitEntitySkin(atlas, pack, CellCow, "cow/cow");
+        TryBlitEntitySkin(atlas, pack, CellSheep, "sheep/sheep");
+        TryBlitEntitySkin(atlas, pack, CellSheepFur, "sheep/sheep_fur");
+        TryBlitEntitySkin(atlas, pack, CellChicken, "chicken");
 
         return atlas;
     }

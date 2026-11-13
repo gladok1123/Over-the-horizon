@@ -52,7 +52,7 @@ public sealed partial class WorldMobManager
             m.Health = MathF.Max(0.0f, m.Health - dmg);
             m.HurtFlashTimer = 1.0f;
 
-            var dir = dist > 1e-3 ? delta / dist : new Vec3d(0.0, 1.0, 0.0);
+            var dir = dist > 1e-3 ? delta * (1.0 / dist) : new Vec3d(0.0, 1.0, 0.0);
             var kb = exposure * 9.5;
             m.Velocity = new Vec3d(m.Velocity.X + (dir.X * kb), Math.Max(m.Velocity.Y, 4.5 + (exposure * 4.5)), m.Velocity.Z + (dir.Z * kb));
             m.OnGround = false;

@@ -262,8 +262,15 @@ public sealed class RedstoneEngine
     private IEnumerable<BlockPos> EnumerateConnectedWires(BlockPos pos, Func<BlockPos, BlockState> getBlock)
     {
         var aboveBlocked = _blocks.GetStateMetadata(getBlock(pos.Offset(Direction.Up))).IsOpaque;
-        foreach (var dir in DirectionExtensions.Horizontal)
+        for (var i = 0; i < 4; i++)
         {
+            var dir = i switch
+            {
+                0 => Direction.North,
+                1 => Direction.South,
+                2 => Direction.West,
+                _ => Direction.East,
+            };
             var flat = pos.Offset(dir);
             if (_blocks.GetStateMetadata(getBlock(flat)).BlockKey == BuiltInBlocks.RedstoneWire) yield return flat;
 

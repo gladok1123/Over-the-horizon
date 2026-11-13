@@ -72,8 +72,7 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
 
         if (state.TargetedBlock is { } target)
         {
-            var box = state.TargetedSelectionBox
-                ?? new BoundingBox(new Vec3d(target.X, target.Y, target.Z), new Vec3d(target.X + 1.0, target.Y + 1.0, target.Z + 1.0));
+            var box = state.TargetedSelectionBox ?? BoundingBox.FromBlock(target);
             AppendSelectionWireframe(_worldLineVertices, camera.Position, in box);
 
             if (state.MiningProgress is > 0.01f and < 1.0f)
@@ -305,8 +304,8 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
         var stage = Math.Clamp((int)(miningProgress * 10.0f), 0, 9);
         var tile = ProceduralAtlasGenerator.FirstDestroyStageTile + stage;
         const float eps = 0.0045f;
-        var min = new Vector3((float)(box.Min.X - cameraPos.X) - eps, (float)(box.Min.Y - cameraPos.Y) - eps, (float)(box.Min.Z - cameraPos.Z) - eps);
-        var max = new Vector3((float)(box.Max.X - cameraPos.X) + eps, (float)(box.Max.Y - cameraPos.Y) + eps, (float)(box.Max.Z - cameraPos.Z) + eps);
+        var min = new Vector3((float)(box.MinX - cameraPos.X) - eps, (float)(box.MinY - cameraPos.Y) - eps, (float)(box.MinZ - cameraPos.Z) - eps);
+        var max = new Vector3((float)(box.MaxX - cameraPos.X) + eps, (float)(box.MaxY - cameraPos.Y) + eps, (float)(box.MaxZ - cameraPos.Z) + eps);
         var tint = new Vector4(0.18f, 0.18f, 0.18f, 0.82f);
 
         HeldItem3DMesher.EmitBlockCubeFaceTinted(dst, new Vector3(min.X, max.Y, min.Z), new Vector3(min.X, max.Y, max.Z), new Vector3(max.X, max.Y, max.Z), new Vector3(max.X, max.Y, min.Z), Matrix4x4.Identity, tile, tint);
@@ -320,8 +319,8 @@ internal sealed class SilkOpenGlOverlayRenderer : IDisposable
     private static void AppendSelectionWireframe(List<OverlayVertex> dst, Vec3d cameraPos, in BoundingBox box)
     {
         const float eps = 0.003f;
-        var min = new Vector3((float)(box.Min.X - cameraPos.X) - eps, (float)(box.Min.Y - cameraPos.Y) - eps, (float)(box.Min.Z - cameraPos.Z) - eps);
-        var max = new Vector3((float)(box.Max.X - cameraPos.X) + eps, (float)(box.Max.Y - cameraPos.Y) + eps, (float)(box.Max.Z - cameraPos.Z) + eps);
+        var min = new Vector3((float)(box.MinX - cameraPos.X) - eps, (float)(box.MinY - cameraPos.Y) - eps, (float)(box.MinZ - cameraPos.Z) - eps);
+        var max = new Vector3((float)(box.MaxX - cameraPos.X) + eps, (float)(box.MaxY - cameraPos.Y) + eps, (float)(box.MaxZ - cameraPos.Z) + eps);
         var col = new Vector4(0.04f, 0.04f, 0.06f, 0.88f);
 
         Span<Vector3> c =

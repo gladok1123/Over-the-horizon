@@ -9,10 +9,10 @@ namespace OverHorizon.Physics;
 public interface IVoxelSelectionReader : IVoxelCollisionReader
 {
     /// <summary>
-    /// Gets the block-local (<c>[0..1]^3</c>) selection bounding box for the block at <paramref name="position"/>, if targetable.
+    /// Gets the world-space selection bounding box for the block at <paramref name="pos"/>, if targetable.
     /// </summary>
-    /// <param name="position">World-space voxel coordinate.</param>
-    /// <param name="localBounds">Block-local selection box on <c>[0, 1]^3</c> when selectable.</param>
-    /// <returns><see langword="true"/> if the block at <paramref name="position"/> can be targeted by the player's crosshair.</returns>
-    bool TryGetSelectionBox(BlockPos position, out BoundingBox localBounds);
+    /// <param name="pos">World-space voxel coordinate.</param>
+    /// <param name="worldBox">World-space selection box when selectable.</param>
+    /// <returns><see langword="true"/> if the block at <paramref name="pos"/> can be targeted by the player's crosshair.</returns>
+    bool TryGetSelectionBox(BlockPos pos, out BoundingBox worldBox);
 }

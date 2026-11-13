@@ -17,7 +17,7 @@ namespace OverHorizon.Client;
 /// Lock-free client-side chunk snapshot cache, <see cref="IVoxelCollisionReader"/>, <see cref="IVoxelSelectionReader"/>,
 /// Copy-on-Write section-diff tracker, and instant single-section block-edit remesher.
 /// </summary>
-public sealed class ClientWorldCache : IVoxelCollisionReader, IVoxelSelectionReader
+public sealed class ClientWorldCache : IVoxelSelectionReader
 {
     private readonly IBlockRegistry _blocks;
     private readonly TextureAtlasData _atlas;
@@ -330,7 +330,7 @@ public sealed class ClientWorldCache : IVoxelCollisionReader, IVoxelSelectionRea
         if (!_publishedSnapshots.TryGetValue(pos.ToChunkPos(), out var snap)) return false;
         var state = snap.GetBlockState(pos.SectionLocalX, pos.Y, pos.SectionLocalZ);
         if ((uint)state.Id >= (uint)_hasSelectionByStateId.Length || !_hasSelectionByStateId[state.Id]) return false;
-        worldBox = _localSelectionBoxByStateId[state.Id].Translate(new Vec3d(pos.X, pos.Y, pos.Z));
+        worldBox = _localSelectionBoxByStateId[state.Id].Move(new Vec3d(pos.X, pos.Y, pos.Z));
         return true;
     }
 
