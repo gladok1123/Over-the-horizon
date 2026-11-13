@@ -83,15 +83,15 @@ internal sealed class ClientItemUseHandler
                 return true;
             }
 
-            if (clickedKey == BuiltInBlocks.Lever || clickedKey == BuiltInBlocks.StoneButton || clickedKey == BuiltInBlocks.RedstoneRepeater)
+            if ((clickedKey == BuiltInBlocks.Lever ||
+                 clickedKey == BuiltInBlocks.StoneButton ||
+                 clickedKey == BuiltInBlocks.RedstoneRepeater) &&
+                worldBridge.TryInteractRedstoneBlock(targetHit.BlockPosition))
             {
-                if (worldBridge.TryInteractRedstoneBlock(targetHit.BlockPosition))
-                {
-                    useCooldown = 0.16;
-                    player.TriggerHandSwing();
-                    _audio.PlayPositional(SoundCue.UiClick, new Vec3d(targetHit.BlockPosition.X + 0.5, targetHit.BlockPosition.Y + 0.5, targetHit.BlockPosition.Z + 0.5), gain: 0.65f * player.MasterVolume, pitch: 0.92f);
-                    return true;
-                }
+                useCooldown = 0.16;
+                player.TriggerHandSwing();
+                _audio.PlayPositional(SoundCue.UiClick, new Vec3d(targetHit.BlockPosition.X + 0.5, targetHit.BlockPosition.Y + 0.5, targetHit.BlockPosition.Z + 0.5), gain: 0.65f * player.MasterVolume, pitch: 0.92f);
+                return true;
             }
 
             if (clickedKey == BuiltInBlocks.RedBed)

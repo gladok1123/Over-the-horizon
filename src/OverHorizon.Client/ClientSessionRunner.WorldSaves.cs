@@ -3,6 +3,7 @@ using OverHorizon.Audio;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
 using OverHorizon.Gameplay;
+using OverHorizon.Networking.Packets;
 using OverHorizon.Networking.Packets.Serverbound;
 using OverHorizon.Rendering.Backends;
 using OverHorizon.Rendering.Hud;

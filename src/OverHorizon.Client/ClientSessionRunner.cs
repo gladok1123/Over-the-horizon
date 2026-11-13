@@ -48,7 +48,7 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
     private readonly ClientSurvivalCombatController _survivalCombat;
     private readonly ClientAsyncMeshQueue _meshQueue;
 
-    private IWorldSubsystem? _ownedSavedWorld;
+    private WorldSubsystem? _ownedSavedWorld;
     private SavedWorldMetadata? _activeWorldMeta;
     private ClientMultiplayerTransport _transport = new();
     private CancellationTokenSource? _sessionCts;

@@ -120,7 +120,7 @@ public sealed partial class ClientHotbar
 
     /// <summary>Gets the <c>0..15</c> dynamic light level emitted by either main-hand or offhand item.</summary>
     public byte SelectedHeldLightEmission =>
-        (byte)Math.Max(SelectedItem?.HeldLightEmission ?? 0, OffhandItem?.HeldLightEmission ?? 0);
+        Math.Max(SelectedItem?.HeldLightEmission ?? 0, OffhandItem?.HeldLightEmission ?? 0);
 
     /// <summary>Gets the combined <c>0..15</c> dynamic light level across both main-hand and offhand slots.</summary>
     public byte CombinedHeldLightEmission => SelectedHeldLightEmission;
@@ -232,6 +232,22 @@ public sealed partial class ClientHotbar
     public void ClearCreativeSlot(int hotbarSlot)
     {
         _creativeSlots[Math.Clamp(hotbarSlot, 0, PlayerInventory.HotbarSlotCount - 1)] = -1;
+        RefreshSlotVisuals(ActiveMode);
+    }
+
+    /// <summary>Clears all 41 inventory slots (hotbar, storage, armor, offhand) and Creative quick-slots.</summary>
+    public void ClearEntireInventory()
+    {
+        for (var i = 0; i < PlayerInventory.TotalSlotCount; i++)
+        {
+            SurvivalInventory.SetSlot(i, ItemStack.Empty);
+        }
+
+        if (ActiveMode == GameMode.Creative)
+        {
+            Array.Fill(_creativeSlots, -1);
+        }
+
         RefreshSlotVisuals(ActiveMode);
     }
 
