@@ -1,3 +1,4 @@
+using System.Numerics;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
 using OverHorizon.Gameplay.Effects;
@@ -152,7 +153,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
                 var (sky, blk) = _worldCache.GetLight(a.Pos.ToBlockPos());
                 var effSky = (byte)Math.Clamp((int)MathF.Round(sky * skyMul), 0, 15);
                 _arrowVisualScratch.Add(new ArrowProjectileVisual(
-                    a.Pos, a.Yaw, a.Pitch, (a.Flags & 1) != 0, a.Shake, LightingEngine.LightLevelToBrightness(Math.Max(effSky, blk)), (a.Flags & 2) != 0));
+                    a.Id, a.Pos, a.Yaw, a.Pitch, a.Shake, LightingEngine.LightLevelToBrightness(Math.Max(effSky, blk)), (a.Flags & 2) != 0));
             }
 
             return _arrowVisualScratch;
@@ -165,7 +166,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
             var (sky, blk) = _worldCache.GetLight(a.Position.ToBlockPos());
             var effSky = (byte)Math.Clamp((int)MathF.Round(sky * skyMul), 0, 15);
             _arrowVisualScratch.Add(new ArrowProjectileVisual(
-                a.Position, a.YawDegrees, a.PitchDegrees, a.IsInGround, a.ShakeTimer, LightingEngine.LightLevelToBrightness(Math.Max(effSky, blk)), a.IsCritical));
+                a.Id, a.Position, a.YawDegrees, a.PitchDegrees, a.ShakeTimer, LightingEngine.LightLevelToBrightness(Math.Max(effSky, blk)), a.IsCritical));
         }
 
         return _arrowVisualScratch;
@@ -196,7 +197,6 @@ internal sealed partial class ClientWorldSyncAndMobBridge
 
             var topT = def.PlacedBlockKey is { } tbk ? _atlas.GetTileIndex(tbk, Direction.Up) : -1;
             var sideT = def.PlacedBlockKey is { } sbk ? _atlas.GetTileIndex(sbk, Direction.East) : -1;
-            var botT = def.PlacedBlockKey is { } bbk ? _atlas.GetTileIndex(bbk, Direction.Down) : -1;
             var itemT = _atlas.GetItemTileIndex(def.Key);
             var age = d.AgeSeconds > 0.001f ? d.AgeSeconds : _mpDropSpinClock + (d.Id * 0.37f);
             var bob = (MathF.Sin(age * 3.1f) + 1.0f) * 0.055f;
@@ -205,12 +205,11 @@ internal sealed partial class ClientWorldSyncAndMobBridge
             _droppedVisualScratch.Add(new DroppedItemVisual(
                 d.Position + new Vec3d(0.0, bob, 0.0),
                 spin,
+                d.Stack.Count,
                 isBlockCube,
                 topT,
                 sideT,
-                botT,
                 itemT,
-                d.Stack.Count,
                 bright));
         }
 
@@ -261,7 +260,13 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         {
             ref readonly var p = ref active[i];
             var alpha = Math.Clamp(1.0f - (p.Age / Math.Max(0.05f, p.MaxLifetime)), 0.08f, 1.0f);
-            _particleVisualScratch.Add(new WorldParticleVisual(p.Position, p.Size, p.Color, alpha, p.AtlasTileIndex, p.SubUvOffset));
+            _particleVisualScratch.Add(new WorldParticleVisual(
+                p.Position,
+                p.Size,
+                new Vector4(p.Color, alpha),
+                p.AtlasTileIndex,
+                p.SubUvOffset.X,
+                p.SubUvOffset.Y));
         }
 
         return _particleVisualScratch;
