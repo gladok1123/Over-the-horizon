@@ -309,7 +309,7 @@ public sealed class V7MechanicsRenderingAndEntitiesTests
         player.Hotbar.RefreshSlotVisuals(GameMode.Creative);
         player.Hotbar.SelectedBlockDisplayName.Should().Contain("Diamond Sword", "Creative hotbar reflects items placed into slot 0 via inventory drag-and-drop");
 
-        var menu = new ClientMenuController(new ClientOptions { ViewDistance = 5 }, UiOverlayMode.InGame, items, recipes);
+        var menu = new ClientMenuController(new ClientOptions(), UiOverlayMode.InGame, items, recipes);
         var cache = new ClientWorldCache(blocks, atlas);
         var overlay = menu.BuildOverlayState(new Vector2(1280, 720), player, cache, [], [], [], 6000L, 1.0f, new ClientChatHistory(), string.Empty);
         player.Camera.FarPlane.Should().BeGreaterThanOrEqualTo(640.0f, "FarPlane never clips Sun/Moon/Stars/Clouds even at low ViewDistance");
@@ -334,7 +334,7 @@ public sealed class V7MechanicsRenderingAndEntitiesTests
             };
             manager.SetBlockStatesBatch(batchEdits).Should().Be(3);
             manager.TryGetSnapshot(new ChunkPos(0, 0), out var snap).Should().BeTrue();
-            snap.GetBlockState(2, 60, 2).Should().Be(BlockState.Air);
+            snap!.GetBlockState(2, 60, 2).Should().Be(BlockState.Air);
             snap.GetBlockState(2, 60, 3).Should().Be(blocks.GetDefaultState(BuiltInBlocks.Cobblestone));
         }
     }
@@ -353,9 +353,15 @@ public sealed class V7MechanicsRenderingAndEntitiesTests
         public void FillSolid(BlockPos min, BlockPos max)
         {
             for (var x = min.X; x <= max.X; x++)
+            {
                 for (var y = min.Y; y <= max.Y; y++)
+                {
                     for (var z = min.Z; z <= max.Z; z++)
+                    {
                         _ = _solids.Add(new BlockPos(x, y, z));
+                    }
+                }
+            }
         }
 
         public void SetFluid(BlockPos pos, int level)
