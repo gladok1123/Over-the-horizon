@@ -57,6 +57,12 @@ public static partial class ProceduralAtlasGenerator
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileBarrelTop, 138, 102, 62, variation: 14, alpha: 255);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileBarrelBottom, 112, 82, 48, variation: 14, alpha: 255);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileChestBottom, 142, 100, 44, variation: 14, alpha: 255);
+
+        // Clean-room stand-ins for textures/block/wheat_stage0..7.png: short green sprouts that grow taller each stage
+        for (var stage = 0; stage <= 7; stage++)
+        {
+            ProceduralBlockTilePainter.PaintCropStageTile(pixels, GetWheatStageTile(stage), stage, 96, 158, 62, 198, 186, 74);
+        }
         ProceduralItemTilePainter.PaintLadderTile(pixels, TileLadder);
         ProceduralItemTilePainter.PaintRailTile(pixels, TileRail);
         ProceduralItemTilePainter.PaintCobwebTile(pixels, TileCobweb);

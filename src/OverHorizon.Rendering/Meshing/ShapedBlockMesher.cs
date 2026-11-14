@@ -33,6 +33,7 @@ internal static partial class ShapedBlockMesher
                key == BuiltInBlocks.Rail ||
                key == BuiltInBlocks.PoweredRail ||
                key == BuiltInBlocks.Cobweb ||
+               key == BuiltInBlocks.Wheat ||
                key == BuiltInBlocks.OakFence ||
                key == BuiltInBlocks.RedstoneWire ||
                key == BuiltInBlocks.RedstoneTorch ||
@@ -118,6 +119,13 @@ internal static partial class ShapedBlockMesher
                     else if (key == BuiltInBlocks.Cobweb)
                     {
                         EmitCrossPlanes(opaqueVerts, opaqueIndices, origin, atlas.GetTileIndex(key, Direction.North), packedLight);
+                    }
+                    else if (key == BuiltInBlocks.Wheat)
+                    {
+                        var age = meta.Properties.TryGetValue("age", out var ageStr) && int.TryParse(ageStr, out var parsedAge)
+                            ? parsedAge
+                            : 0;
+                        EmitCrossPlanes(opaqueVerts, opaqueIndices, origin, ProceduralAtlasGenerator.GetWheatStageTile(age), packedLight);
                     }
                     else if (key == BuiltInBlocks.Fire)
                     {

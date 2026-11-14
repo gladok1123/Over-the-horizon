@@ -86,6 +86,9 @@ public static partial class BuiltInItems
     /// <summary>Key for <c>overhorizon:wheat</c>.</summary>
     public static readonly ResourceKey Wheat = ResourceKey.OverHorizon("wheat");
 
+    /// <summary>Key for <c>overhorizon:wheat_seeds</c> (planted into Farmland to grow a Wheat crop).</summary>
+    public static readonly ResourceKey WheatSeeds = ResourceKey.OverHorizon("wheat_seeds");
+
     /// <summary>Key for <c>overhorizon:sugar_cane</c>.</summary>
     public static readonly ResourceKey SugarCane = ResourceKey.OverHorizon("sugar_cane");
 

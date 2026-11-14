@@ -85,6 +85,7 @@ public static partial class BuiltInItems
         RegisterMaterial(registry, Book, "Book");
         RegisterMaterial(registry, SlimeBall, "Slimeball");
         RegisterMaterial(registry, Wheat, "Wheat");
+        _ = registry.Register(WheatSeeds, new ItemDefinition(WheatSeeds, MaxStackSize: 64, DisplayName: "Wheat Seeds", Category: ItemCategory.FoodAndMaterials, UseAction: ItemUseAction.PlantSeed));
         RegisterMaterial(registry, SugarCane, "Sugar Cane");
 
         RegisterTool(registry, WoodenSword, "Wooden Sword", ToolKind.Sword, damage: 4.0f, speed: 1.5f, tier: 0);

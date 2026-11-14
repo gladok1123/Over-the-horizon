@@ -295,4 +295,7 @@ public enum SoundCue : byte
 
     /// <summary>Closing a Chest (<c>block/chest/close1.ogg</c>).</summary>
     ChestClose = 97,
+
+    /// <summary>Planting a crop seed into Farmland (<c>item/plant/crop1.ogg</c>).</summary>
+    CropPlant = 98,
 }

@@ -70,6 +70,16 @@ public static partial class ProceduralAtlasGenerator
     internal const ushort TileBarrelTop = 42;
     internal const ushort TileChestBottom = 253;
     internal const ushort TileBarrelBottom = 254;
+
+    // v0.10.0-alpha Wheat crop growth stages (90..97)
+    internal const ushort TileWheatStage0 = 90;
+    internal const ushort TileWheatStage1 = 91;
+    internal const ushort TileWheatStage2 = 92;
+    internal const ushort TileWheatStage3 = 93;
+    internal const ushort TileWheatStage4 = 94;
+    internal const ushort TileWheatStage5 = 95;
+    internal const ushort TileWheatStage6 = 96;
+    internal const ushort TileWheatStage7 = 97;
     internal const ushort TileLadder = 43;
     internal const ushort TileRail = 44;
     internal const ushort TileCobweb = 45;
@@ -153,6 +163,12 @@ public static partial class ProceduralAtlasGenerator
 
     private const ushort FirstCustomTile = 127;
     private const ushort FirstItemSpriteTile = 128;
+
+    /// <summary>Returns the atlas tile for <c>Wheat</c> growth stage <paramref name="age"/> (<c>0..7</c>).</summary>
+    /// <param name="age">Crop growth stage from the <c>age</c> block-state property.</param>
+    /// <returns>Atlas tile index of the matching <c>wheat_stage{age}</c> texture.</returns>
+    public static ushort GetWheatStageTile(int age) =>
+        (ushort)(TileWheatStage0 + Math.Clamp(age, 0, 7));
 
     /// <summary>Creates the default <c>256x256</c> block &amp; item texture atlas.</summary>
     public static TextureAtlasData CreateDefault(IBlockRegistry blocks, string? externalAssetsPath = null) =>

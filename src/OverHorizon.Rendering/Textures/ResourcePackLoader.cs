@@ -300,7 +300,7 @@ public sealed partial class ResourcePackLoader : IDisposable
             for (var x = 0; x < 16; x++)
             {
                 var sxc = sx + Math.Clamp(x * rectW / 16, 0, rectW - 1);
-                var si = (((Math.Min(syc, srcH - 1)) * srcW) + Math.Min(sxc, srcW - 1)) * 4;
+                var si = ((Math.Min(syc, srcH - 1) * srcW) + Math.Min(sxc, srcW - 1)) * 4;
                 var di = (((ay0 + y) * 256) + ax0 + x) * 4;
                 atlas[di + 0] = src[si + 0];
                 atlas[di + 1] = src[si + 1];

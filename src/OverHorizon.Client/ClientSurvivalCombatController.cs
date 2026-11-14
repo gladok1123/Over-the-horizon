@@ -217,7 +217,8 @@ internal sealed class ClientSurvivalCombatController
         }
 
         var blockState = world.GetBlockState(hit.BlockPosition);
-        var blockKey = _blocks.GetStateMetadata(blockState).BlockKey;
+        var targetMeta = _blocks.GetStateMetadata(blockState);
+        var blockKey = targetMeta.BlockKey;
         var blockDef = _blocks.GetRequired(blockKey);
         var duration = BlockDropResolver.ComputeBreakSeconds(
             blockDef, player.Hotbar.SelectedItem, player.IsHeadUnderwater, player.OnGround);
@@ -251,12 +252,17 @@ internal sealed class ClientSurvivalCombatController
             player.AddExhaustion(HungerAndVitalsModel.ExhaustionPerBlockMined);
             if (!isMultiplayer)
             {
-                var drop = BlockDropResolver.ResolveDrop(blockKey, player.Hotbar.SelectedItem, _items, _dropSequence++);
+                var drop = BlockDropResolver.ResolveDrop(blockKey, player.Hotbar.SelectedItem, _items, _dropSequence++, targetMeta);
                 if (!drop.IsEmpty)
                 {
+                    var seedBonus = BlockDropResolver.ResolveCropSeedBonus(blockKey, targetMeta, _dropSequence, _items);
                     if (worldBridge is not null)
                     {
                         _ = worldBridge.DroppedItems.SpawnBlockDrop(hit.BlockPosition, drop);
+                        if (!seedBonus.IsEmpty)
+                        {
+                            _ = worldBridge.DroppedItems.SpawnBlockDrop(hit.BlockPosition, seedBonus);
+                        }
                     }
                     else
                     {

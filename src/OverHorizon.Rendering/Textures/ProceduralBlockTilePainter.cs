@@ -291,6 +291,58 @@ internal static class ProceduralBlockTilePainter
         }
     }
 
+    /// <summary>
+    /// Paints a clean-room stand-in for <c>textures/block/wheat_stage{stage}.png</c>: two crossed sprout blades
+    /// rising from the tile bottom, growing taller and yellower as the crop matures.
+    /// </summary>
+    /// <param name="atlas">Atlas RGBA8 pixel buffer.</param>
+    /// <param name="tileIndex">Destination tile index.</param>
+    /// <param name="stage">Growth stage in <c>[0, 7]</c>.</param>
+    /// <param name="youngR">Young sprout red channel.</param>
+    /// <param name="youngG">Young sprout green channel.</param>
+    /// <param name="youngB">Young sprout blue channel.</param>
+    /// <param name="ripeR">Mature crop red channel.</param>
+    /// <param name="ripeG">Mature crop green channel.</param>
+    /// <param name="ripeB">Mature crop blue channel.</param>
+    public static void PaintCropStageTile(
+        byte[] atlas,
+        ushort tileIndex,
+        int stage,
+        byte youngR,
+        byte youngG,
+        byte youngB,
+        byte ripeR,
+        byte ripeG,
+        byte ripeB)
+    {
+        var topRow = 3 + ((stage * 12) / 7);
+        var ripeness = stage / 7.0f;
+        var r = ClampByte(youngR + (int)((ripeR - youngR) * ripeness));
+        var g = ClampByte(youngG + (int)((ripeG - youngG) * ripeness));
+        var b = ClampByte(youngB + (int)((ripeB - youngB) * ripeness));
+
+        for (var py = 0; py < TileDimension; py++)
+        {
+            for (var px = 0; px < TileDimension; px++)
+            {
+                WritePixel(atlas, tileIndex, px, py, 0, 0, 0, 0);
+            }
+        }
+
+        for (var py = 15; py >= topRow; py--)
+        {
+            var sway = ((15 - py) % 4) - 1;
+            var leftX = 5 + sway;
+            var rightX = 10 - sway;
+            var shade = py > topRow + 2 ? 0.86f : 1.0f;
+
+            WritePixel(atlas, tileIndex, leftX, py, ClampByte((int)(r * shade)), ClampByte((int)(g * shade)), ClampByte((int)(b * shade)), 255);
+            WritePixel(atlas, tileIndex, leftX + 1, py, ClampByte((int)(r * shade)), ClampByte((int)(g * shade)), ClampByte((int)(b * shade)), 255);
+            WritePixel(atlas, tileIndex, rightX, py, ClampByte((int)(r * shade)), ClampByte((int)(g * shade)), ClampByte((int)(b * shade)), 255);
+            WritePixel(atlas, tileIndex, rightX + 1, py, ClampByte((int)(r * shade)), ClampByte((int)(g * shade)), ClampByte((int)(b * shade)), 255);
+        }
+    }
+
     private static void WritePixel(byte[] atlas, ushort tileIndex, int localX, int localY, byte r, byte g, byte b, byte a)
     {
         var tileX = (tileIndex & 15) * TileDimension;

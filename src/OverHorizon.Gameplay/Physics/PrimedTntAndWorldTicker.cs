@@ -22,6 +22,7 @@ public sealed partial class PrimedTntAndWorldTicker
     private readonly HashSet<BlockPos> _activeFluidFrontier = [];
     private readonly HashSet<BlockPos> _activeGravityBlocks = [];
     private readonly HashSet<BlockPos> _activeFires = [];
+    private readonly HashSet<BlockPos> _activeCrops = [];
     private int _nextTntId = 1;
     private int _nextFallingId = 1;
     private uint _rng = 0xC4F19A37U;
@@ -29,6 +30,7 @@ public sealed partial class PrimedTntAndWorldTicker
     private double _gravityTimer;
     private double _fireTimer;
     private double _grassTimer;
+    private double _cropTimer;
 
     /// <summary>Initializes a new instance of the <see cref="PrimedTntAndWorldTicker"/> class.</summary>
     public PrimedTntAndWorldTicker(IBlockRegistry blocks)
@@ -59,6 +61,16 @@ public sealed partial class PrimedTntAndWorldTicker
     /// <summary>Registers an active <c>Fire</c> voxel at <paramref name="pos"/> so it ages, crackles, and spreads boundedly.</summary>
     public void TrackFireBlock(BlockPos pos) => _ = _activeFires.Add(pos);
 
+    /// <summary>Gets all currently tracked crop positions that receive periodic growth ticks.</summary>
+    public IReadOnlyCollection<BlockPos> ActiveCropPositions => _activeCrops;
+
+    /// <summary>
+    /// Registers a planted <c>Wheat</c> crop at <paramref name="pos"/> so it receives light &amp; Farmland-moisture
+    /// driven growth ticks until it is harvested or broken.
+    /// </summary>
+    /// <param name="pos">Crop block coordinate.</param>
+    public void TrackCropBlock(BlockPos pos) => _ = _activeCrops.Add(pos);
+
     /// <summary>Ignites and spawns a live physics-simulated <see cref="PrimedTntEntity"/> with an upward hop.</summary>
     public PrimedTntEntity SpawnPrimedTnt(BlockPos originBlock, float fuseSeconds = 4.0f)
     {
@@ -86,6 +98,7 @@ public sealed partial class PrimedTntAndWorldTicker
 
         CascadeUnsupportedAttachments(pos, getBlock, setBlock, detachedBlocks);
         EnqueueFrontierNeighbors(pos, getBlock);
+        SyncTrackedCrop(pos, getBlock);
     }
 
     /// <summary>
@@ -139,6 +152,13 @@ public sealed partial class PrimedTntAndWorldTicker
         {
             _grassTimer = 0.0;
             _ = StepGrassSpreadAndDecay(playerCenterPos, getBlock, getLight, setBlock, sampleCount: 16);
+        }
+
+        _cropTimer += dt;
+        if (_cropTimer >= 1.0 && _activeCrops.Count > 0)
+        {
+            _cropTimer = 0.0;
+            StepCropGrowth(getBlock, getLight, setBlock);
         }
     }
 

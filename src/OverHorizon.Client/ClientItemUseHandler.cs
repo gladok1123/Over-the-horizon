@@ -263,6 +263,24 @@ internal sealed partial class ClientItemUseHandler
                 _audio.PlayPositional(SoundCue.HoeTill, new Vec3d(hoeHit.BlockPosition.X + 0.5, hoeHit.BlockPosition.Y + 0.9, hoeHit.BlockPosition.Z + 0.5), gain: 0.72f * player.MasterVolume);
                 return true;
 
+            case ItemUseAction.PlantSeed:
+                if (player.CurrentTarget is not { } seedHit) return false;
+                var seedSoilMeta = _blocks.GetStateMetadata(world.GetBlockState(seedHit.BlockPosition));
+                if (!CropRules.IsFarmland(seedSoilMeta.BlockKey)) return false;
+
+                var cropPos = seedHit.BlockPosition.Offset(Direction.Up);
+                if (!world.GetBlockState(cropPos).IsAir) return false;
+
+                useCooldown = 0.20;
+                player.TriggerHandSwing(isOffhand);
+                if (!applyWorldBlockChange(cropPos, Direction.Up, CropRules.WithAge(_blocks, _blocks.GetDefaultState(BuiltInBlocks.Wheat), 0))) return false;
+
+                worldBridge.WorldTicker.TrackCropBlock(cropPos);
+                worldBridge.Particles.EmitBurst(new Vec3d(cropPos.X + 0.5, cropPos.Y + 0.3, cropPos.Z + 0.5), ParticleKind.GrowthSparkle, 6);
+                _audio.PlayPositional(SoundCue.CropPlant, new Vec3d(cropPos.X + 0.5, cropPos.Y + 0.4, cropPos.Z + 0.5), gain: 0.55f * player.MasterVolume);
+                ConsumeOneFromSlotInSurvival(player, invSlot);
+                return true;
+
             case ItemUseAction.FlattenPath:
                 if (player.CurrentTarget is not { } shovelHit) return false;
                 var pathSoilKey = _blocks.GetStateMetadata(world.GetBlockState(shovelHit.BlockPosition)).BlockKey;

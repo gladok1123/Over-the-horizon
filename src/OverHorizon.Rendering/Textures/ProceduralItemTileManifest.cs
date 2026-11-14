@@ -122,6 +122,7 @@ internal static class ProceduralItemTileManifest
         (BuiltInItems.Book, 199, "book", 255, 255, 255),
         (BuiltInItems.SlimeBall, 200, "slime_ball", 255, 255, 255),
         (BuiltInItems.Wheat, 201, "wheat", 255, 255, 255),
+        (BuiltInItems.WheatSeeds, 220, "wheat_seeds", 255, 255, 255),
         (BuiltInItems.SugarCane, 202, "sugar_cane", 255, 255, 255),
         (BuiltInBlocks.RedstoneRepeater, 203, "repeater", 255, 255, 255),
         (BuiltInItems.GoldenAxe, 204, "golden_axe", 255, 255, 255),

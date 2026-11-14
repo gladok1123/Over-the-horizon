@@ -130,6 +130,9 @@ public static class BuiltInBlocks
     /// <summary>Key for <c>overhorizon:farmland</c> (tilled soil).</summary>
     public static readonly ResourceKey Farmland = ResourceKey.OverHorizon("farmland");
 
+    /// <summary>Key for <c>overhorizon:wheat</c> (8-stage crop grown from Wheat Seeds on Farmland).</summary>
+    public static readonly ResourceKey Wheat = ResourceKey.OverHorizon("wheat");
+
     /// <summary>Key for <c>overhorizon:hay_block</c>.</summary>
     public static readonly ResourceKey HayBlock = ResourceKey.OverHorizon("hay_block");
 
@@ -300,6 +303,12 @@ public static class BuiltInBlocks
         var horizFacing = new BlockProperty("facing", ["north", "south", "west", "east"]);
         var sixFacing = new BlockProperty("facing", ["north", "south", "west", "east", "up", "down"]);
         var pillarAxis = new BlockProperty("axis", ["y", "x", "z"]);
+
+        // Vanilla crop growth stage (age 0 = just planted, age 7 = fully mature & harvestable)
+        var cropAge = new BlockProperty("age", ["0", "1", "2", "3", "4", "5", "6", "7"]);
+
+        // Vanilla Farmland hydration: 7 = fully watered (dark tilled soil), 0 = bone dry
+        var farmlandMoisture = new BlockProperty("moisture", ["0", "1", "2", "3", "4", "5", "6", "7"]);
         var railShape = new BlockProperty(
             "shape",
             [
@@ -373,7 +382,8 @@ public static class BuiltInBlocks
         _ = registry.Register(new BlockDefinition(Rail, isSolid: false, isOpaque: false, hardness: 0.5f, properties: [railShape]));
         _ = registry.Register(new BlockDefinition(Cobweb, isSolid: false, isOpaque: false, hardness: 2.5f));
         _ = registry.Register(new BlockDefinition(OakFence, isSolid: true, isOpaque: false, hardness: 2.0f));
-        _ = registry.Register(new BlockDefinition(Farmland, isSolid: true, isOpaque: false, hardness: 0.6f));
+        _ = registry.Register(new BlockDefinition(Farmland, isSolid: true, isOpaque: false, hardness: 0.6f, properties: [farmlandMoisture]));
+        _ = registry.Register(new BlockDefinition(Wheat, isSolid: false, isOpaque: false, hardness: 0.0f, properties: [cropAge]));
         _ = registry.Register(new BlockDefinition(HayBlock, hardness: 0.5f, properties: [pillarAxis]));
 
         _ = registry.Register(new BlockDefinition(Deepslate, hardness: 3.0f));

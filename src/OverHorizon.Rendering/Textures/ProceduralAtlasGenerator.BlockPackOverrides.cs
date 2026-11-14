@@ -1,3 +1,4 @@
+using System.Globalization;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
 
@@ -61,6 +62,10 @@ public static partial class ProceduralAtlasGenerator
         _ = pack.TryBlitTile(pixels, TilePoweredRailOn, "powered_rail_on");
         _ = pack.TryBlitTile(pixels, TileCobweb, "cobweb");
         _ = pack.TryBlitTile(pixels, TileFarmland, "farmland_moist");
+        for (var stage = 0; stage <= 7; stage++)
+        {
+            _ = pack.TryBlitTile(pixels, GetWheatStageTile(stage), "wheat_stage" + stage.ToString(CultureInfo.InvariantCulture));
+        }
         _ = pack.TryBlitTile(pixels, TileHaySide, "hay_block_side");
         _ = pack.TryBlitTile(pixels, TileHayTop, "hay_block_top");
         _ = pack.TryBlitTile(pixels, TileDeepslate, "deepslate");

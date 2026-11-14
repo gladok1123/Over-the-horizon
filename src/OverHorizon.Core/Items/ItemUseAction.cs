@@ -49,4 +49,7 @@ public enum ItemUseAction : byte
 
     /// <summary>Flattens targeted Grass Block or Dirt into a <c>DirtPath</c> (Shovel).</summary>
     FlattenPath = 14,
+
+    /// <summary>Plants <c>Wheat Seeds</c> into tilled Farmland as a 0-age crop.</summary>
+    PlantSeed = 15,
 }

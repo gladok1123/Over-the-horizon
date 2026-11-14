@@ -331,6 +331,88 @@ public sealed class V10RailsStepsFallingAndOriginalAssetsTests
         containers.PeekContainer(chestPos).Should().BeNull();
     }
 
+    [Fact]
+    public void Farming_TillsSoilPlantsSeedsGrowsWheatAndHarvestsVanillaYields()
+    {
+        var registries = CoreRegistries.CreateDefault();
+        var blocks = registries.Blocks;
+        var items = registries.Items;
+        var world = new Dictionary<BlockPos, BlockState>();
+
+        BlockState Get(BlockPos p) => world.TryGetValue(p, out var s) ? s : BlockState.Air;
+        void Set(BlockPos p, BlockState s)
+        {
+            if (s.IsAir) world.Remove(p);
+            else world[p] = s;
+        }
+
+        var soil = new BlockPos(0, 64, 0);
+        Set(soil, blocks.GetDefaultState(BuiltInBlocks.GrassBlock));
+        for (var x = -5; x <= 5; x++)
+        {
+            for (var z = -5; z <= 5; z++)
+            {
+                Set(new BlockPos(x, 63, z), blocks.GetDefaultState(BuiltInBlocks.Dirt));
+            }
+        }
+
+        // 1. Hoe tilling turns Grass / Dirt into Farmland (handled by ItemUseAction.TillSoil)!
+        var farmland = blocks.GetDefaultState(BuiltInBlocks.Farmland);
+        blocks.GetStateMetadata(farmland).BlockKey.Should().Be(BuiltInBlocks.Farmland);
+        CropRules.IsFarmland(blocks.GetStateMetadata(farmland).BlockKey).Should().BeTrue();
+
+        // 2. Dry Farmland with no water nearby reports zero moisture!
+        Set(soil, farmland);
+        CropRules.ResolveMoisture(blocks, Get, soil).Should().Be(0);
+
+        // 3. A water source right beside the Farmland hydrates it to the vanilla maximum!
+        Set(new BlockPos(1, 64, 0), blocks.GetDefaultState(BuiltInBlocks.Water));
+        CropRules.ResolveMoisture(blocks, Get, soil).Should().Be(CropRules.MaxMoisture);
+        CropRules.ComputeGrowthChance(CropRules.MaxMoisture, 15).Should().BeGreaterThan(
+            CropRules.ComputeGrowthChance(0, 15), "hydrated Farmland grows crops faster than dry soil");
+
+        // 4. Wheat seeds plant an age-0 crop that can age all the way to mature!
+        var planted = CropRules.WithAge(blocks, blocks.GetDefaultState(BuiltInBlocks.Wheat), 0);
+        CropRules.GetAge(blocks.GetStateMetadata(planted)).Should().Be(0);
+        CropRules.IsMature(blocks.GetStateMetadata(planted)).Should().BeFalse();
+
+        var mature = CropRules.WithAge(blocks, blocks.GetDefaultState(BuiltInBlocks.Wheat), 7);
+        CropRules.IsMature(blocks.GetStateMetadata(mature)).Should().BeTrue();
+
+        // 5. Vanilla yields: immature crops return only the seed, mature ones return Wheat + bonus seeds!
+        var immatureMeta = blocks.GetStateMetadata(planted);
+        var matureMeta = blocks.GetStateMetadata(mature);
+
+        var immatureDrop = BlockDropResolver.ResolveDrop(BuiltInBlocks.Wheat, heldTool: null, items, 0, immatureMeta);
+        items.GetById(immatureDrop.ItemId).Key.Should().Be(BuiltInItems.WheatSeeds);
+
+        var matureDrop = BlockDropResolver.ResolveDrop(BuiltInBlocks.Wheat, heldTool: null, items, 0, matureMeta);
+        items.GetById(matureDrop.ItemId).Key.Should().Be(BuiltInItems.Wheat);
+
+        var bonus = BlockDropResolver.ResolveCropSeedBonus(BuiltInBlocks.Wheat, matureMeta, 0, items);
+        bonus.Should().NotBe(ItemStack.Empty);
+        items.GetById(bonus.ItemId).Key.Should().Be(BuiltInItems.WheatSeeds);
+        bonus.Count.Should().BeInRange(1, 3);
+
+        BlockDropResolver.ResolveCropSeedBonus(BuiltInBlocks.Wheat, immatureMeta, 0, items).Should().Be(ItemStack.Empty);
+        BlockDropResolver.ResolveCropSeedBonus(BuiltInBlocks.Dirt, null, 0, items).Should().Be(ItemStack.Empty);
+
+        // 6. Growth needs light: a pitch-dark crop never advances!
+        CropRules.ComputeGrowthChance(CropRules.MaxMoisture, 4).Should().Be(0.0);
+        CropRules.ComputeGrowthChance(CropRules.MaxMoisture, 15).Should().BeGreaterThan(0.0);
+
+        // 7. The ticker tracks planted crops so they actually grow over time!
+        var ticker = new PrimedTntAndWorldTicker(blocks);
+        var cropPos = soil.Offset(Direction.Up);
+        Set(cropPos, planted);
+        ticker.NotifyWorldBlockChanged(cropPos, Get, Set);
+        ticker.ActiveCropPositions.Should().Contain(cropPos);
+
+        Set(cropPos, BlockState.Air);
+        ticker.NotifyWorldBlockChanged(cropPos, Get, Set);
+        ticker.ActiveCropPositions.Should().NotContain(cropPos, "harvested crops stop consuming tick budget");
+    }
+
     private static string Shape(Dictionary<BlockPos, BlockState> world, IBlockRegistry blocks, BlockPos pos)
     {
         var state = world.TryGetValue(pos, out var s) ? s : BlockState.Air;

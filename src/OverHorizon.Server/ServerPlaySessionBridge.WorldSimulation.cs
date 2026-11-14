@@ -194,10 +194,16 @@ public sealed partial class ServerPlaySessionBridge
             if (playerState.GameMode == GameMode.Survival && existingMeta.BlockKey != BuiltInBlocks.Fire)
             {
                 _ = _registries.Items.TryGetById(playerState.MainHandItemId, out var heldTool);
-                var drop = BlockDropResolver.ResolveDrop(existingMeta.BlockKey, heldTool, _registries.Items);
+                var drop = BlockDropResolver.ResolveDrop(existingMeta.BlockKey, heldTool, _registries.Items, 0, existingMeta);
                 if (!drop.IsEmpty)
                 {
                     _ = _droppedItems.SpawnBlockDrop(target, drop);
+                }
+
+                var seedBonus = BlockDropResolver.ResolveCropSeedBonus(existingMeta.BlockKey, existingMeta, (int)(tickNumber & 0x7FFFFFFF), _registries.Items);
+                if (!seedBonus.IsEmpty)
+                {
+                    _ = _droppedItems.SpawnBlockDrop(target, seedBonus);
                 }
             }
 

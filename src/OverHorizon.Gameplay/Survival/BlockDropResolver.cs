@@ -75,7 +75,8 @@ public static class BlockDropResolver
         ResourceKey blockKey,
         ItemDefinition? heldTool,
         IRegistry<ItemDefinition> items,
-        int dropSequence = 0)
+        int dropSequence = 0,
+        BlockStateMetadata? brokenState = null)
     {
         ArgumentNullException.ThrowIfNull(items);
 
@@ -164,6 +165,15 @@ public static class BlockDropResolver
             return MakeStack(items, BuiltInBlocks.Dirt, 1);
         }
 
+        if (blockKey == BuiltInBlocks.Wheat)
+        {
+            // Vanilla: a mature crop yields Wheat (plus bonus seeds), an immature one only returns the seed!
+            var age = brokenState is { } cropMeta ? CropRules.GetAge(cropMeta) : CropRules.MatureAge;
+            return age >= CropRules.MatureAge
+                ? MakeStack(items, BuiltInItems.Wheat, 1)
+                : MakeStack(items, BuiltInItems.WheatSeeds, 1);
+        }
+
         if (blockKey == BuiltInBlocks.LitFurnace)
         {
             return MakeStack(items, BuiltInBlocks.Furnace, 1);
@@ -241,6 +251,31 @@ public static class BlockDropResolver
         }
 
         return key;
+    }
+
+    /// <summary>
+    /// Returns the bonus <c>Wheat Seeds</c> yield of a fully mature Wheat crop (<c>1..3</c> seeds, vanilla average ~2).
+    /// Immature crops and non-crop blocks yield nothing so planting is never lossless.
+    /// </summary>
+    /// <param name="blockKey">Broken block resource key.</param>
+    /// <param name="brokenState">Broken block-state metadata carrying the crop <c>age</c>.</param>
+    /// <param name="dropSequence">Monotonic drop counter used for deterministic pseudo-random yields.</param>
+    /// <param name="items">Item registry.</param>
+    /// <returns>The bonus seed stack, or <see cref="ItemStack.Empty"/>.</returns>
+    public static ItemStack ResolveCropSeedBonus(
+        ResourceKey blockKey,
+        BlockStateMetadata? brokenState,
+        int dropSequence,
+        IRegistry<ItemDefinition> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+
+        if (blockKey != BuiltInBlocks.Wheat || brokenState is not { } meta || CropRules.GetAge(meta) < CropRules.MatureAge)
+        {
+            return ItemStack.Empty;
+        }
+
+        return MakeStack(items, BuiltInItems.WheatSeeds, 1 + (Math.Abs(dropSequence) % 3));
     }
 
     private static ItemStack MakeStack(IRegistry<ItemDefinition> items, ResourceKey key, int count)
