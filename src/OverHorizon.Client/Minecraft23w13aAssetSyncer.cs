@@ -10,7 +10,7 @@ namespace OverHorizon.Client;
 /// <c>./resourcepacks/23w13a__or__b/</c> on client startup so zero proprietary assets are redistributed in Git or releases.
 /// </summary>
 [SuppressMessage("Minor Code Smell", "S1075:URIs should not be hardcoded", Justification = "Default public GitHub asset mirror for 23w13a__or__b; overridable via --assets.")]
-public static class Minecraft23w13aAssetSyncer
+public static partial class Minecraft23w13aAssetSyncer
 {
     /// <summary>Default local resource-pack directory populated from <c>23w13a__or__b</c>.</summary>
     public const string DefaultPackDirectory = "./resourcepacks/23w13a__or__b";
@@ -327,106 +327,39 @@ public static class Minecraft23w13aAssetSyncer
         "textures/misc/underwater.png",
         "lang/en_us.json",
 
-        // Authentic Ogg Vorbis sounds from 23w13a__or__b (steps, dig, water, combat, fire, TNT, pistons & all 8 mobs)
-        "sounds/step/stone1.ogg",
-        "sounds/step/grass1.ogg",
-        "sounds/step/wood1.ogg",
-        "sounds/step/sand1.ogg",
-        "sounds/step/gravel1.ogg",
-        "sounds/step/cloth1.ogg",
-        "sounds/step/snow1.ogg",
-        "sounds/step/ladder1.ogg",
-        "sounds/block/lantern/break1.ogg",
-        "sounds/dig/stone1.ogg",
-        "sounds/dig/grass1.ogg",
-        "sounds/dig/wood1.ogg",
-        "sounds/dig/gravel1.ogg",
-        "sounds/dig/sand1.ogg",
-        "sounds/dig/cloth1.ogg",
-        "sounds/random/glass1.ogg",
-        "sounds/random/click.ogg",
-        "sounds/random/pop.ogg",
-        "sounds/random/eat1.ogg",
-        "sounds/random/burp.ogg",
-        "sounds/random/fizz.ogg",
-        "sounds/random/fuse.ogg",
-        "sounds/random/explode1.ogg",
-        "sounds/liquid/splash.ogg",
-        "sounds/liquid/swim1.ogg",
-        "sounds/ambient/underwater/enter1.ogg",
-        "sounds/ambient/underwater/exit1.ogg",
-        "sounds/ambient/underwater/underwater_ambience.ogg",
-        "sounds/entity/player/attack/sweep1.ogg",
-        "sounds/entity/player/attack/strong1.ogg",
-        "sounds/entity/player/attack/crit1.ogg",
-        "sounds/damage/hit1.ogg",
-        "sounds/damage/fallsmall.ogg",
-        "sounds/damage/fallbig.ogg",
-        "sounds/random/bow.ogg",
-        "sounds/random/bowhit1.ogg",
-        "sounds/minecart/base.ogg",
-        "sounds/block/barrel/open1.ogg",
-        "sounds/block/barrel/open2.ogg",
-        "sounds/block/barrel/close.ogg",
-        "sounds/block/chest/open.ogg",
-        "sounds/block/chest/close1.ogg",
-        "sounds/block/chest/close2.ogg",
-        "sounds/block/chest/close3.ogg",
-        "sounds/fire/ignite.ogg",
-        "sounds/fire/fire.ogg",
-        "sounds/tile/piston/out.ogg",
-        "sounds/tile/piston/in.ogg",
-        "sounds/mob/pig/say1.ogg",
-        "sounds/mob/pig/death.ogg",
-        "sounds/mob/cow/say1.ogg",
-        "sounds/mob/cow/hurt1.ogg",
-        "sounds/mob/sheep/say1.ogg",
-        "sounds/mob/sheep/shear.ogg",
-        "sounds/mob/chicken/say1.ogg",
-        "sounds/mob/chicken/hurt1.ogg",
-        "sounds/mob/zombie/say1.ogg",
-        "sounds/mob/zombie/hurt1.ogg",
-        "sounds/mob/zombie/death.ogg",
-        "sounds/mob/skeleton/say1.ogg",
-        "sounds/mob/skeleton/hurt1.ogg",
-        "sounds/mob/skeleton/death.ogg",
-        "sounds/mob/spider/say1.ogg",
-        "sounds/mob/spider/death.ogg",
-        "sounds/mob/creeper/say1.ogg",
-        "sounds/mob/creeper/death.ogg",
-        "sounds/block/lantern/place1.ogg",
-        "sounds/dig/stone2.ogg",
-        "sounds/dig/gravel2.ogg",
-        "sounds/dig/snow1.ogg",
-        "sounds/dig/snow2.ogg",
-        "sounds/dig/cloth2.ogg",
-        "sounds/random/drink.ogg",
-        "sounds/block/composter/ready1.ogg",
-        "sounds/block/deepslate/break1.ogg",
-        "sounds/block/deepslate/place1.ogg",
-        "sounds/block/deepslate/step1.ogg",
-        "sounds/block/amethyst/break1.ogg",
-        "sounds/block/amethyst/place1.ogg",
-        "sounds/block/amethyst/step1.ogg",
-        "sounds/block/amethyst/shimmer.ogg",
-        "sounds/block/amethyst_cluster/break1.ogg",
-        "sounds/block/amethyst_cluster/place1.ogg",
-        "sounds/block/wooden_door/open1.ogg",
-        "sounds/block/wooden_door/close1.ogg",
-        "sounds/block/iron_door/open1.ogg",
-        "sounds/block/iron_door/close1.ogg",
-        "sounds/block/wooden_trapdoor/open1.ogg",
-        "sounds/block/wooden_trapdoor/close1.ogg",
-        "sounds/block/iron_trapdoor/open1.ogg",
-        "sounds/block/iron_trapdoor/close1.ogg",
-        "sounds/item/hoe/till1.ogg",
-        "sounds/item/shovel/flatten1.ogg",
+        // Nether dimension block textures (textures/block/*.png) - real 23w13a__or__b Netherrack, Nylium, Ores & Portal
+        "textures/block/netherrack.png",
+        "textures/block/crimson_nylium.png",
+        "textures/block/crimson_nylium_side.png",
+        "textures/block/warped_nylium.png",
+        "textures/block/warped_nylium_side.png",
+        "textures/block/soul_sand.png",
+        "textures/block/soul_soil.png",
+        "textures/block/basalt_side.png",
+        "textures/block/basalt_top.png",
+        "textures/block/magma.png",
+        "textures/block/nether_quartz_ore.png",
+        "textures/block/nether_gold_ore.png",
+        "textures/block/ancient_debris_side.png",
+        "textures/block/ancient_debris_top.png",
+        "textures/block/nether_bricks.png",
+        "textures/block/blackstone.png",
+        "textures/block/blackstone_top.png",
+        "textures/block/nether_wart_block.png",
+        "textures/block/warped_wart_block.png",
+        "textures/block/shroomlight.png",
+        "textures/block/nether_portal.png",
+        "textures/block/netherite_block.png",
+        "textures/block/lava_still.png",
+        "textures/block/lava_flow.png",
     ];
+
+    private static readonly Lazy<string[]> AllAssetPaths = new(static () => [.. RelativeAssetPaths, .. SoundAssetPaths]);
 
     /// <summary>
     /// Gets the list of relative <c>assets/minecraft/...</c> paths synced from <c>23w13a__or__b</c>.
     /// </summary>
-    public static IReadOnlyList<string> AssetManifest => RelativeAssetPaths;
+    public static IReadOnlyList<string> AssetManifest => AllAssetPaths.Value;
 
     /// <summary>
     /// Downloads any missing <c>23w13a__or__b</c> PNG/OGG/JSON assets into <paramref name="targetPackRoot"/>.
@@ -440,7 +373,8 @@ public static class Minecraft23w13aAssetSyncer
         var packRoot = string.IsNullOrWhiteSpace(targetPackRoot) ? DefaultPackDirectory : targetPackRoot;
         var mcRoot = Path.Combine(packRoot, "assets", "minecraft");
 
-        var missing = RelativeAssetPaths
+        var manifest = AssetManifest;
+        var missing = manifest
             .Where(rel => !File.Exists(Path.Combine(mcRoot, rel.Replace('/', Path.DirectorySeparatorChar))))
             .ToArray();
 

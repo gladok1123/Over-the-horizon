@@ -1,3 +1,4 @@
+using OverHorizon.Audio;
 using OverHorizon.Core;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
@@ -105,6 +106,10 @@ public sealed partial class ClientSessionRunner
         _player.SetDimension(target);
         _worldBridge.SetActiveLocalWorld(world, _worldBridge.TimeCycle.TotalTicks, target);
         _worldCache.ClearAll(renderer);
+        _audio.PlayPositional(
+            SoundCue.PortalTravel,
+            new Vec3d(landing.X + 0.5, landing.Y + 0.5, landing.Z + 0.5),
+            gain: 0.85f * _player.MasterVolume);
         _player.ApplyAuthoritativePose(
             new Vec3d(landing.X + 0.5, landing.Y, landing.Z + 0.5),
             _player.Camera.YawDegrees,

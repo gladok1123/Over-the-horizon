@@ -9,6 +9,7 @@ internal static class ProceduralBlockTilePainter
 {
     private const int AtlasDimension = ProceduralAtlasGenerator.AtlasDimension;
     private const int TileDimension = ProceduralAtlasGenerator.TileDimension;
+    private const int TilesPerRow = ProceduralAtlasGenerator.TilesPerRow;
 
     public static void PaintNoiseTile(
         byte[] atlas,
@@ -345,8 +346,8 @@ internal static class ProceduralBlockTilePainter
 
     private static void WritePixel(byte[] atlas, ushort tileIndex, int localX, int localY, byte r, byte g, byte b, byte a)
     {
-        var tileX = (tileIndex & 15) * TileDimension;
-        var tileY = (tileIndex >> 4) * TileDimension;
+        var tileX = (tileIndex % TilesPerRow) * TileDimension;
+        var tileY = (tileIndex / TilesPerRow) * TileDimension;
         var idx = (((tileY + localY) * AtlasDimension) + (tileX + localX)) * 4;
         atlas[idx] = r;
         atlas[idx + 1] = g;

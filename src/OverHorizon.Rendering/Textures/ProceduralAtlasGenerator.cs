@@ -189,6 +189,7 @@ public static partial class ProceduralAtlasGenerator
     internal const ushort TileNetherWartBlock = 274;
     internal const ushort TileWarpedWartBlock = 275;
     internal const ushort TileShroomlight = 276;
+    internal const ushort TileNetheriteBlock = 277;
 
     private const ushort FirstCustomTile = 278;
     private const ushort FirstItemSpriteTile = 384;

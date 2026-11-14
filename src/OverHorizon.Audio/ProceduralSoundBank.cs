@@ -128,6 +128,9 @@ public static class ProceduralSoundBank
         (SoundCue.IronTrapdoorClose, "sounds/block/iron_trapdoor/close1.ogg"),
         (SoundCue.HoeTill, "sounds/item/hoe/till1.ogg"),
         (SoundCue.ShovelFlatten, "sounds/item/shovel/flatten1.ogg"),
+        (SoundCue.PortalAmbient, "sounds/portal/portal.ogg"),
+        (SoundCue.PortalTravel, "sounds/portal/travel.ogg"),
+        (SoundCue.PortalTrigger, "sounds/portal/trigger.ogg"),
     ];
 
     /// <summary>
@@ -265,6 +268,7 @@ public static class ProceduralSoundBank
             SoundCue.DeepslateBreak or SoundCue.MetalBreak or SoundCue.GlassBreak or SoundCue.AmethystBreak or SoundCue.AmethystClusterBreak or SoundCue.AmethystChime => (SoundCue.BlockBreak, 1.08),
             SoundCue.FallSmall or SoundCue.FallBig or SoundCue.LandSoft or SoundCue.ShieldBlock => (SoundCue.PlayerHit, 0.88),
             SoundCue.WaterSwim or SoundCue.UnderwaterExit or SoundCue.UnderwaterAmbience or SoundCue.PotionDrink => (SoundCue.WaterSplash, 0.94),
+            SoundCue.PortalAmbient or SoundCue.PortalTravel or SoundCue.PortalTrigger => (SoundCue.FireIgnite, 0.72),
             _ => (AirFallbackMarker(cue), 1.0),
         };
 
@@ -308,6 +312,9 @@ public static class ProceduralSoundBank
             SoundCue.BowShoot => (0.17, 460.0, 0.36, 220.0),
             SoundCue.ArrowHit => (0.15, 620.0, 0.42, -210.0),
             SoundCue.MinecartRoll => (0.30, 145.0, 0.68, 8.0),
+            SoundCue.PortalAmbient => (1.90, 96.0, 0.62, 6.0),
+            SoundCue.PortalTravel => (0.48, 210.0, 0.74, 380.0),
+            SoundCue.PortalTrigger => (0.62, 150.0, 0.70, -60.0),
 
             SoundCue.ShieldBlock => (0.18, 250.0, 0.48, -90.0),
             SoundCue.WoodBreak => (0.16, 220.0, 0.50, -65.0),

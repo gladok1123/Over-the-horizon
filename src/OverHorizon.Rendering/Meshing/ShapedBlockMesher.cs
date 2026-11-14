@@ -104,7 +104,8 @@ internal static partial class ShapedBlockMesher
                     if (key == BuiltInBlocks.NetherPortal)
                     {
                         var axis = meta.Properties.TryGetValue("axis", out var ax) ? ax : "x";
-                        EmitPortalPlane(opaqueVerts, opaqueIndices, origin, atlas.GetTileIndex(key, Direction.North), axis, packedLight);
+                        // The portal is a translucent shimmering plane, so it belongs in the blended pass (not the opaque pass).
+                        EmitPortalPlane(transVerts, transIndices, origin, atlas.GetTileIndex(key, Direction.North), axis, packedLight);
                     }
                     else if (key == BuiltInBlocks.Rail || key == BuiltInBlocks.PoweredRail)
                     {

@@ -148,6 +148,7 @@ public static class BuiltInRecipes
         RegisterMineralBlockPair(registry, "diamond", diamond, Id(BuiltInBlocks.DiamondBlock));
         RegisterMineralBlockPair(registry, "emerald", emerald, Id(BuiltInBlocks.EmeraldBlock));
         RegisterMineralBlockPair(registry, "wheat_hay", wheat, Id(BuiltInBlocks.HayBlock));
+        RegisterMineralBlockPair(registry, "netherite", Id(BuiltInItems.NetheriteIngot), Id(BuiltInBlocks.NetheriteBlock));
 
         AddShaped(registry, "stone_bricks", 2, 2, [stone, stone, stone, stone], Id(BuiltInBlocks.StoneBricks), 4);
         AddShaped(registry, "sandstone", 2, 2, [sand, sand, sand, sand], Id(BuiltInBlocks.Sandstone), 1);

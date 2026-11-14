@@ -153,6 +153,7 @@ public static partial class ProceduralAtlasGenerator
         _ = pack.TryBlitTile(pixels, TileWarpedNyliumSide, "warped_nylium_side");
         _ = pack.TryBlitTile(pixels, TileNetherPortal, "nether_portal");
         _ = pack.TryBlitTile(pixels, TileLava, "lava_still");
+        _ = pack.TryBlitTile(pixels, TileNetheriteBlock, "netherite_block");
 
         for (var stage = 0; stage < 10; stage++)
         {

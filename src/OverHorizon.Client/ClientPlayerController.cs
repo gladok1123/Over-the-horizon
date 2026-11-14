@@ -45,6 +45,7 @@ public sealed partial class ClientPlayerController
     private double _magmaBurnTickTimer;
     private double _portalDwellSeconds;
     private double _portalCooldownSeconds;
+    private double _portalAmbientTimer;
 
     /// <summary>Initializes a new instance of the <see cref="ClientPlayerController"/> class.</summary>
     public ClientPlayerController(

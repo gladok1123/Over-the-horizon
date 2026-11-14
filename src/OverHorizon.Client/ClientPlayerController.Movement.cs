@@ -25,6 +25,9 @@ public sealed partial class ClientPlayerController
     /// <summary>Seconds a Survival player must stand inside a Nether Portal before travelling (<c>4</c>, vanilla).</summary>
     public const double PortalTravelDwellSeconds = 4.0;
 
+    /// <summary>Seconds between retriggers of the authentic Nether Portal ambience clip (<c>sounds/portal/portal.ogg</c>).</summary>
+    public const double PortalAmbientPeriodSeconds = 1.85;
+
     /// <summary>Applies authoritative multiplayer PvP/mob/void combat damage and knockback impulse.</summary>
     public void ApplyAuthoritativeCombatHit(float newHealth, Vec3d knockbackVelocity, bool targetDied)
     {
@@ -197,7 +200,7 @@ public sealed partial class ClientPlayerController
             return;
         }
 
-        StepPortalDwell(world, blocks, clampedDt);
+        StepPortalDwell(world, blocks, audio, clampedDt);
 
         if (RidingMinecartId >= 0)
         {
@@ -365,16 +368,21 @@ public sealed partial class ClientPlayerController
         _vitals.UpdateFootstepAudio(this, world, blocks, audio, horizMoved, dy, onLadder);
     }
 
-    /// <summary>Advances the Nether Portal dwell timer and arms a travel request once the dwell completes.</summary>
+    /// <summary>
+    /// Advances the Nether Portal dwell timer, re-triggers the authentic <c>sounds/portal/portal.ogg</c> ambience
+    /// while the player stands inside the gateway, and arms a travel request once the dwell completes.
+    /// </summary>
     /// <param name="world">Client voxel cache.</param>
     /// <param name="blocks">Frozen block registry.</param>
+    /// <param name="audio">Positional audio subsystem used to play the portal ambience.</param>
     /// <param name="dt">Frame delta in seconds.</param>
-    private void StepPortalDwell(ClientWorldCache world, IBlockRegistry blocks, double dt)
+    private void StepPortalDwell(ClientWorldCache world, IBlockRegistry blocks, IAudioSubsystem audio, double dt)
     {
         if (PortalCooldownSeconds > 0.0)
         {
             PortalCooldownSeconds = Math.Max(0.0, PortalCooldownSeconds - dt);
             PortalDwellSeconds = 0.0;
+            _portalAmbientTimer = 0.0;
             return;
         }
 
@@ -385,10 +393,13 @@ public sealed partial class ClientPlayerController
         if (!insidePortal)
         {
             PortalDwellSeconds = 0.0;
+            _portalAmbientTimer = 0.0;
             return;
         }
 
         PortalDwellSeconds += dt;
+        StepPortalAmbientAudio(audio, feet, dt);
+
         var requiredSeconds = Mode == GameMode.Creative ? 0.35 : PortalTravelDwellSeconds;
         if (PortalDwellSeconds < requiredSeconds || _portalTravelArmed)
         {
@@ -398,6 +409,27 @@ public sealed partial class ClientPlayerController
         _portalTravelArmed = true;
         _portalTravelTarget = DimensionRules.Opposite(Dimension);
         _portalTravelBlock = NetherPortalRules.ScaleTravel(feet, Dimension, _portalTravelTarget);
+    }
+
+    /// <summary>
+    /// Loops the authentic Nether Portal ambience by re-triggering <see cref="SoundCue.PortalAmbient"/> every
+    /// <see cref="PortalAmbientPeriodSeconds"/> while the player dwells inside the gateway (OpenAL has no looping
+    /// source in this engine, so the clip is retriggered exactly like vanilla's repeating ambient sound event).
+    /// </summary>
+    /// <param name="audio">Positional audio subsystem.</param>
+    /// <param name="portalBlock">Block position of the portal block the player is standing in.</param>
+    /// <param name="dt">Frame delta in seconds.</param>
+    private void StepPortalAmbientAudio(IAudioSubsystem audio, BlockPos portalBlock, double dt)
+    {
+        _portalAmbientTimer -= dt;
+        if (_portalAmbientTimer > 0.0)
+        {
+            return;
+        }
+
+        _portalAmbientTimer = PortalAmbientPeriodSeconds;
+        var origin = new Vec3d(portalBlock.X + 0.5, portalBlock.Y + 0.5, portalBlock.Z + 0.5);
+        audio.PlayPositional(SoundCue.PortalAmbient, origin, gain: 0.55f * MasterVolume);
     }
 
     private void StepSpectatorNoclip(IAudioSubsystem audio, (float Forward, float Strafe, bool Jump, bool Sprint) input, bool descend, double dt)

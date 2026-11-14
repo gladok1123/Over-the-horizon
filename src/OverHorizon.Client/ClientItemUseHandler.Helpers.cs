@@ -148,6 +148,7 @@ internal sealed partial class ClientItemUseHandler
             useCooldown = 0.35;
             player.TriggerHandSwing(isOffhand);
             _audio.PlayPositional(SoundCue.FireIgnite, hitCenter, gain: 0.95f * player.MasterVolume);
+            _audio.PlayPositional(SoundCue.PortalTrigger, hitCenter, gain: 0.80f * player.MasterVolume);
             return true;
         }
 

@@ -166,6 +166,7 @@ public static partial class ProceduralAtlasGenerator
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileNetherWartBlock, 122, 32, 44, variation: 18, alpha: 255);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileWarpedWartBlock, 30, 116, 108, variation: 18, alpha: 255);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileShroomlight, 226, 174, 82, variation: 18, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileNetheriteBlock, 62, 56, 60, variation: 14, alpha: 255);
 
         for (var stage = 0; stage < 10; stage++)
         {
@@ -412,6 +413,7 @@ public static partial class ProceduralAtlasGenerator
         MapAllFaces(lookup, BuiltInBlocks.NetherWartBlock, TileNetherWartBlock);
         MapAllFaces(lookup, BuiltInBlocks.WarpedWartBlock, TileWarpedWartBlock);
         MapAllFaces(lookup, BuiltInBlocks.Shroomlight, TileShroomlight);
+        MapAllFaces(lookup, BuiltInBlocks.NetheriteBlock, TileNetheriteBlock);
         MapAllFaces(lookup, BuiltInBlocks.NetherPortal, TileNetherPortal);
         MapAllFaces(lookup, BuiltInBlocks.Lava, TileLava);
         return lookup;

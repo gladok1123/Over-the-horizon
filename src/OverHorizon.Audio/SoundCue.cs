@@ -298,4 +298,13 @@ public enum SoundCue : byte
 
     /// <summary>Planting a crop seed into Farmland (<c>item/plant/crop1.ogg</c>).</summary>
     CropPlant = 98,
+
+    /// <summary>Eerie Nether Portal ambience loop heard while standing inside a portal (<c>sounds/portal/portal.ogg</c>).</summary>
+    PortalAmbient = 99,
+
+    /// <summary>Dimensional whoosh played the instant a Nether Portal teleport completes (<c>sounds/portal/travel.ogg</c>).</summary>
+    PortalTravel = 100,
+
+    /// <summary>Portal ignition whoosh played when an Obsidian frame is lit (<c>sounds/portal/trigger.ogg</c>).</summary>
+    PortalTrigger = 101,
 }

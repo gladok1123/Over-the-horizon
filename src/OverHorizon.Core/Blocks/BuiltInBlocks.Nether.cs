@@ -59,6 +59,9 @@ public static partial class BuiltInBlocks
     /// <summary>Key for <c>overhorizon:lava</c> (8-level flowing fluid emitting light 15).</summary>
     public static readonly ResourceKey Lava = ResourceKey.OverHorizon("lava");
 
+    /// <summary>Key for <c>overhorizon:netherite_block</c> (9 Netherite Ingots; blast-resistant storage block).</summary>
+    public static readonly ResourceKey NetheriteBlock = ResourceKey.OverHorizon("netherite_block");
+
     /// <summary>
     /// Registers every Nether block into an unfrozen <paramref name="registry"/>.
     /// </summary>
@@ -91,6 +94,7 @@ public static partial class BuiltInBlocks
             lightEmission: 11,
             hardness: -1.0f,
             properties: [portalAxis]));
+        _ = registry.Register(new BlockDefinition(NetheriteBlock, hardness: 50.0f));
         _ = registry.Register(new BlockDefinition(
             Lava,
             isSolid: false,
