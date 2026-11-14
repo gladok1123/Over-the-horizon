@@ -325,6 +325,11 @@ public sealed partial class ClientSessionRunner
                 sessionToken);
         }
 
+        if (!_transport.IsConnected && StepPortalTravel(silkRenderer, sessionToken))
+        {
+            return;
+        }
+
         var (move, descend) = _inputBinder.PollMovement(silkRenderer.InputContext);
         var prevRidingCart = _player.RidingMinecartId;
         _player.StepMovement(_worldCache, _blocks, _audio, move, dt, descend);

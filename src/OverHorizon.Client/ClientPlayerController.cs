@@ -1,3 +1,4 @@
+using OverHorizon.Core;
 using OverHorizon.Audio;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Items;
@@ -38,6 +39,9 @@ public sealed partial class ClientPlayerController
     private float _offhandSwingTimer;
     private float _sleepAnimTimer;
     private bool _inFluid;
+    private bool _portalTravelArmed;
+    private DimensionId _portalTravelTarget;
+    private BlockPos _portalTravelBlock;
 
     /// <summary>Initializes a new instance of the <see cref="ClientPlayerController"/> class.</summary>
     public ClientPlayerController(
@@ -129,6 +133,19 @@ public sealed partial class ClientPlayerController
 
     /// <summary>Gets whether the player has died (Survival damage or Creative deep-Void hazard).</summary>
     public bool IsDead => Mode != GameMode.Spectator && Health <= 0.0f;
+
+    /// <summary>Gets the dimension the player currently inhabits.</summary>
+    public DimensionId Dimension { get; private set; } = DimensionId.Overworld;
+
+    /// <summary>Gets elapsed seconds the player has continuously stood inside a Nether Portal.</summary>
+    public double PortalDwellSeconds { get; private set; }
+
+    /// <summary>Gets remaining seconds before the player may travel through another Nether Portal.</summary>
+    public double PortalCooldownSeconds { get; private set; }
+
+    /// <summary>Gets the portal dwell progress in <c>[0, 1]</c> for the travelling overlay vignette.</summary>
+    public float PortalDwellNormalized =>
+        (float)System.Math.Clamp(PortalDwellSeconds / (Mode == GameMode.Creative ? 0.35 : PortalTravelDwellSeconds), 0.0, 1.0);
 
     /// <summary>Gets the active camera perspective (<c>0 = FirstPerson</c>, <c>1 = ThirdPersonBack</c>, <c>2 = ThirdPersonFront</c>).</summary>
     public int CameraPerspectiveMode { get; private set; }

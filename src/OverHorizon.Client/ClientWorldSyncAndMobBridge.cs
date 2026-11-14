@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using OverHorizon.Audio;
+using OverHorizon.Core;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Items;
 using OverHorizon.Core.Math;
@@ -99,6 +100,12 @@ internal sealed partial class ClientWorldSyncAndMobBridge
     }
 
     public IWorldSubsystem ActiveLocalWorld => _localWorld;
+
+    /// <summary>Gets the dimension the active local world view is pinned to (Nether travel swaps this).</summary>
+    public DimensionId ActiveDimension => _localWorld is DimensionWorldView view ? view.Dimension : DimensionId.Overworld;
+
+    /// <summary>Gets the raw multi-dimension world subsystem behind the active local view.</summary>
+    public IWorldSubsystem ActiveRawWorld => _localWorld is DimensionWorldView view ? view.Inner : _localWorld;
     public WorldTimeCycle TimeCycle { get; } = new();
     public RedstoneEngine Redstone { get; }
     public PrimedTntAndWorldTicker WorldTicker { get; }
@@ -107,9 +114,18 @@ internal sealed partial class ClientWorldSyncAndMobBridge
     public DroppedItemManager DroppedItems { get; }
     public ParticleSystem Particles { get; }
 
-    public void SetActiveLocalWorld(IWorldSubsystem nextWorld, long initialTimeTicks)
+    public void SetActiveLocalWorld(IWorldSubsystem nextWorld, long initialTimeTicks) =>
+        SetActiveLocalWorld(nextWorld, initialTimeTicks, DimensionId.Overworld);
+
+    /// <summary>Rebinds every local world simulation to <paramref name="dimension"/> of <paramref name="nextWorld"/>.</summary>
+    /// <param name="nextWorld">Raw (or already-pinned) world subsystem.</param>
+    /// <param name="initialTimeTicks">World time to restore.</param>
+    /// <param name="dimension">Dimension to pin the local view to.</param>
+    public void SetActiveLocalWorld(IWorldSubsystem nextWorld, long initialTimeTicks, DimensionId dimension)
     {
-        _localWorld = nextWorld;
+        _localWorld = nextWorld is DimensionWorldView pinned && pinned.Dimension == dimension
+            ? nextWorld
+            : new DimensionWorldView(nextWorld is DimensionWorldView unpinned ? unpinned.Inner : nextWorld, dimension);
         TimeCycle.SetTime(initialTimeTicks);
         _mobManager.Clear();
         Minecarts.Clear();

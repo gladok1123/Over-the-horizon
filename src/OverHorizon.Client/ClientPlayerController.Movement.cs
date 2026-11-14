@@ -1,3 +1,4 @@
+using OverHorizon.Core;
 using OverHorizon.Audio;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
@@ -19,6 +20,9 @@ public sealed partial class ClientPlayerController
     private const double SwimHorizontalSpeedBlocksPerSec = 3.25;
     private const double SprintMultiplier = 1.38;
     private const double JumpImpulse = 9.55;
+
+    /// <summary>Seconds a Survival player must stand inside a Nether Portal before travelling (<c>4</c>, vanilla).</summary>
+    public const double PortalTravelDwellSeconds = 4.0;
 
     /// <summary>Applies authoritative multiplayer PvP/mob/void combat damage and knockback impulse.</summary>
     public void ApplyAuthoritativeCombatHit(float newHealth, Vec3d knockbackVelocity, bool targetDied)
@@ -70,6 +74,41 @@ public sealed partial class ClientPlayerController
     }
 
     /// <summary>Applies an authoritative server teleport or spawn synchronization.</summary>
+    /// <summary>Moves the player into <paramref name="dimension"/> and resets all portal travel state.</summary>
+    /// <param name="dimension">Destination dimension.</param>
+    public void SetDimension(DimensionId dimension)
+    {
+        Dimension = dimension;
+        PortalDwellSeconds = 0.0;
+        _portalTravelArmed = false;
+        _portalTravelTarget = DimensionId.Overworld;
+        _portalTravelBlock = default;
+    }
+
+    /// <summary>Blocks Nether Portal travel for <paramref name="seconds"/> so arrivals never bounce.</summary>
+    /// <param name="seconds">Cooldown duration in seconds.</param>
+    public void ApplyPortalCooldown(double seconds = 5.0) => PortalCooldownSeconds = System.Math.Max(0.0, seconds);
+
+    /// <summary>Consumes a pending Nether Portal travel request raised by the dwell timer.</summary>
+    /// <param name="target">Destination dimension.</param>
+    /// <param name="scaledFeetBlock">Scaled destination feet block coordinate.</param>
+    /// <returns><see langword="true"/> when a travel request was pending.</returns>
+    public bool TryConsumePortalTravel(out DimensionId target, out BlockPos scaledFeetBlock)
+    {
+        if (!_portalTravelArmed)
+        {
+            target = DimensionId.Overworld;
+            scaledFeetBlock = default;
+            return false;
+        }
+
+        _portalTravelArmed = false;
+        PortalDwellSeconds = 0.0;
+        target = _portalTravelTarget;
+        scaledFeetBlock = _portalTravelBlock;
+        return true;
+    }
+
     public void ApplyAuthoritativePose(Vec3d feetPosition, float yawDegrees, float pitchDegrees, bool updateSpawn = true)
     {
         FeetPosition = feetPosition;
@@ -151,6 +190,8 @@ public sealed partial class ClientPlayerController
             StepSpectatorNoclip(audio, input, descend, clampedDt);
             return;
         }
+
+        StepPortalDwell(world, blocks, clampedDt);
 
         if (RidingMinecartId >= 0)
         {
@@ -297,6 +338,41 @@ public sealed partial class ClientPlayerController
         RefreshRaycastTarget(world);
         audio.UpdateListener(Camera.Position, Camera.Forward, Camera.Up, MasterVolume);
         _vitals.UpdateFootstepAudio(this, world, blocks, audio, horizMoved, dy, onLadder);
+    }
+
+    /// <summary>Advances the Nether Portal dwell timer and arms a travel request once the dwell completes.</summary>
+    /// <param name="world">Client voxel cache.</param>
+    /// <param name="blocks">Frozen block registry.</param>
+    /// <param name="dt">Frame delta in seconds.</param>
+    private void StepPortalDwell(ClientWorldCache world, IBlockRegistry blocks, double dt)
+    {
+        if (PortalCooldownSeconds > 0.0)
+        {
+            PortalCooldownSeconds = Math.Max(0.0, PortalCooldownSeconds - dt);
+            PortalDwellSeconds = 0.0;
+            return;
+        }
+
+        var feet = FeetPosition.ToBlockPos();
+        var head = new BlockPos(feet.X, feet.Y + 1, feet.Z);
+        var insidePortal = NetherPortalRules.IsPortal(blocks, world.GetBlockState(feet)) ||
+                           NetherPortalRules.IsPortal(blocks, world.GetBlockState(head));
+        if (!insidePortal)
+        {
+            PortalDwellSeconds = 0.0;
+            return;
+        }
+
+        PortalDwellSeconds += dt;
+        var requiredSeconds = Mode == GameMode.Creative ? 0.35 : PortalTravelDwellSeconds;
+        if (PortalDwellSeconds < requiredSeconds || _portalTravelArmed)
+        {
+            return;
+        }
+
+        _portalTravelArmed = true;
+        _portalTravelTarget = DimensionRules.Opposite(Dimension);
+        _portalTravelBlock = NetherPortalRules.ScaleTravel(feet, Dimension, _portalTravelTarget);
     }
 
     private void StepSpectatorNoclip(IAudioSubsystem audio, (float Forward, float Strafe, bool Jump, bool Sprint) input, bool descend, double dt)
