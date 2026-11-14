@@ -34,7 +34,7 @@ public static class VoxelSweptCollider
         ArgumentNullException.ThrowIfNull(world);
 
         // A zero-length sweep can neither ground nor block the entity, so skip the broadphase scan entirely.
-        if (requestedMove.X == 0.0 && requestedMove.Y == 0.0 && requestedMove.Z == 0.0)
+        if (IsNegligible(requestedMove.X) && IsNegligible(requestedMove.Y) && IsNegligible(requestedMove.Z))
         {
             return (box, Vec3d.Zero, OnGround: false, HitHorizontal: false);
         }
@@ -90,6 +90,9 @@ public static class VoxelSweptCollider
             }
         }
     }
+
+    /// <summary>Reports whether <paramref name="component"/> is too small to be worth sweeping.</summary>
+    private static bool IsNegligible(double component) => Math.Abs(component) < SkinEpsilon;
 
     /// <summary>
     /// Gathers every solid or sub-voxel collision box overlapping the swept voxel range into <paramref name="scratch"/>.
