@@ -1,8 +1,9 @@
-using OverHorizon.Core;
 using OverHorizon.Audio;
+using OverHorizon.Core;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
 using OverHorizon.Gameplay;
+using OverHorizon.Gameplay.Survival;
 using OverHorizon.Physics;
 
 namespace OverHorizon.Client;

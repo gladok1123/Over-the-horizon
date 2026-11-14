@@ -123,9 +123,15 @@ internal sealed partial class ClientWorldSyncAndMobBridge
     /// <param name="dimension">Dimension to pin the local view to.</param>
     public void SetActiveLocalWorld(IWorldSubsystem nextWorld, long initialTimeTicks, DimensionId dimension)
     {
-        _localWorld = nextWorld is DimensionWorldView pinned && pinned.Dimension == dimension
-            ? nextWorld
-            : new DimensionWorldView(nextWorld is DimensionWorldView unpinned ? unpinned.Inner : nextWorld, dimension);
+        if (nextWorld is DimensionWorldView pinned && pinned.Dimension == dimension)
+        {
+            _localWorld = nextWorld;
+        }
+        else
+        {
+            var raw = nextWorld is DimensionWorldView unpinned ? unpinned.Inner : nextWorld;
+            _localWorld = new DimensionWorldView(raw, dimension);
+        }
         TimeCycle.SetTime(initialTimeTicks);
         _mobManager.Clear();
         Minecarts.Clear();

@@ -1,6 +1,6 @@
-using OverHorizon.Core;
 using System.Globalization;
 using System.Numerics;
+using OverHorizon.Core;
 using OverHorizon.Core.Math;
 using OverHorizon.Gameplay;
 using OverHorizon.Gameplay.Effects;

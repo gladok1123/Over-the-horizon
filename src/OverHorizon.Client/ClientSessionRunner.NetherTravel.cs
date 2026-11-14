@@ -1,8 +1,8 @@
 using OverHorizon.Core;
-using OverHorizon.Rendering;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
 using OverHorizon.Gameplay.Survival;
+using OverHorizon.Rendering;
 using OverHorizon.World.ChunkManagement;
 
 namespace OverHorizon.Client;
@@ -46,7 +46,9 @@ public sealed partial class ClientSessionRunner
         _pendingPortalTravel = null;
         try
         {
+#pragma warning disable VSTHRD002 // Intentional: the task is already completed, so this read cannot deadlock.
             ApplyPortalArrival(renderer, task.GetAwaiter().GetResult());
+#pragma warning restore VSTHRD002
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
