@@ -198,6 +198,68 @@ public sealed class V12NetherFortressTexturesAndSoundsTests
     }
 
     [Fact]
+    public void NetherRuinedPortalGenerator_BuildsBrokenObsidianFramesWithGoldLavaAndMagma()
+    {
+        var registries = CoreRegistries.CreateDefault();
+        var blocks = registries.Blocks;
+        var ruins = new NetherRuinedPortalGenerator(20261112L, blocks);
+
+        var found = false;
+        for (var rz = -4; rz <= 4 && !found; rz++)
+        {
+            for (var rx = -4; rx <= 4 && !found; rx++)
+            {
+                if (ruins.TryGetRuinOrigin(rx, rz, out var originX, out var originZ, out var baseY))
+                {
+                    found = true;
+                    baseY.Should().BeGreaterThan(DimensionRules.NetherLavaSeaY);
+
+                    var obsidian = blocks.GetDefaultState(BuiltInBlocks.Obsidian);
+                    var gold = blocks.GetDefaultState(BuiltInBlocks.GoldBlock);
+                    var lava = blocks.GetDefaultState(BuiltInBlocks.Lava);
+                    var netherrack = blocks.GetDefaultState(BuiltInBlocks.Netherrack);
+
+                    var sawObsidian = false;
+                    var sawGold = false;
+                    var sawLava = false;
+                    var sawNetherrack = false;
+
+                    for (var cz = -1; cz <= 1; cz++)
+                    {
+                        for (var cx = -1; cx <= 1; cx++)
+                        {
+                            var chunk = new ChunkColumn(new ChunkPos((originX >> 4) + cx, (originZ >> 4) + cz));
+                            ruins.PopulateChunk(chunk);
+
+                            for (var lz = 0; lz < 16; lz++)
+                            {
+                                for (var lx = 0; lx < 16; lx++)
+                                {
+                                    for (var y = baseY - 3; y <= baseY + 8; y++)
+                                    {
+                                        var state = chunk.GetBlockState(lx, y, lz);
+                                        if (state == obsidian) sawObsidian = true;
+                                        else if (state == gold) sawGold = true;
+                                        else if (state == lava) sawLava = true;
+                                        else if (state == netherrack) sawNetherrack = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    sawObsidian.Should().BeTrue("a Ruined Portal is an Obsidian frame");
+                    sawGold.Should().BeTrue("a Gold Block is buried under one upright");
+                    sawLava.Should().BeTrue("a Lava puddle sits beside the ruin");
+                    sawNetherrack.Should().BeTrue("the ruin rests on a Netherrack footing");
+                }
+            }
+        }
+
+        found.Should().BeTrue("at least one region near spawn must contain a Ruined Portal");
+    }
+
+    [Fact]
     public void NetherGenerator_StampsAFortressIntoGeneratedTerrain()
     {
         var registries = CoreRegistries.CreateDefault();

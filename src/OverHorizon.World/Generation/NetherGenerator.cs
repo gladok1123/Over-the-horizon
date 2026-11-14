@@ -30,6 +30,7 @@ public sealed partial class NetherGenerator : IWorldGenerator
     private readonly CoreRegistries _registries;
     private readonly NetherBiomeSampler _biomeSampler;
     private readonly NetherFortressGenerator _fortressGenerator;
+    private readonly NetherRuinedPortalGenerator _ruinedPortalGenerator;
     private readonly PerlinNoise _caveNoiseA;
     private readonly PerlinNoise _caveNoiseB;
     private readonly PerlinNoise _caveNoiseC;
@@ -72,6 +73,7 @@ public sealed partial class NetherGenerator : IWorldGenerator
 
         var blocks = registries.Blocks;
         _fortressGenerator = new NetherFortressGenerator(worldSeed, blocks);
+        _ruinedPortalGenerator = new NetherRuinedPortalGenerator(worldSeed, blocks);
         _bedrock = blocks.GetDefaultState(BuiltInBlocks.Bedrock);
         _netherrack = blocks.GetDefaultState(BuiltInBlocks.Netherrack);
         _soulSand = blocks.GetDefaultState(BuiltInBlocks.SoulSand);
@@ -149,6 +151,7 @@ public sealed partial class NetherGenerator : IWorldGenerator
         ApplyBiomeSurfaces(chunk, originX, originZ, columnBiomes);
         PopulateVeinsAndFeatures(chunk, originX, originZ, columnBiomes);
         _fortressGenerator.PopulateChunk(chunk);
+        _ruinedPortalGenerator.PopulateChunk(chunk);
 
         chunk.RecomputeHeightmaps(_registries.Blocks);
         LightingEngine.InitializeChunkLight(chunk, _registries.Blocks);
