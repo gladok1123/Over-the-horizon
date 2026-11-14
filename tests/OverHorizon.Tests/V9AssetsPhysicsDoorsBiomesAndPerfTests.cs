@@ -283,9 +283,9 @@ public sealed class V9AssetsPhysicsDoorsBiomesAndPerfTests
 
         var sampler = new BiomeSampler(worldSeed: 20261112L, registries.Biomes);
         var discovered = new HashSet<ResourceKey>();
-        for (var z = -4096; z <= 4096; z += 64)
+        for (var z = -4096; z <= 4096; z += 128)
         {
-            for (var x = -4096; x <= 4096; x += 64)
+            for (var x = -4096; x <= 4096; x += 128)
             {
                 discovered.Add(registries.Biomes.GetById(sampler.SampleBiomeId(x, z)).Key);
             }

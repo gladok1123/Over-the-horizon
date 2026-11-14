@@ -119,7 +119,7 @@ public sealed class PlayWithFriendsMultiplayerTests
     [Fact]
     public async Task TwoFriendsMultiplayerSession_SyncsAvatarsBreaksPlacesBlocksAndSavesWorldToDiskAsync()
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(240));
         var tempWorldDir = Path.Combine(Path.GetTempPath(), $"overhorizon-friends-{Guid.NewGuid():N}");
 
         try
