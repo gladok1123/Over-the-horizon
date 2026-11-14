@@ -306,32 +306,30 @@ public static class NetherPortalRules
             }
         }
 
+        // The frame ring lives entirely inside the portal plane, so only the two axes spanning that plane are scanned.
         for (var y = bottom - 1; y <= top + 1; y++)
         {
-            for (var x = minX - 1; x <= maxX + 1; x++)
+            for (var h = -1; h <= width; h++)
             {
-                for (var z = minZ - 1; z <= maxZ + 1; z++)
+                var insideY = y >= bottom && y <= top;
+                var insideH = h >= 0 && h < width;
+                if (insideY && insideH)
                 {
-                    var insideX = x >= minX && x <= maxX;
-                    var insideZ = z >= minZ && z <= maxZ;
-                    var insideY = y >= bottom && y <= top;
-                    if (insideX && insideZ && insideY)
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    var isCornerY = y < bottom || y > top;
-                    var isCornerH = !insideX && !insideZ;
-                    if (isCornerY && isCornerH)
-                    {
-                        continue;
-                    }
+                // Frame corners are optional, exactly like vanilla.
+                if (!insideY && !insideH)
+                {
+                    continue;
+                }
 
-                    var frame = getBlock(At(x, y, z));
-                    if (blocks.GetStateMetadata(frame).BlockKey != BuiltInBlocks.Obsidian)
-                    {
-                        return false;
-                    }
+                var rx = spanZ ? seed.X : minX + h;
+                var rz = spanZ ? minZ + h : seed.Z;
+                var frame = getBlock(At(rx, y, rz));
+                if (blocks.GetStateMetadata(frame).BlockKey != BuiltInBlocks.Obsidian)
+                {
+                    return false;
                 }
             }
         }

@@ -20,7 +20,7 @@ namespace OverHorizon.Rendering.Backends;
 /// <c>O(1)</c> residency, column-level spherical distance + frustum culling, dynamic Day/Sunset/Night sky &amp; held-torch lighting,
 /// and two-pass opaque + translucent drawing.
 /// </summary>
-public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
+public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
 {
     private static readonly Lock ResolverSyncRoot = new();
     private readonly RenderingOptions _options;
@@ -244,30 +244,8 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         var gl = _gl;
         var prog = _program;
         var clampedSky = Math.Clamp(skyBrightness, 0.08f, 1.0f);
-        var underwater = overlay?.IsUnderwater == true;
-        var skyColor = SilkOpenGlChunkPassDrawer.ComputeSkyAtmosphereColor(clampedSky, overlay?.WorldTimeTicks ?? 1000L, underwater);
-        if (!underwater && overlay is not null)
-        {
-            if (camera.Position.Y < EngineConstants.WorldMinY + 2.0)
-            {
-                var voidFactor = (float)Math.Clamp((EngineConstants.WorldMinY + 2.0 - camera.Position.Y) / 8.0, 0.35, 1.0);
-                skyColor = Vector3.Lerp(skyColor, new Vector3(0.010f, 0.010f, 0.016f), voidFactor);
-            }
-            else if (camera.Position.Y < 54.0 && overlay.CameraSkyLightNormalized < 0.15f)
-            {
-                var caveDark = (1.0f - (overlay.CameraSkyLightNormalized / 0.15f)) * (float)Math.Clamp((54.0 - camera.Position.Y) / 14.0, 0.0, 1.0);
-                skyColor = Vector3.Lerp(skyColor, new Vector3(0.018f, 0.018f, 0.024f), caveDark * 0.95f);
-            }
-        }
-
         var chunkFogDist = overlay is { ChunkFogDistance: > 16.0f } ? overlay.ChunkFogDistance : camera.FarPlane;
-        var isNether = overlay?.IsNetherDimension == true;
-        if (isNether)
-        {
-            // The Nether has no sky: a flat sulfurous haze with heavy volcanic fog.
-            skyColor = new Vector3(0.145f, 0.052f, 0.048f);
-            chunkFogDist = Math.Min(chunkFogDist, 34.0f);
-        }
+        var skyColor = ComputeSkyAndFogColor(overlay, camera, clampedSky, ref chunkFogDist, out var isNether);
 
         gl.ClearColor(skyColor.X, skyColor.Y, skyColor.Z, 1.0f);
         gl.Clear((uint)(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit));
