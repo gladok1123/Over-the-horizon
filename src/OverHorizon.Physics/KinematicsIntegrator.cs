@@ -7,6 +7,9 @@ namespace OverHorizon.Physics;
 /// </summary>
 public static class KinematicsIntegrator
 {
+    /// <summary>Upper bound on collision sub-steps per tick so pathological velocities cannot stall the simulation.</summary>
+    private const int MaxCollisionSubsteps = 8;
+
     /// <summary>
     /// Advances an entity by <paramref name="deltaSeconds"/> against <paramref name="world"/>.
     /// Safe to execute concurrently from multiple worker threads over read-only chunk snapshots.
@@ -71,33 +74,8 @@ public static class KinematicsIntegrator
         }
 
         var requestedMove = new Vec3d(vx * deltaSeconds, vy * deltaSeconds, vz * deltaSeconds);
-        var (resolvedBox, actualMove, onGround, hitHorizontal) = VoxelSweptCollider.MoveAndCollide(world, box, requestedMove);
-
-        // Vanilla 0.6-block auto step-up: walk straight onto slabs, 15/16 Dirt Paths, Farmland, and 1..2 pixel ledges!
-        var wantsHorizontalMove = Math.Abs(requestedMove.X) > 1e-9 || Math.Abs(requestedMove.Z) > 1e-9;
-        if (hitHorizontal && onGround && !isFlying && wantsHorizontalMove)
-        {
-            var raisedBox = box.Move(new Vec3d(0.0, PhysicsConstants.StepHeight, 0.0));
-            var (steppedBox, steppedMove, _, blockedWhileRaised) = VoxelSweptCollider.MoveAndCollide(
-                world, raisedBox, new Vec3d(requestedMove.X, 0.0, requestedMove.Z));
-
-            var advance = Math.Abs(steppedMove.X) + Math.Abs(steppedMove.Z);
-            if (!blockedWhileRaised || advance > 1e-6)
-            {
-                var (landedBox, downMove, landedOnGround, _) = VoxelSweptCollider.MoveAndCollide(
-                    world, steppedBox, new Vec3d(0.0, -PhysicsConstants.StepHeight, 0.0));
-
-                // Only accept the step when the entity actually settles on a ledge above its previous feet height!
-                if (landedBox.MinY > box.MinY + 1e-6 && (landedOnGround || Math.Abs(downMove.Y) < PhysicsConstants.StepHeight - 1e-6))
-                {
-                    resolvedBox = landedBox;
-                    actualMove = new Vec3d(steppedMove.X, landedBox.MinY - box.MinY, steppedMove.Z);
-                    onGround = true;
-                    hitHorizontal = blockedWhileRaised;
-                    vy = 0.0;
-                }
-            }
-        }
+        var (resolvedBox, actualMove, onGround, hitHorizontal, resolvedVy) = SweepAndStepUp(world, box, requestedMove, vy, isFlying);
+        vy = resolvedVy;
 
         if (Math.Abs(actualMove.Y - requestedMove.Y) > 1e-7)
         {
@@ -163,6 +141,90 @@ public static class KinematicsIntegrator
             onGround,
             hitHorizontal,
             inFluid);
+    }
+
+    /// <summary>
+    /// Sweeps <paramref name="box"/> by <paramref name="requestedMove"/> in equal stages no longer than
+    /// <see cref="PhysicsConstants.MaxSubstepDisplacement"/>, applying the vanilla 0.6-block auto step-up on every stage.
+    /// Sub-stepping keeps fast entities (minecarts, sprint-jumps, long falls, knockback arcs) from clipping corners that a
+    /// single oversized sweep would resolve as a blunt wall stop.
+    /// </summary>
+    /// <param name="world">Read-only collision reader.</param>
+    /// <param name="box">Starting world-space AABB.</param>
+    /// <param name="requestedMove">Total displacement for the tick.</param>
+    /// <param name="verticalVelocity">Incoming vertical velocity, zeroed whenever a stage lands or is blocked.</param>
+    /// <param name="isFlying">When <see langword="true"/>, disables the grounded step-up assist.</param>
+    /// <returns>Resolved AABB, total displacement, grounded flag, horizontal-block flag, and adjusted vertical velocity.</returns>
+    private static (BoundingBox Box, Vec3d ActualMove, bool OnGround, bool HitHorizontal, double VerticalVelocity) SweepAndStepUp(
+        IVoxelCollisionReader world,
+        BoundingBox box,
+        Vec3d requestedMove,
+        double verticalVelocity,
+        bool isFlying)
+    {
+        var span = Math.Max(Math.Max(Math.Abs(requestedMove.X), Math.Abs(requestedMove.Y)), Math.Abs(requestedMove.Z));
+        var substeps = span <= PhysicsConstants.MaxSubstepDisplacement
+            ? 1
+            : (int)Math.Min(MaxCollisionSubsteps, Math.Ceiling(span / PhysicsConstants.MaxSubstepDisplacement));
+
+        var current = box;
+        var movedX = 0.0;
+        var movedY = 0.0;
+        var movedZ = 0.0;
+        var onGround = false;
+        var hitHorizontal = false;
+        var vy = verticalVelocity;
+
+        for (var stage = 0; stage < substeps; stage++)
+        {
+            var remainingStages = substeps - stage;
+            var stageMove = new Vec3d(
+                (requestedMove.X - movedX) / remainingStages,
+                (requestedMove.Y - movedY) / remainingStages,
+                (requestedMove.Z - movedZ) / remainingStages);
+
+            var (stageBox, stageMoveActual, stageOnGround, stageHitHorizontal) = VoxelSweptCollider.MoveAndCollide(world, current, stageMove);
+
+            // Vanilla 0.6-block auto step-up: walk straight onto slabs, 15/16 Dirt Paths, Farmland, and 1..2 pixel ledges!
+            var wantsHorizontalMove = Math.Abs(stageMove.X) > 1e-9 || Math.Abs(stageMove.Z) > 1e-9;
+            if (stageHitHorizontal && stageOnGround && !isFlying && wantsHorizontalMove)
+            {
+                var raisedBox = current.Move(new Vec3d(0.0, PhysicsConstants.StepHeight, 0.0));
+                var (steppedBox, steppedMove, _, blockedWhileRaised) = VoxelSweptCollider.MoveAndCollide(
+                    world, raisedBox, new Vec3d(stageMove.X, 0.0, stageMove.Z));
+
+                var advance = Math.Abs(steppedMove.X) + Math.Abs(steppedMove.Z);
+                if (!blockedWhileRaised || advance > 1e-6)
+                {
+                    var (landedBox, downMove, landedOnGround, _) = VoxelSweptCollider.MoveAndCollide(
+                        world, steppedBox, new Vec3d(0.0, -PhysicsConstants.StepHeight, 0.0));
+
+                    // Only accept the step when the entity actually settles on a ledge above its previous feet height!
+                    if (landedBox.MinY > current.MinY + 1e-6 && (landedOnGround || Math.Abs(downMove.Y) < PhysicsConstants.StepHeight - 1e-6))
+                    {
+                        stageBox = landedBox;
+                        stageMoveActual = new Vec3d(steppedMove.X, landedBox.MinY - current.MinY, steppedMove.Z);
+                        stageOnGround = true;
+                        stageHitHorizontal = blockedWhileRaised;
+                        vy = 0.0;
+                    }
+                }
+            }
+
+            current = stageBox;
+            movedX += stageMoveActual.X;
+            movedY += stageMoveActual.Y;
+            movedZ += stageMoveActual.Z;
+
+            if (stageOnGround)
+            {
+                onGround = true;
+            }
+
+            hitHorizontal |= stageHitHorizontal;
+        }
+
+        return (current, new Vec3d(movedX, movedY, movedZ), onGround, hitHorizontal, vy);
     }
 
     private static (bool InFluid, double MaxSubmergedDepth, Vec3d FlowDirection) SampleFluidContact(IVoxelCollisionReader world, BoundingBox box)

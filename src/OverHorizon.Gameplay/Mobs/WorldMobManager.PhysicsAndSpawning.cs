@@ -99,7 +99,7 @@ public sealed partial class WorldMobManager
             mob.HopCooldownTimer -= dt;
             if (mob.HopCooldownTimer <= 0.0f)
             {
-                mob.HopCooldownTimer = 0.55f + ((NextRandom() % 40U) * 0.01f);
+                mob.HopCooldownTimer = 0.55f + ((mob.Id * 7U % 40U) * 0.01f);
                 nextVel = new Vec3d(wishVx * 1.35, 7.4, wishVz * 1.35);
             }
             else
@@ -162,11 +162,7 @@ public sealed partial class WorldMobManager
             var wz = (int)Math.Floor(playerFeetPos.Z + (Math.Sin(angle) * dist));
 
             var tryUnderground = !isNether && hostileCount < MaxHostileMobs && (attempt & 1) == 1;
-            var baseY = isNether
-                ? (int)Math.Clamp(playerFeetPos.Y - 18 + (int)(NextRandom() % 36U), DimensionRules.NetherFloorY + 2, DimensionRules.NetherCeilingY - 4)
-                : tryUnderground
-                    ? (int)Math.Clamp(playerFeetPos.Y - 26 + (int)(NextRandom() % 44U), -48, 62)
-                    : (int)Math.Clamp(playerFeetPos.Y - 10 + (int)(NextRandom() % 24U), 58, 110);
+            var baseY = ComputeSpawnScanBaseY(playerFeetPos, isNether, tryUnderground);
 
             for (var scan = 0; scan < 12; scan++)
             {
@@ -187,17 +183,40 @@ public sealed partial class WorldMobManager
 
                 if (hostileCount < MaxHostileMobs && effectiveLight <= 7.0f)
                 {
-                    // The Nether has its own bestiary: zombified piglins and hopping magma cubes.
-                    var species = isNether
-                        ? ((NextRandom() & 3U) == 0U ? MobType.MagmaCube : MobType.ZombifiedPiglin)
-                        : (MobType)(4 + (NextRandom() % 4U));
-
+                    var species = PickHostileSpecies(isNether);
                     _ = SpawnMob(species, new Vec3d(wx + 0.5, pos.Y + 1.0, wz + 0.5), NextRandom() % 360U);
                     hostileCount++;
                     break;
                 }
             }
         }
+    }
+
+    private int ComputeSpawnScanBaseY(Vec3d playerFeetPos, bool isNether, bool tryUnderground)
+    {
+        if (isNether)
+        {
+            return (int)Math.Clamp(
+                playerFeetPos.Y - 18 + (int)(NextRandom() % 36U),
+                DimensionRules.NetherFloorY + 2,
+                DimensionRules.NetherCeilingY - 4);
+        }
+
+        return tryUnderground
+            ? (int)Math.Clamp(playerFeetPos.Y - 26 + (int)(NextRandom() % 44U), -48, 62)
+            : (int)Math.Clamp(playerFeetPos.Y - 10 + (int)(NextRandom() % 24U), 58, 110);
+    }
+
+    /// <summary>Picks the hostile species to spawn, drawing from the Nether bestiary when inside the Nether.</summary>
+    private MobType PickHostileSpecies(bool isNether)
+    {
+        if (!isNether)
+        {
+            return (MobType)(4 + (NextRandom() % 4U));
+        }
+
+        // The Nether has its own bestiary: mostly zombified piglins with the occasional hopping magma cube.
+        return (NextRandom() & 3U) == 0U ? MobType.MagmaCube : MobType.ZombifiedPiglin;
     }
 
     private uint NextRandom()

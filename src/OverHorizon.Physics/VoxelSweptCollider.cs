@@ -14,6 +14,12 @@ public static class VoxelSweptCollider
     private const double SkinEpsilon = 1e-7;
 
     /// <summary>
+    /// Number of collision boxes kept on the stack (no <see cref="ArrayPool{T}"/> round-trip) for ordinary entity sweeps.
+    /// A player-sized box scans well under this many voxels, so virtually every sweep hits the allocation-free path.
+    /// </summary>
+    private const int StackObstacleCapacity = 64;
+
+    /// <summary>
     /// Sweeps <paramref name="box"/> by <paramref name="requestedMove"/> against solid/sub-voxel shapes queried from <paramref name="world"/>.
     /// </summary>
     /// <param name="world">Collision query reader.</param>
@@ -27,6 +33,12 @@ public static class VoxelSweptCollider
     {
         ArgumentNullException.ThrowIfNull(world);
 
+        // A zero-length sweep can neither ground nor block the entity, so skip the broadphase scan entirely.
+        if (requestedMove.X == 0.0 && requestedMove.Y == 0.0 && requestedMove.Z == 0.0)
+        {
+            return (box, Vec3d.Zero, OnGround: false, HitHorizontal: false);
+        }
+
         // Expand broadphase scan downward by 0.55 blocks so 1.5-tall Fence posts below feet are always collected!
         var expanded = box.ExpandTowards(requestedMove);
         var minX = (int)Math.Floor(expanded.MinX - SkinEpsilon);
@@ -37,36 +49,18 @@ public static class VoxelSweptCollider
         var maxZ = (int)Math.Floor(expanded.MaxZ + SkinEpsilon);
 
         var maxCells = Math.Max(16, (maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1));
-        var rented = ArrayPool<BoundingBox>.Shared.Rent(Math.Min(maxCells, 4096));
-        var count = 0;
+
+        // Fast path: ordinary sweeps fit on the stack, so no pooled array is rented or returned at all.
+        Span<BoundingBox> stackObstacles = stackalloc BoundingBox[StackObstacleCapacity];
+        BoundingBox[]? rented = maxCells > StackObstacleCapacity
+            ? ArrayPool<BoundingBox>.Shared.Rent(Math.Min(maxCells, 4096))
+            : null;
 
         try
         {
-            for (var y = minY; y <= maxY; y++)
-            {
-                for (var z = minZ; z <= maxZ; z++)
-                {
-                    for (var x = minX; x <= maxX; x++)
-                    {
-                        if (!world.TryGetCollisionBox(new BlockPos(x, y, z), out var cellBox))
-                        {
-                            continue;
-                        }
-
-                        if (count == rented.Length)
-                        {
-                            var grown = ArrayPool<BoundingBox>.Shared.Rent(rented.Length * 2);
-                            rented.AsSpan(0, count).CopyTo(grown);
-                            ArrayPool<BoundingBox>.Shared.Return(rented);
-                            rented = grown;
-                        }
-
-                        rented[count++] = cellBox;
-                    }
-                }
-            }
-
-            ReadOnlySpan<BoundingBox> obstacles = rented.AsSpan(0, count);
+            var scratch = rented is null ? stackObstacles : rented.AsSpan();
+            var count = CollectObstacles(world, minX, maxX, minY, maxY, minZ, maxZ, scratch);
+            ReadOnlySpan<BoundingBox> obstacles = scratch[..count];
 
             var resolvedY = ResolveAxisY(box, requestedMove.Y, obstacles);
             box = box.Move(new Vec3d(0.0, resolvedY, 0.0));
@@ -90,8 +84,53 @@ public static class VoxelSweptCollider
         }
         finally
         {
-            ArrayPool<BoundingBox>.Shared.Return(rented);
+            if (rented is not null)
+            {
+                ArrayPool<BoundingBox>.Shared.Return(rented);
+            }
         }
+    }
+
+    /// <summary>
+    /// Gathers every solid or sub-voxel collision box overlapping the swept voxel range into <paramref name="scratch"/>.
+    /// </summary>
+    /// <param name="world">Collision query reader.</param>
+    /// <param name="minX">Inclusive minimum voxel X.</param>
+    /// <param name="maxX">Inclusive maximum voxel X.</param>
+    /// <param name="minY">Inclusive minimum voxel Y.</param>
+    /// <param name="maxY">Inclusive maximum voxel Y.</param>
+    /// <param name="minZ">Inclusive minimum voxel Z.</param>
+    /// <param name="maxZ">Inclusive maximum voxel Z.</param>
+    /// <param name="scratch">Destination span, large enough for the whole range.</param>
+    /// <returns>Number of collision boxes written.</returns>
+    private static int CollectObstacles(
+        IVoxelCollisionReader world,
+        int minX,
+        int maxX,
+        int minY,
+        int maxY,
+        int minZ,
+        int maxZ,
+        Span<BoundingBox> scratch)
+    {
+        var count = 0;
+        for (var y = minY; y <= maxY; y++)
+        {
+            for (var z = minZ; z <= maxZ; z++)
+            {
+                for (var x = minX; x <= maxX; x++)
+                {
+                    if (!world.TryGetCollisionBox(new BlockPos(x, y, z), out var cellBox))
+                    {
+                        continue;
+                    }
+
+                    scratch[count++] = cellBox;
+                }
+            }
+        }
+
+        return count;
     }
 
     /// <summary>

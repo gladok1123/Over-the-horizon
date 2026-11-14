@@ -33,11 +33,32 @@ public static class FluidSimulator
         IVoxelCollisionReader world,
         ReadOnlySpan<BlockPos> activePositions)
     {
+        var buffer = new List<FluidChange>(activePositions.Length);
+        _ = EvaluateStepInto(world, activePositions, buffer);
+        return buffer;
+    }
+
+    /// <summary>
+    /// Evaluates one deterministic fluid tick into a caller-owned <paramref name="output"/> buffer,
+    /// letting long-running tick loops reuse the same list instead of allocating one every step.
+    /// </summary>
+    /// <param name="world">Read-only collision and fluid level reader.</param>
+    /// <param name="activePositions">Candidate positions scheduled for fluid evaluation.</param>
+    /// <param name="output">Destination buffer, cleared before use and left deterministically ordered.</param>
+    /// <returns>Number of fluid changes appended to <paramref name="output"/>.</returns>
+    public static int EvaluateStepInto(
+        IVoxelCollisionReader world,
+        ReadOnlySpan<BlockPos> activePositions,
+        List<FluidChange> output)
+    {
         ArgumentNullException.ThrowIfNull(world);
+        ArgumentNullException.ThrowIfNull(output);
+
+        output.Clear();
 
         if (activePositions.IsEmpty)
         {
-            return [];
+            return 0;
         }
 
         var pending = new Dictionary<BlockPos, int>(activePositions.Length * 2);
@@ -67,10 +88,10 @@ public static class FluidSimulator
 
         if (pending.Count == 0)
         {
-            return [];
+            return 0;
         }
 
-        var output = new List<FluidChange>(pending.Count);
+        output.Capacity = Math.Max(output.Capacity, pending.Count);
         foreach (var (pos, nextLevel) in pending)
         {
             var existing = world.GetFluidLevelOrNegative(pos);
@@ -88,7 +109,7 @@ public static class FluidSimulator
         }
 
         output.Sort(static (a, b) => CompareBlockPos(a.Position, b.Position));
-        return output;
+        return output.Count;
     }
 
     /// <summary>Computes the visual water surface height in <c>(0, 1]</c> for a given fluid <paramref name="level"/>.</summary>

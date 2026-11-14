@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using OverHorizon.Core;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
@@ -17,6 +18,7 @@ public sealed partial class PrimedTntAndWorldTicker
     private const int MaxFallingBlockEntities = 96;
     private const int MaxGravityDetachmentsPerStep = 24;
     private const int MaxFluidUpdatesPerStep = 48;
+    private const int MaxFluidCandidatesPerStep = 96;
     private const double FallingBlockGravity = 24.0;
 
     private int DetachDestabilizedGravityBlocks(
@@ -133,10 +135,23 @@ public sealed partial class PrimedTntAndWorldTicker
         Action<IReadOnlyList<(BlockPos Pos, BlockState State)>>? setBlockBatch,
         List<BlockPos>? extinguishedFirePositions)
     {
-        var candidates = _activeFluidFrontier
-            .Where(collisionWorld.IsColumnLoaded)
-            .Take(96)
-            .ToArray();
+        // Reusable scratch buffers: the fluid frontier is evaluated 5x per second, so the LINQ pipeline and
+        // per-call List allocations it used to make are now hoisted into long-lived lists.
+        _fluidCandidateScratch.Clear();
+        foreach (var candidate in _activeFluidFrontier)
+        {
+            if (_fluidCandidateScratch.Count >= MaxFluidCandidatesPerStep)
+            {
+                break;
+            }
+
+            if (collisionWorld.IsColumnLoaded(candidate))
+            {
+                _fluidCandidateScratch.Add(candidate);
+            }
+        }
+
+        var candidates = CollectionsMarshal.AsSpan(_fluidCandidateScratch);
         if (candidates.Length == 0)
         {
             return 0;
@@ -147,15 +162,19 @@ public sealed partial class PrimedTntAndWorldTicker
             _ = _activeFluidFrontier.Remove(candidates[i]);
         }
 
-        var updates = FluidSimulator.EvaluateStep(collisionWorld, candidates);
-        if (updates.Count == 0)
+        var updateCount = FluidSimulator.EvaluateStepInto(collisionWorld, candidates, _fluidChangeScratch);
+        if (updateCount == 0)
         {
             return 0;
         }
 
+        var updates = _fluidChangeScratch;
+
         var baseWater = _blocks.GetDefaultState(BuiltInBlocks.Water);
         var count = Math.Min(updates.Count, MaxFluidUpdatesPerStep);
-        var batch = new List<(BlockPos Pos, BlockState State)>(count);
+        var batch = _fluidBatchScratch;
+        batch.Clear();
+        batch.Capacity = Math.Max(batch.Capacity, count);
         for (var i = 0; i < count; i++)
         {
             var change = updates[i];
@@ -297,6 +316,9 @@ public sealed partial class PrimedTntAndWorldTicker
         key == BuiltInBlocks.WhiteWool || key == BuiltInBlocks.BlueWool;
 
     private readonly Queue<BlockPos> _cascadeQueueScratch = new();
+    private readonly List<BlockPos> _fluidCandidateScratch = [];
+    private readonly List<FluidChange> _fluidChangeScratch = [];
+    private readonly List<(BlockPos Pos, BlockState State)> _fluidBatchScratch = [];
 
     private int StepGrassSpreadAndDecay(
         Vec3d center,

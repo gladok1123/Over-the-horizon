@@ -1,4 +1,5 @@
 using System.Numerics;
+using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Items;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
