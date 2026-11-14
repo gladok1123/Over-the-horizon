@@ -74,7 +74,8 @@ public static class KinematicsIntegrator
         var (resolvedBox, actualMove, onGround, hitHorizontal) = VoxelSweptCollider.MoveAndCollide(world, box, requestedMove);
 
         // Vanilla 0.6-block auto step-up: walk straight onto slabs, 15/16 Dirt Paths, Farmland, and 1..2 pixel ledges!
-        if (hitHorizontal && onGround && !isFlying && (requestedMove.X != 0.0 || requestedMove.Z != 0.0))
+        var wantsHorizontalMove = Math.Abs(requestedMove.X) > 1e-9 || Math.Abs(requestedMove.Z) > 1e-9;
+        if (hitHorizontal && onGround && !isFlying && wantsHorizontalMove)
         {
             var raisedBox = box.Move(new Vec3d(0.0, PhysicsConstants.StepHeight, 0.0));
             var (steppedBox, steppedMove, _, blockedWhileRaised) = VoxelSweptCollider.MoveAndCollide(
