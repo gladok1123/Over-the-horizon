@@ -85,8 +85,7 @@ public static class ProceduralSoundBank
         (SoundCue.BowShoot, "sounds/random/bow.ogg"),
         (SoundCue.ArrowHit, "sounds/random/bowhit1.ogg"),
         (SoundCue.MinecartRoll, "sounds/minecart/base.ogg"),
-        (SoundCue.PlayerJump, "sounds/step/cloth4.ogg"),
-        (SoundCue.LandSoft, "sounds/step/grass4.ogg"),
+        (SoundCue.LandSoft, "sounds/damage/fallsmall.ogg"),
         (SoundCue.ShieldBlock, "sounds/item/shield/block1.ogg"),
         (SoundCue.WoodBreak, "sounds/dig/wood1.ogg"),
         (SoundCue.WoodPlace, "sounds/dig/wood2.ogg"),
@@ -247,7 +246,7 @@ public static class ProceduralSoundBank
         // Map extended cues to real recorded embedded foley with subtle pitch/envelope shaping instead of harsh synthetic sine tones!
         var (donorCue, rateFactor) = cue switch
         {
-            SoundCue.FootstepSand or SoundCue.FootstepSnow or SoundCue.LandSoft or SoundCue.PlayerJump or SoundCue.FootstepCloth => (SoundCue.FootstepGrass, 1.05),
+            SoundCue.FootstepSand or SoundCue.FootstepSnow or SoundCue.FootstepCloth => (SoundCue.FootstepGrass, 1.05),
             SoundCue.FootstepGravel or SoundCue.FootstepDeepslate or SoundCue.FootstepMetal or SoundCue.FootstepAmethyst => (SoundCue.FootstepStone, 0.92),
             SoundCue.FootstepLadder => (SoundCue.FootstepWood, 1.12),
             SoundCue.WoodBreak or SoundCue.ClothBreak => (SoundCue.FootstepWood, 0.85),
@@ -256,7 +255,7 @@ public static class ProceduralSoundBank
             SoundCue.GrassPlace or SoundCue.SandPlace or SoundCue.GravelPlace or SoundCue.SnowPlace or SoundCue.ComposterReady => (SoundCue.FootstepGrass, 0.98),
             SoundCue.StonePlace or SoundCue.DeepslatePlace or SoundCue.MetalPlace or SoundCue.AmethystPlace or SoundCue.AmethystClusterPlace or SoundCue.IronDoorOpen or SoundCue.IronDoorClose or SoundCue.IronTrapdoorOpen or SoundCue.IronTrapdoorClose => (SoundCue.FootstepStone, 0.95),
             SoundCue.DeepslateBreak or SoundCue.MetalBreak or SoundCue.GlassBreak or SoundCue.AmethystBreak or SoundCue.AmethystClusterBreak or SoundCue.AmethystChime => (SoundCue.BlockBreak, 1.08),
-            SoundCue.FallSmall or SoundCue.FallBig or SoundCue.ShieldBlock => (SoundCue.PlayerHit, 0.88),
+            SoundCue.FallSmall or SoundCue.FallBig or SoundCue.LandSoft or SoundCue.ShieldBlock => (SoundCue.PlayerHit, 0.88),
             SoundCue.WaterSwim or SoundCue.UnderwaterExit or SoundCue.UnderwaterAmbience or SoundCue.PotionDrink => (SoundCue.WaterSplash, 0.94),
             _ => (AirFallbackMarker(cue), 1.0),
         };
@@ -301,8 +300,7 @@ public static class ProceduralSoundBank
             SoundCue.BowShoot => (0.17, 460.0, 0.36, 220.0),
             SoundCue.ArrowHit => (0.15, 620.0, 0.42, -210.0),
             SoundCue.MinecartRoll => (0.30, 145.0, 0.68, 8.0),
-            SoundCue.PlayerJump => (0.10, 180.0, 0.58, 95.0),
-            SoundCue.LandSoft => (0.12, 138.0, 0.64, -55.0),
+
             SoundCue.ShieldBlock => (0.18, 250.0, 0.48, -90.0),
             SoundCue.WoodBreak => (0.16, 220.0, 0.50, -65.0),
             SoundCue.WoodPlace => (0.12, 265.0, 0.42, -45.0),

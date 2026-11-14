@@ -54,6 +54,7 @@ public static partial class ProceduralAtlasGenerator
         _ = pack.TryBlitTile(pixels, TileBarrelTop, "barrel_top");
         _ = pack.TryBlitTile(pixels, TileLadder, "ladder");
         _ = pack.TryBlitTile(pixels, TileRail, "rail");
+        _ = pack.TryBlitTile(pixels, TileRailCorner, "rail_corner");
         _ = pack.TryBlitTile(pixels, TilePoweredRailOff, "powered_rail");
         _ = pack.TryBlitTile(pixels, TilePoweredRailOn, "powered_rail_on");
         _ = pack.TryBlitTile(pixels, TileCobweb, "cobweb");

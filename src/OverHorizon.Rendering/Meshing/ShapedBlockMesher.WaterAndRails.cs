@@ -241,6 +241,11 @@ internal static partial class ShapedBlockMesher
             doubleSided: true);
     }
 
+    /// <summary>
+    /// Rotates tile UVs by <paramref name="quarterTurns"/> steps using vanilla <c>"y"</c> blockstate rotation semantics:
+    /// each step turns the texture <c>90°</c> clockwise when viewed from above (North -&gt; East -&gt; South -&gt; West),
+    /// so <c>rail_corner</c> (unrotated = South+East) becomes South+West at <c>1</c>, North+West at <c>2</c>, North+East at <c>3</c>.
+    /// </summary>
     private static (Vector2 Uv0, Vector2 Uv1, Vector2 Uv2, Vector2 Uv3) GetRotatedUv90(int quarterTurns)
     {
         var a = new Vector2(0.01f, 0.01f);
@@ -249,9 +254,9 @@ internal static partial class ShapedBlockMesher
         var d = new Vector2(0.99f, 0.01f);
         return (quarterTurns & 3) switch
         {
-            1 => (d, a, b, c),
+            1 => (b, c, d, a),
             2 => (c, d, a, b),
-            3 => (b, c, d, a),
+            3 => (d, a, b, c),
             _ => (a, b, c, d),
         };
     }

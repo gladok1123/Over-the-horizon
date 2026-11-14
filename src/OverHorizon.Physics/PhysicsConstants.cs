@@ -38,6 +38,12 @@ public static class PhysicsConstants
     /// <summary>Horizontal acceleration exerted by flowing fluid currents (blocks/s^2).</summary>
     public const double FluidCurrentAcceleration = 6.0;
 
+    /// <summary>
+    /// Vanilla auto step-up height (<c>0.6</c> blocks) letting players and mobs walk straight onto
+    /// slabs, <c>15/16</c> Dirt Paths, Farmland, and <c>1..2</c> pixel ledges without jumping.
+    /// </summary>
+    public const double StepHeight = 0.6;
+
     /// <summary>Maximum displacement per collision sub-step in blocks (prevents high-speed tunneling).</summary>
     public const double MaxSubstepDisplacement = 0.45;
 

@@ -170,11 +170,8 @@ public enum SoundCue : byte
     /// <summary>Minecart rolling on rails (<c>minecart/base.ogg</c>).</summary>
     MinecartRoll = 54,
 
-    /// <summary>Player jump takeoff (<c>step/cloth4.ogg</c> / takeoff thump).</summary>
-    PlayerJump = 55,
-
-    /// <summary>Soft landing after jumping or short drop (<c>step/stone4.ogg</c>).</summary>
-    LandSoft = 56,
+    /// <summary>Vanilla Java Edition has no dedicated player jump sound, so takeoff stays silent like the original.</summary>
+    LandSoft = 55,
 
     /// <summary>Shield blocking melee, arrow, or blast (<c>item/shield/block1.ogg</c>).</summary>
     ShieldBlock = 57,

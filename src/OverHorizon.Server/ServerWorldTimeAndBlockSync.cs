@@ -53,6 +53,9 @@ internal static class ServerWorldTimeAndBlockSync
 
         tntTicker?.NotifyWorldBlockChanged(primaryPos, world.GetBlockState, SetWorldAndRecord);
 
+        // 0. Vanilla track auto-connection: re-resolve straight / curved / ascending shapes of every adjacent rail!
+        RailPlacementRules.RefreshAdjacentRails(registries.Blocks, world.GetBlockState, SetWorldAndRecord, primaryPos);
+
         // 1. Detach any unsupported neighbor blocks and spawn 3D item drops
         var checkQueue = new Queue<BlockPos>();
         checkQueue.Enqueue(primaryPos);

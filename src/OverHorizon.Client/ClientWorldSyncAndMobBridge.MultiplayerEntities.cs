@@ -229,8 +229,8 @@ internal sealed partial class ClientWorldSyncAndMobBridge
             {
                 var fb = snap.FallingBlocks[i];
                 var bKey = _blocks.GetStateMetadata(new BlockState(fb.BlockStateId)).BlockKey;
-                var pos = new Vec3d(fb.BlockX, fb.CurrentY, fb.BlockZ);
-                var bright = SampleWorldBrightness(pos + new Vec3d(0.5, 0.5, 0.5), player.Camera.Position, heldTorch, skyMul);
+                var pos = new Vec3d(fb.BlockX + 0.5, fb.CurrentY, fb.BlockZ + 0.5);
+                var bright = SampleWorldBrightness(pos + new Vec3d(0.0, 0.5, 0.0), player.Camera.Position, heldTorch, skyMul);
                 _fallingVisualScratch.Add(new FallingBlockVisual(
                     pos, _atlas.GetTileIndex(bKey, Direction.Up), _atlas.GetTileIndex(bKey, Direction.East), _atlas.GetTileIndex(bKey, Direction.Down), bright));
             }
@@ -243,8 +243,8 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         {
             var fb = list[i];
             var bKey = _blocks.GetStateMetadata(fb.State).BlockKey;
-            var pos = new Vec3d(fb.BlockX, fb.CurrentY, fb.BlockZ);
-            var bright = SampleWorldBrightness(pos + new Vec3d(0.5, 0.5, 0.5), player.Camera.Position, heldTorch, skyMul);
+            var pos = new Vec3d(fb.BlockX + 0.5, fb.CurrentY, fb.BlockZ + 0.5);
+            var bright = SampleWorldBrightness(pos + new Vec3d(0.0, 0.5, 0.0), player.Camera.Position, heldTorch, skyMul);
             _fallingVisualScratch.Add(new FallingBlockVisual(
                 pos, _atlas.GetTileIndex(bKey, Direction.Up), _atlas.GetTileIndex(bKey, Direction.East), _atlas.GetTileIndex(bKey, Direction.Down), bright));
         }

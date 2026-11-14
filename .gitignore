@@ -29,3 +29,7 @@ resourcepacks/
 
 
 
+
+# Fetched 23w13a_or_b vanilla sources (converted to embedded .ogg / baked .png at build time)
+assets/
+tools/

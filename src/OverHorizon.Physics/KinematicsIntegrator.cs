@@ -73,6 +73,31 @@ public static class KinematicsIntegrator
         var requestedMove = new Vec3d(vx * deltaSeconds, vy * deltaSeconds, vz * deltaSeconds);
         var (resolvedBox, actualMove, onGround, hitHorizontal) = VoxelSweptCollider.MoveAndCollide(world, box, requestedMove);
 
+        // Vanilla 0.6-block auto step-up: walk straight onto slabs, 15/16 Dirt Paths, Farmland, and 1..2 pixel ledges!
+        if (hitHorizontal && onGround && !isFlying && (requestedMove.X != 0.0 || requestedMove.Z != 0.0))
+        {
+            var raisedBox = box.Move(new Vec3d(0.0, PhysicsConstants.StepHeight, 0.0));
+            var (steppedBox, steppedMove, _, blockedWhileRaised) = VoxelSweptCollider.MoveAndCollide(
+                world, raisedBox, new Vec3d(requestedMove.X, 0.0, requestedMove.Z));
+
+            var advance = Math.Abs(steppedMove.X) + Math.Abs(steppedMove.Z);
+            if (!blockedWhileRaised || advance > 1e-6)
+            {
+                var (landedBox, downMove, landedOnGround, _) = VoxelSweptCollider.MoveAndCollide(
+                    world, steppedBox, new Vec3d(0.0, -PhysicsConstants.StepHeight, 0.0));
+
+                // Only accept the step when the entity actually settles on a ledge above its previous feet height!
+                if (landedBox.MinY > box.MinY + 1e-6 && (landedOnGround || Math.Abs(downMove.Y) < PhysicsConstants.StepHeight - 1e-6))
+                {
+                    resolvedBox = landedBox;
+                    actualMove = new Vec3d(steppedMove.X, landedBox.MinY - box.MinY, steppedMove.Z);
+                    onGround = true;
+                    hitHorizontal = blockedWhileRaised;
+                    vy = 0.0;
+                }
+            }
+        }
+
         if (Math.Abs(actualMove.Y - requestedMove.Y) > 1e-7)
         {
             vy = 0.0;
