@@ -252,10 +252,11 @@ public sealed class V11NetherPhysicsAndMultiplayerTests
             }
         }
 
+        // 200 blocks/s * 0.05 s = 10 blocks in a single tick: 8 collision sub-steps, way past the wall at X = 5.
         var result = KinematicsIntegrator.StepEntity(
             world,
             new Vec3d(0.0, 64.0, 0.5),
-            new Vec3d(60.0, 0.0, 12.0),
+            new Vec3d(200.0, 0.0, 12.0),
             width: 0.6,
             height: 1.8,
             deltaSeconds: 0.05);
