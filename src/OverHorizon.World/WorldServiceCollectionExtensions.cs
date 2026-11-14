@@ -30,7 +30,7 @@ public static class WorldServiceCollectionExtensions
             new OverworldGenerator(worldSeed, sp.GetRequiredService<CoreRegistries>()));
 
         // One independent chunk manager (generator + storage) per dimension: Overworld and Nether.
-        services.AddSingleton(static sp => BuildDimensions(sp, worldSeed, worldSaveDirectory));
+        services.AddSingleton(sp => BuildDimensions(sp, worldSeed, worldSaveDirectory));
 
         services.AddSingleton(static sp => sp.GetRequiredService<DimensionWorldCollection>()[DimensionId.Overworld]);
         services.AddSingleton<IChunkManager>(static sp => sp.GetRequiredService<ChunkManager>());
