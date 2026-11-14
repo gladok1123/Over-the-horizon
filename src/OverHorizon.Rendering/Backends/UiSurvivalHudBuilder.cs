@@ -14,18 +14,19 @@ internal static class UiSurvivalHudBuilder
 
     public static void DrawAtlasSprite(List<TexturedUiVertex> v, int tileIndex, float x, float y, float size, Vector4 tint)
     {
-        if (tileIndex < 0 || tileIndex > 255)
+        if (tileIndex < 0 || tileIndex >= ProceduralAtlasGenerator.TileCount)
         {
             DrawRect(v, x, y, size, size, tint);
             return;
         }
 
-        var col = tileIndex & 15;
-        var row = tileIndex >> 4;
-        var au0 = (col + 0.002f) / 16.0f;
-        var av0 = (row + 0.002f) / 16.0f;
-        var au1 = (col + 0.998f) / 16.0f;
-        var av1 = (row + 0.998f) / 16.0f;
+        var col = tileIndex & (ProceduralAtlasGenerator.TilesPerRow - 1);
+        var row = tileIndex >> ProceduralAtlasGenerator.TilesPerRowShift;
+        var perRow = (float)ProceduralAtlasGenerator.TilesPerRow;
+        var au0 = (col + 0.002f) / perRow;
+        var av0 = (row + 0.002f) / perRow;
+        var au1 = (col + 0.998f) / perRow;
+        var av1 = (row + 0.998f) / perRow;
 
         var uv0 = new Vector2(-(au0 + 1.0f), -(av0 + 1.0f));
         var uv1 = new Vector2(-(au1 + 1.0f), -(av0 + 1.0f));

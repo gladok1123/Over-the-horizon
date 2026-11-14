@@ -39,8 +39,8 @@ public static partial class HeldItem3DMesher
             backCol);
 
         var pixels = atlas.RgbaPixels.Span;
-        var tileOriginX = (tileIndex & 15) * 16;
-        var tileOriginY = (tileIndex >> 4) * 16;
+        var tileOriginX = (tileIndex & (ProceduralAtlasGenerator.TilesPerRow - 1)) * ProceduralAtlasGenerator.TileDimension;
+        var tileOriginY = (tileIndex >> ProceduralAtlasGenerator.TilesPerRowShift) * ProceduralAtlasGenerator.TileDimension;
 
         for (var py = 0; py < 16; py++)
         {
@@ -48,7 +48,7 @@ public static partial class HeldItem3DMesher
             var yBot = yTop - pxSize;
             for (var px = 0; px < 16; px++)
             {
-                var idx = (((tileOriginY + py) * 256) + (tileOriginX + px)) * 4;
+                var idx = (((tileOriginY + py) * ProceduralAtlasGenerator.AtlasDimension) + (tileOriginX + px)) * 4;
                 if (pixels[idx + 3] < 24) continue;
 
                 var r = (pixels[idx + 0] / 255.0f) * light;
@@ -81,13 +81,14 @@ public static partial class HeldItem3DMesher
     }
 
     private static bool IsTransparent(ReadOnlySpan<byte> atlasRgba, int ox, int oy, int px, int py) =>
-        (uint)px >= 16U || (uint)py >= 16U || atlasRgba[((((oy + py) * 256) + (ox + px)) * 4) + 3] < 24;
+        (uint)px >= 16U || (uint)py >= 16U || atlasRgba[((((oy + py) * ProceduralAtlasGenerator.AtlasDimension) + (ox + px)) * 4) + 3] < 24;
 
     internal static (float U0, float V0, float U1, float V1) TileUvBounds(int tile, float lu0, float lv0, float lu1, float lv1)
     {
-        var col = tile & 15;
-        var row = tile >> 4;
-        return ((col + lu0) / 16.0f, (row + lv0) / 16.0f, (col + lu1) / 16.0f, (row + lv1) / 16.0f);
+        var col = tile & (ProceduralAtlasGenerator.TilesPerRow - 1);
+        var row = tile >> ProceduralAtlasGenerator.TilesPerRowShift;
+        var perRow = (float)ProceduralAtlasGenerator.TilesPerRow;
+        return ((col + lu0) / perRow, (row + lv0) / perRow, (col + lu1) / perRow, (row + lv1) / perRow);
     }
 
     internal static void EmitBlockCubeFace(List<OverlayVertex> dst, Vector3 a, Vector3 b, Vector3 c, Vector3 d, Matrix4x4 m, int tile, float shade) =>

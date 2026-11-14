@@ -7,19 +7,25 @@ using OverHorizon.Shared.Hashing;
 namespace OverHorizon.Rendering.Textures;
 
 /// <summary>
-/// Generates the <c>256x256</c> RGBA8 block, mining-crack (<c>destroy_stage_0..9</c>), and item texture atlas,
+/// Generates the <c>512x512</c> RGBA8 block, mining-crack (<c>destroy_stage_0..9</c>), and item texture atlas,
 /// automatically overlaying real <c>16x16</c> PNGs from <c>minecraft-assets</c> (<c>23w13a__or__b</c>).
 /// </summary>
 public static partial class ProceduralAtlasGenerator
 {
-    /// <summary>Width and height of the square RGBA8 block &amp; item atlas in pixels (<c>256</c>).</summary>
-    public const int AtlasDimension = 256;
+    /// <summary>Width and height of the square RGBA8 block &amp; item atlas in pixels (<c>512</c> = <c>1024</c> tiles).</summary>
+    public const int AtlasDimension = 512;
 
     /// <summary>Width and height of a single block/item tile in pixels (<c>16</c>).</summary>
     public const int TileDimension = 16;
 
-    /// <summary>Number of <c>16x16</c> tiles per row (<c>16</c>).</summary>
+    /// <summary>Number of <c>16x16</c> tiles per row (<c>32</c>).</summary>
     public const int TilesPerRow = AtlasDimension / TileDimension;
+
+    /// <summary>Log2 of <see cref="TilesPerRow"/> (<c>5</c>); used to derive the tile row from a tile index.</summary>
+    public const int TilesPerRowShift = 5;
+
+    /// <summary>Total number of addressable tiles in the atlas (<c>1024</c>).</summary>
+    public const int TileCount = TilesPerRow * TilesPerRow;
 
     /// <summary>First tile index of the 10-stage mining crack sprites (<c>destroy_stage_0..9</c> at <c>90..99</c>).</summary>
     public const ushort FirstDestroyStageTile = 90;
@@ -161,8 +167,8 @@ public static partial class ProceduralAtlasGenerator
     internal const ushort TileTerracotta = 251;
     internal const ushort TilePackedIce = 252;
 
-    private const ushort FirstCustomTile = 127;
-    private const ushort FirstItemSpriteTile = 128;
+    private const ushort FirstCustomTile = 278;
+    private const ushort FirstItemSpriteTile = 384;
 
     /// <summary>Returns the atlas tile for <c>Wheat</c> growth stage <paramref name="age"/> (<c>0..7</c>).</summary>
     /// <param name="age">Crop growth stage from the <c>age</c> block-state property.</param>
@@ -174,7 +180,7 @@ public static partial class ProceduralAtlasGenerator
     public static TextureAtlasData CreateDefault(IBlockRegistry blocks, string? externalAssetsPath = null) =>
         Generate(blocks, externalAssetsPath);
 
-    /// <summary>Generates the <c>256x256</c> block &amp; item texture atlas.</summary>
+    /// <summary>Generates the <c>512x512</c> block &amp; item texture atlas.</summary>
     public static TextureAtlasData Generate(IBlockRegistry blocks, string? externalAssetsPath = null)
     {
         ArgumentNullException.ThrowIfNull(blocks);

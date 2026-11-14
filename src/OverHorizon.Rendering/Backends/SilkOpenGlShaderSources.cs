@@ -66,14 +66,14 @@ public static class SilkOpenGlShaderSources
         void main()
         {
             int tileIdx = int(vTileIndex + 0.5);
-            int tileCol = tileIdx & 15;
-            int tileRow = tileIdx >> 4;
+            int tileCol = tileIdx & 31;
+            int tileRow = tileIdx >> 5;
 
             // Prevent subpixel overshoot below 0.0 or at exact integer upper quad boundaries (e.g. 16.0 -> fract=0)
             vec2 clampedUv = max(vUv, vec2(0.0002));
             vec2 nudgedUv = clampedUv - vec2(0.00025) * step(vec2(0.5), clampedUv);
             vec2 localTexel = clamp(floor(fract(nudgedUv) * 16.0), vec2(0.0), vec2(15.0));
-            vec2 atlasUv = (vec2(float(tileCol * 16), float(tileRow * 16)) + localTexel + vec2(0.5)) / 256.0;
+            vec2 atlasUv = (vec2(float(tileCol * 16), float(tileRow * 16)) + localTexel + vec2(0.5)) / 512.0;
 
             vec4 texel = texture(uAtlas, atlasUv);
             if (texel.a < 0.08)
