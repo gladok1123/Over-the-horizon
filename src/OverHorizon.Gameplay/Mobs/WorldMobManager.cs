@@ -1,3 +1,4 @@
+using OverHorizon.Core;
 using System.Numerics;
 using OverHorizon.Core.Math;
 using OverHorizon.Gameplay.Ai;
@@ -76,7 +77,8 @@ public sealed partial class WorldMobManager
         bool isPlayerBlockingShield = false,
         Vector3 playerLookForward = default,
         List<Vec3d>? shieldBlockedPositions = null,
-        Func<BlockPos, bool>? isFireBlock = null)
+        Func<BlockPos, bool>? isFireBlock = null,
+        DimensionId dimension = DimensionId.Overworld)
     {
         ArgumentNullException.ThrowIfNull(collisionWorld);
         ArgumentNullException.ThrowIfNull(spawnProbe);
@@ -86,7 +88,7 @@ public sealed partial class WorldMobManager
         if (_spawnTimer >= 0.85f)
         {
             _spawnTimer = 0.0f;
-            TryNaturalSpawns(spawnProbe, playerFeetPos, skyBrightness);
+            TryNaturalSpawns(spawnProbe, playerFeetPos, skyBrightness, dimension);
         }
 
         var totalDamageToPlayer = 0.0f;
@@ -159,6 +161,13 @@ public sealed partial class WorldMobManager
     {
         var feetBlock = mob.FeetPosition.ToBlockPos();
         if (world.IsColumnLoaded(feetBlock) && world.GetFluidLevelOrNegative(feetBlock) >= 0)
+        {
+            mob.BurnTimer = 0.0f;
+            mob.BurnDamageTickTimer = 0.0f;
+            return;
+        }
+
+        if (mob.IsFireImmune)
         {
             mob.BurnTimer = 0.0f;
             mob.BurnDamageTickTimer = 0.0f;

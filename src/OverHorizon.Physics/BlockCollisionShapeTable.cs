@@ -102,6 +102,12 @@ public sealed class BlockCollisionShapeTable
             return new LocalCollisionBox(0f, 0f, 0f, 1f, 0.9375f, 1f, HasCollision: true);
         }
 
+        if (key == BuiltInBlocks.SoulSand)
+        {
+            // Vanilla soul sand is a 14/16-block trap: entities sink into it and walk noticeably slower.
+            return new LocalCollisionBox(0f, 0f, 0f, 1f, 0.875f, 1f, HasCollision: true);
+        }
+
         if (key == BuiltInBlocks.RedBed)
         {
             return new LocalCollisionBox(0f, 0f, 0f, 1f, 0.5625f, 1f, HasCollision: true);

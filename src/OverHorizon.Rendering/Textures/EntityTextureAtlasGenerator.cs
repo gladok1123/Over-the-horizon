@@ -80,6 +80,12 @@ public static class EntityTextureAtlasGenerator
     /// <summary>Cell index for 3D <c>entity/shield_base_nopattern</c> (<c>64x64</c>).</summary>
     public const int CellShield = 20;
 
+    /// <summary>Cell index for <c>piglin/zombified_piglin</c> (<c>64x64</c>).</summary>
+    public const int CellZombifiedPiglin = 21;
+
+    /// <summary>Cell index for <c>slime/magmacube</c> (<c>64x32</c>).</summary>
+    public const int CellMagmaCube = 22;
+
     /// <summary>Creates the default <c>512x256</c> <see cref="TextureAtlasData"/> entity skin sheet.</summary>
     public static TextureAtlasData CreateDefault(string? externalAssetsPath = null) =>
         new(
@@ -131,6 +137,9 @@ public static class EntityTextureAtlasGenerator
         TryBlitEntitySkin(atlas, pack, CellMinecart, "minecart");
         TryBlitArrowSkin(atlas, pack, CellArrow, "projectiles/arrow");
         TryBlitEntitySkin(atlas, pack, CellShield, "shield_base_nopattern");
+
+        TryBlitEntitySkin(atlas, pack, CellZombifiedPiglin, "piglin/zombified_piglin");
+        TryBlitEntitySkin(atlas, pack, CellMagmaCube, "slime/magmacube");
 
         return atlas;
     }

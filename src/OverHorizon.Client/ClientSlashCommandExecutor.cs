@@ -252,6 +252,8 @@ internal static class ClientSlashCommandExecutor
             "skeleton" => MobType.Skeleton,
             "spider" => MobType.Spider,
             "creeper" => MobType.Creeper,
+            "zombified_piglin" or "zombiepigman" or "pigman" => MobType.ZombifiedPiglin,
+            "magma_cube" or "magmacube" or "lavaslime" => MobType.MagmaCube,
             _ => null,
         };
 

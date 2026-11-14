@@ -303,6 +303,7 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         gl.Uniform1(prog.LocFogEnd, fogEnd);
         gl.Uniform3(prog.LocSkyColor, skyColor.X, skyColor.Y, skyColor.Z);
         gl.Uniform1(prog.LocUnderwater, underwater ? 1.0f : 0.0f);
+        gl.Uniform1(prog.LocAmbientFloor, isNether ? DimensionRules.GetAmbientLightFloor(DimensionId.Nether) : DimensionRules.GetAmbientLightFloor(DimensionId.Overworld));
 
         gl.ActiveTexture(TextureUnit.Texture0);
         gl.BindTexture(TextureTarget.Texture2D, prog.AtlasTexture);

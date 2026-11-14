@@ -142,7 +142,8 @@ internal sealed partial class ClientWorldSyncAndMobBridge
             isPlayerBlockingShield: player.IsBlockingShield,
             playerLookForward: player.Camera.HorizontalForward,
             shieldBlockedPositions: _shieldBlockPositions,
-            isFireBlock: bp => _blocks.GetStateMetadata(_localWorld.GetBlockState(bp)).BlockKey == BuiltInBlocks.Fire);
+            isFireBlock: IsBurningHazardBlock,
+            dimension: ActiveDimension);
 
         for (var i = 0; i < _creeperFuseStarts.Count; i++)
         {
@@ -349,6 +350,12 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         {
             _audio.PlayPositional(validCue, mob.FeetPosition, gain: 0.62f * player.MasterVolume);
         }
+    }
+
+    private bool IsBurningHazardBlock(BlockPos pos)
+    {
+        var key = _blocks.GetStateMetadata(_localWorld.GetBlockState(pos)).BlockKey;
+        return key == BuiltInBlocks.Fire || key == BuiltInBlocks.Lava;
     }
 
     private (byte SkyLight, byte BlockLight, bool IsGrassTop, bool IsSolidGround, bool IsClearSpace) ProbeMobSpawnCell(BlockPos feetPos)

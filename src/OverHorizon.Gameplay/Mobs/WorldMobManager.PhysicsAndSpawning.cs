@@ -1,3 +1,4 @@
+using OverHorizon.Core;
 using OverHorizon.Core.Math;
 using OverHorizon.Physics;
 
@@ -67,7 +68,7 @@ public sealed partial class WorldMobManager
             nextVel = new Vec3d(nextVel.X, -2.2, nextVel.Z);
         }
 
-        if (step.InFluid || mob.Type == MobType.Chicken)
+        if (step.InFluid || mob.Type == MobType.Chicken || mob.IsImmuneToFallDamage)
         {
             mob.FallDistance = 0.0;
         }
@@ -89,6 +90,21 @@ public sealed partial class WorldMobManager
                 }
 
                 mob.FallDistance = 0.0;
+            }
+        }
+
+        // Magma cubes never walk: they hop forward in bouncing arcs like vanilla slimes.
+        if (mob.Type == MobType.MagmaCube && step.OnGround && mob.KnockbackTimer <= 0.01f)
+        {
+            mob.HopCooldownTimer -= dt;
+            if (mob.HopCooldownTimer <= 0.0f)
+            {
+                mob.HopCooldownTimer = 0.55f + ((NextRandom() % 40U) * 0.01f);
+                nextVel = new Vec3d(wishVx * 1.35, 7.4, wishVz * 1.35);
+            }
+            else
+            {
+                nextVel = new Vec3d(nextVel.X * 0.55, nextVel.Y, nextVel.Z * 0.55);
             }
         }
 
@@ -120,8 +136,10 @@ public sealed partial class WorldMobManager
     private void TryNaturalSpawns(
         Func<BlockPos, (byte SkyLight, byte BlockLight, bool IsGrassTop, bool IsSolidGround, bool IsClearSpace)> spawnProbe,
         Vec3d playerFeetPos,
-        float skyBrightness)
+        float skyBrightness,
+        DimensionId dimension)
     {
+        var isNether = dimension == DimensionId.Nether;
         var peacefulCount = 0;
         var hostileCount = 0;
         for (var i = 0; i < _mobs.Count; i++)
@@ -143,10 +161,12 @@ public sealed partial class WorldMobManager
             var wx = (int)Math.Floor(playerFeetPos.X + (Math.Cos(angle) * dist));
             var wz = (int)Math.Floor(playerFeetPos.Z + (Math.Sin(angle) * dist));
 
-            var tryUnderground = hostileCount < MaxHostileMobs && (attempt & 1) == 1;
-            var baseY = tryUnderground
-                ? (int)Math.Clamp(playerFeetPos.Y - 26 + (int)(NextRandom() % 44U), -48, 62)
-                : (int)Math.Clamp(playerFeetPos.Y - 10 + (int)(NextRandom() % 24U), 58, 110);
+            var tryUnderground = !isNether && hostileCount < MaxHostileMobs && (attempt & 1) == 1;
+            var baseY = isNether
+                ? (int)Math.Clamp(playerFeetPos.Y - 18 + (int)(NextRandom() % 36U), DimensionRules.NetherFloorY + 2, DimensionRules.NetherCeilingY - 4)
+                : tryUnderground
+                    ? (int)Math.Clamp(playerFeetPos.Y - 26 + (int)(NextRandom() % 44U), -48, 62)
+                    : (int)Math.Clamp(playerFeetPos.Y - 10 + (int)(NextRandom() % 24U), 58, 110);
 
             for (var scan = 0; scan < 12; scan++)
             {
@@ -158,7 +178,7 @@ public sealed partial class WorldMobManager
                 }
 
                 var effectiveLight = MathF.Max(info.SkyLight * skyBrightness, info.BlockLight);
-                if (!tryUnderground && peacefulCount < MaxPeacefulMobs && info.IsGrassTop && info.SkyLight >= 9)
+                if (!isNether && !tryUnderground && peacefulCount < MaxPeacefulMobs && info.IsGrassTop && info.SkyLight >= 9)
                 {
                     _ = SpawnMob((MobType)(NextRandom() % 4U), new Vec3d(wx + 0.5, pos.Y + 1.0, wz + 0.5), NextRandom() % 360U);
                     peacefulCount++;
@@ -167,7 +187,12 @@ public sealed partial class WorldMobManager
 
                 if (hostileCount < MaxHostileMobs && effectiveLight <= 7.0f)
                 {
-                    _ = SpawnMob((MobType)(4 + (NextRandom() % 4U)), new Vec3d(wx + 0.5, pos.Y + 1.0, wz + 0.5), NextRandom() % 360U);
+                    // The Nether has its own bestiary: zombified piglins and hopping magma cubes.
+                    var species = isNether
+                        ? ((NextRandom() & 3U) == 0U ? MobType.MagmaCube : MobType.ZombifiedPiglin)
+                        : (MobType)(4 + (NextRandom() % 4U));
+
+                    _ = SpawnMob(species, new Vec3d(wx + 0.5, pos.Y + 1.0, wz + 0.5), NextRandom() % 360U);
                     hostileCount++;
                     break;
                 }

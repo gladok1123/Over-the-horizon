@@ -42,6 +42,9 @@ public sealed partial class ClientPlayerController
     private bool _portalTravelArmed;
     private DimensionId _portalTravelTarget;
     private BlockPos _portalTravelBlock;
+    private double _magmaBurnTickTimer;
+    private double _portalDwellSeconds;
+    private double _portalCooldownSeconds;
 
     /// <summary>Initializes a new instance of the <see cref="ClientPlayerController"/> class.</summary>
     public ClientPlayerController(
@@ -138,10 +141,18 @@ public sealed partial class ClientPlayerController
     public DimensionId Dimension { get; private set; } = DimensionId.Overworld;
 
     /// <summary>Gets elapsed seconds the player has continuously stood inside a Nether Portal.</summary>
-    public double PortalDwellSeconds { get; private set; }
+    public double PortalDwellSeconds
+    {
+        get => _portalDwellSeconds;
+        private set => _portalDwellSeconds = value > 0.0 ? value : 0.0;
+    }
 
     /// <summary>Gets remaining seconds before the player may travel through another Nether Portal.</summary>
-    public double PortalCooldownSeconds { get; private set; }
+    public double PortalCooldownSeconds
+    {
+        get => _portalCooldownSeconds;
+        private set => _portalCooldownSeconds = value > 0.0 ? value : 0.0;
+    }
 
     /// <summary>Gets the portal dwell progress in <c>[0, 1]</c> for the travelling overlay vignette.</summary>
     public float PortalDwellNormalized =>

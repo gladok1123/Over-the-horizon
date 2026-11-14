@@ -25,7 +25,17 @@ public sealed class ActiveMob
     public MobType Type { get; }
 
     /// <summary>Gets whether this mob belongs to a hostile species.</summary>
-    public bool IsHostile => Type is MobType.Zombie or MobType.Skeleton or MobType.Spider or MobType.Creeper;
+    public bool IsHostile => Type is MobType.Zombie or MobType.Skeleton or MobType.Spider or MobType.Creeper
+        or MobType.ZombifiedPiglin or MobType.MagmaCube;
+
+    /// <summary>Gets whether this Nether species is immune to fire and cannot be ignited by lava or sunlight.</summary>
+    public bool IsFireImmune => Type is MobType.ZombifiedPiglin or MobType.MagmaCube;
+
+    /// <summary>Gets whether this species takes no damage from landing.</summary>
+    public bool IsImmuneToFallDamage => Type == MobType.MagmaCube;
+
+    /// <summary>Gets whether this species only ever spawns inside the Nether dimension.</summary>
+    public bool IsNetherOnly => Type is MobType.ZombifiedPiglin or MobType.MagmaCube;
 
     /// <summary>Gets horizontal hitbox width in blocks.</summary>
     public double Width { get; }
@@ -105,6 +115,9 @@ public sealed class ActiveMob
     /// <summary>Gets or sets whether this Creeper has already triggered its initial fuse hiss sound for the current swell.</summary>
     public bool CreeperFuseHissTriggered { get; set; }
 
+    /// <summary>Gets or sets remaining seconds until this Magma Cube performs its next bounding hop.</summary>
+    public float HopCooldownTimer { get; set; }
+
     /// <summary>Gets or sets remaining seconds before A* pathfinding re-evaluates a route to the target.</summary>
     public float PathRecomputeTimer { get; set; }
 
@@ -135,6 +148,8 @@ public sealed class ActiveMob
             MobType.Skeleton => (0.60, 1.92, 20.0f, 3.0f),
             MobType.Spider => (1.25, 0.85, 16.0f, 2.5f),
             MobType.Creeper => (0.62, 1.70, 20.0f, 10.0f),
+            MobType.ZombifiedPiglin => (0.60, 1.95, 20.0f, 5.0f),
+            MobType.MagmaCube => (0.78, 0.78, 16.0f, 4.0f),
             _ => (0.60, 1.80, 10.0f, 2.0f),
         };
 }

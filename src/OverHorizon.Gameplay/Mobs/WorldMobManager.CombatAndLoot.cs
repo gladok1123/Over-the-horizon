@@ -283,6 +283,13 @@ public sealed partial class WorldMobManager
             case MobType.Creeper:
                 Add(BuiltInItems.Gunpowder, 1, 2);
                 break;
+            case MobType.ZombifiedPiglin:
+                Add(BuiltInItems.RottenFlesh, 1, 2);
+                Add(BuiltInItems.GoldIngot, 0, 1);
+                break;
+            case MobType.MagmaCube:
+                Add(BuiltInBlocks.MagmaBlock, 0, 1);
+                break;
         }
     }
 

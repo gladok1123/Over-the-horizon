@@ -215,6 +215,24 @@ public sealed partial class ClientPlayerController
         var inCobweb = feetBlockKey == BuiltInBlocks.Cobweb;
         var onLadder = feetBlockKey == BuiltInBlocks.Ladder;
 
+        // Nether ground hazards: soul sand drags walkers down to ~40% speed and magma blocks scorch anyone standing on them.
+        var groundBelowKey = blocks.GetStateMetadata(world.GetBlockState(FeetPosition.ToBlockPos().Offset(Direction.Down))).BlockKey;
+        var onSoulSand = OnGround && !IsFlying && groundBelowKey == BuiltInBlocks.SoulSand;
+        var onMagmaBlock = OnGround && !IsFlying && Mode != GameMode.Creative && groundBelowKey == BuiltInBlocks.MagmaBlock;
+        if (onMagmaBlock)
+        {
+            _magmaBurnTickTimer += clampedDt;
+            if (_magmaBurnTickTimer >= 0.5)
+            {
+                _magmaBurnTickTimer = 0.0;
+                _ = ApplyDamage(1.0f, audio);
+            }
+        }
+        else
+        {
+            _magmaBurnTickTimer = 0.0;
+        }
+
         var forwardFlat = Camera.HorizontalForward;
         var rightFlat = Camera.Right;
         var wishX = (forwardFlat.X * input.Forward) + (rightFlat.X * input.Strafe);
@@ -237,6 +255,7 @@ public sealed partial class ClientPlayerController
         if (IsBlockingShield && !IsFlying) speed *= 0.42;
         if (IsSneaking && OnGround) speed *= 0.48;
         if (inCobweb && !IsFlying) speed *= 0.28;
+        if (onSoulSand && !IsFlying) speed *= 0.42;
 
         var vy = Velocity.Y;
         if (IsFlying)

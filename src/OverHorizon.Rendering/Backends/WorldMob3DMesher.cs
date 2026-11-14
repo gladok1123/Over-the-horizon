@@ -63,6 +63,12 @@ public static partial class WorldMob3DMesher
                 case 6:
                     AppendSpider(dst, root, swing, tint);
                     break;
+                case 8:
+                    AppendZombifiedPiglin(dst, root, swing, tint);
+                    break;
+                case 9:
+                    AppendMagmaCube(dst, root, tint);
+                    break;
                 default:
                     AppendCreeper(dst, root, swing, tint);
                     break;
@@ -216,6 +222,26 @@ public static partial class WorldMob3DMesher
         var rightArmXform = Matrix4x4.CreateRotationX(-1.15f) * Matrix4x4.CreateTranslation(0.3125f, 1.44f, 0.0f) * root;
         EntityBoxUvBuilder.EmitEntityBox(dst, c, 40, 16, 2, 12, 2, new Vector3(-0.0625f, -0.72f, -0.0625f), new Vector3(0.125f, 0.75f, 0.125f), rightArmXform, t);
         AppendSkeletonHeldBow(dst, rightArmXform, t, atlas);
+    }
+
+    private static void AppendZombifiedPiglin(List<OverlayVertex> dst, Matrix4x4 root, float swing, Vector4 t)
+    {
+        const int c = EntityTextureAtlasGenerator.CellZombifiedPiglin;
+        EntityBoxUvBuilder.EmitEntityBox(dst, c, 0, 16, 4, 12, 4, new Vector3(-0.125f, -0.75f, -0.125f), new Vector3(0.25f, 0.75f, 0.25f), Limb(root, new Vector3(-0.125f, 0.75f, 0.0f), swing), t);
+        EntityBoxUvBuilder.EmitEntityBox(dst, c, 0, 16, 4, 12, 4, new Vector3(-0.125f, -0.75f, -0.125f), new Vector3(0.25f, 0.75f, 0.25f), Limb(root, new Vector3(0.125f, 0.75f, 0.0f), -swing), t);
+        EntityBoxUvBuilder.EmitEntityBox(dst, c, 16, 16, 8, 12, 4, new Vector3(-0.25f, 0.75f, -0.125f), new Vector3(0.50f, 0.75f, 0.25f), root, t);
+        EntityBoxUvBuilder.EmitEntityBox(dst, c, 0, 0, 8, 8, 8, new Vector3(-0.25f, 1.50f, -0.25f), new Vector3(0.50f, 0.50f, 0.50f), root, t);
+        EntityBoxUvBuilder.EmitEntityBox(dst, c, 32, 0, 4, 3, 1, new Vector3(-0.125f, 1.60f, 0.25f), new Vector3(0.25f, 0.1875f, 0.125f), root, t);
+        var armL = Matrix4x4.CreateRotationX(-1.42f + (swing * 0.12f)) * Matrix4x4.CreateTranslation(-0.375f, 1.42f, 0.0f) * root;
+        var armR = Matrix4x4.CreateRotationX(-1.42f - (swing * 0.12f)) * Matrix4x4.CreateTranslation(0.375f, 1.42f, 0.0f) * root;
+        EntityBoxUvBuilder.EmitEntityBox(dst, c, 40, 16, 4, 12, 4, new Vector3(-0.125f, -0.72f, -0.125f), new Vector3(0.25f, 0.75f, 0.25f), armL, t);
+        EntityBoxUvBuilder.EmitEntityBox(dst, c, 40, 16, 4, 12, 4, new Vector3(-0.125f, -0.72f, -0.125f), new Vector3(0.25f, 0.75f, 0.25f), armR, t);
+    }
+
+    private static void AppendMagmaCube(List<OverlayVertex> dst, Matrix4x4 root, Vector4 t)
+    {
+        const int c = EntityTextureAtlasGenerator.CellMagmaCube;
+        EntityBoxUvBuilder.EmitEntityBox(dst, c, 0, 0, 8, 8, 8, new Vector3(-0.5f, 0.0f, -0.5f), new Vector3(1.0f, 1.0f, 1.0f), root, t);
     }
 
     private static void AppendSpider(List<OverlayVertex> dst, Matrix4x4 root, float swing, Vector4 t)

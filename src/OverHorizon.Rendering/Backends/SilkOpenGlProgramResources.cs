@@ -24,6 +24,7 @@ internal sealed class SilkOpenGlProgramResources : IDisposable
         LocSectionOffset = gl.GetUniformLocation(ProgramHandle, "uSectionOffset");
         LocAtlas = gl.GetUniformLocation(ProgramHandle, "uAtlas");
         LocSkyBrightness = gl.GetUniformLocation(ProgramHandle, "uSkyBrightness");
+        LocAmbientFloor = gl.GetUniformLocation(ProgramHandle, "uAmbientFloor");
         LocHeldTorchLight = gl.GetUniformLocation(ProgramHandle, "uHeldTorchLight");
         LocFogStart = gl.GetUniformLocation(ProgramHandle, "uFogStart");
         LocFogEnd = gl.GetUniformLocation(ProgramHandle, "uFogEnd");
@@ -44,6 +45,9 @@ internal sealed class SilkOpenGlProgramResources : IDisposable
     public int LocAtlas { get; }
 
     public int LocSkyBrightness { get; }
+
+    /// <summary>Gets the <c>uAmbientFloor</c> uniform location (minimum ambient illumination).</summary>
+    public int LocAmbientFloor { get; }
 
     public int LocHeldTorchLight { get; }
 

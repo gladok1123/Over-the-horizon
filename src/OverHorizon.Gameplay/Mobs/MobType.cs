@@ -28,4 +28,10 @@ public enum MobType : byte
 
     /// <summary>Hostile silent creeper (fuses near Survival players, drops gunpowder).</summary>
     Creeper = 7,
+
+    /// <summary>Nether-exclusive undead piglin (spawns in the Nether, drops rotten flesh; immune to fire).</summary>
+    ZombifiedPiglin = 8,
+
+    /// <summary>Nether-exclusive hopping lava cube (spawns in the Nether, drops magma cream; immune to fire and fall damage).</summary>
+    MagmaCube = 9,
 }

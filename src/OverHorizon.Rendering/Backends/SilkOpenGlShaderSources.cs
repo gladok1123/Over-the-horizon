@@ -60,6 +60,7 @@ public static class SilkOpenGlShaderSources
         uniform float uFogEnd;
         uniform vec3 uSkyColor;
         uniform float uUnderwater;
+        uniform float uAmbientFloor;
 
         out vec4 FragColor;
 
@@ -87,7 +88,7 @@ public static class SilkOpenGlShaderSources
 
             float normL = effectiveLight0To15 / 15.0;
             float curved = normL / (3.0 - 2.0 * normL);
-            float minAmbient = mix(0.045, 0.20, uUnderwater);
+            float minAmbient = max(uAmbientFloor, mix(0.045, 0.20, uUnderwater));
             float illumination = (minAmbient + curved * (1.0 - minAmbient)) * vShadeAndAo;
 
             vec3 warmTint = mix(vec3(1.0), vec3(1.04, 0.97, 0.88), clamp(effectiveBlock / 15.0, 0.0, 1.0) * (1.0 - clamp(vSkyLight * uSkyBrightness / 15.0, 0.0, 1.0)));
