@@ -1,0 +1,215 @@
+name: CI & Playable Release
+
+on:
+  push:
+    branches:
+      - main
+      - "arena/**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore dependencies
+        run: dotnet restore OverHorizon.sln
+
+      - name: Build (Release, warnings as errors)
+        shell: bash
+        run: |
+          set -o pipefail
+          dotnet build OverHorizon.sln --configuration Release --no-restore -warnaserror 2>&1 | tee build.log || {
+            grep -E "error [A-Z0-9]+:" build.log | sed -E 's#^[^:(]*/(src|tests)/#\1/#' | awk '!seen[$0]++' | head -n 15 | while IFS= read -r line; do
+              echo "::notice::BUILD_ERR: ${line}"
+            done
+            echo "### Build Errors (${{ matrix.os }})" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            grep -E "error [A-Z0-9]+:" build.log | head -n 80 >> "$GITHUB_STEP_SUMMARY" || tail -n 80 build.log >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+
+      - name: Run unit & architecture tests
+        shell: bash
+        run: |
+          set -o pipefail
+          dotnet test tests/OverHorizon.Tests/OverHorizon.Tests.csproj --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" 2>&1 | tee test.log || {
+            grep -E "Failed |Error Message:|Expected |Stack Trace:|at OverHorizon" test.log | head -n 25 | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+            echo "### Test Failures (${{ matrix.os }})" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            tail -n 120 test.log >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+          echo "### Passed (${{ matrix.os }})" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -E "Passed!|Total tests:" test.log >> "$GITHUB_STEP_SUMMARY" || tail -n 15 test.log >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify single-file native loader in clean folder (GLFW + OpenAL)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            rid="win-x64"
+            bin_name="OverHorizon.Client.exe"
+          else
+            rid="linux-x64"
+            bin_name="OverHorizon.Client"
+          fi
+          dotnet publish src/OverHorizon.Client/OverHorizon.Client.csproj \
+            -c Release -r "${rid}" --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:EnableCompressionInSingleFile=true \
+            -p:DebugType=None -p:DebugSymbols=false \
+            -o ./smoke-publish
+          mkdir -p ./isolated-player-dir ./isolated-empty-home
+          cp "./smoke-publish/${bin_name}" "./isolated-player-dir/${bin_name}"
+          chmod +x "./isolated-player-dir/${bin_name}" || true
+          if command -v cygpath >/dev/null 2>&1; then
+            empty_home="$(cygpath -w "$(pwd)/isolated-empty-home")"
+          else
+            empty_home="$(pwd)/isolated-empty-home"
+          fi
+          output=$(HOME="${empty_home}" USERPROFILE="${empty_home}" "./isolated-player-dir/${bin_name}" --verify-natives 2>&1) || {
+            echo "::error::Single-file native verification failed on ${{ matrix.os }}: ${output}"
+            exit 1
+          }
+          echo "${output}"
+          echo "${output}" | grep -F "[VerifyNatives] OK: Platform=GlfwPlatform"
+          echo "::notice::SINGLEFILE_OK (${{ matrix.os }}): ${output}"
+          rm -rf ./smoke-publish ./isolated-player-dir ./isolated-empty-home
+
+  build-and-test-macos:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    continue-on-error: true
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build and test (macOS)
+        run: dotnet test OverHorizon.sln --configuration Release -warnaserror --verbosity minimal
+
+  package-and-release:
+    needs: build-and-test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Package clean single-file builds (Windows, Linux, macOS)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-zips
+          for rid in win-x64 linux-x64 osx-arm64 osx-x64; do
+            pkg_name="OverHorizon-v0.12.0-alpha-${rid}"
+            stage_dir="stage/${pkg_name}"
+            mkdir -p "${stage_dir}/server" "${stage_dir}/tools" "${stage_dir}/saves" "${stage_dir}/resourcepacks"
+
+            dotnet publish src/OverHorizon.Client/OverHorizon.Client.csproj \
+              -c Release -r "${rid}" --self-contained true \
+              -p:PublishSingleFile=true \
+              -p:IncludeNativeLibrariesForSelfExtract=true \
+              -p:EnableCompressionInSingleFile=true \
+              -p:DebugType=None -p:DebugSymbols=false \
+              -o "${stage_dir}"
+
+            dotnet publish src/OverHorizon.Server/OverHorizon.Server.csproj \
+              -c Release -r "${rid}" --self-contained true \
+              -p:PublishSingleFile=true \
+              -p:IncludeNativeLibrariesForSelfExtract=true \
+              -p:EnableCompressionInSingleFile=true \
+              -p:DebugType=None -p:DebugSymbols=false \
+              -o "${stage_dir}/server"
+
+            cp scripts/HOW-TO-PLAY-RU.txt "${stage_dir}/HOW-TO-PLAY-RU.txt"
+            if [[ "${rid}" == "win-x64" ]]; then
+              cp scripts/Play-OverHorizon.bat "${stage_dir}/PLAY-GAME.bat"
+              cp scripts/Start-Server.bat "${stage_dir}/server/Start-Server.bat"
+              cp scripts/Join-Friend-Server.bat scripts/Download-Real-Assets.bat scripts/Download-Real-Assets.ps1 "${stage_dir}/tools/"
+            else
+              cp scripts/play-overhorizon.sh "${stage_dir}/PLAY-GAME.sh"
+              cp scripts/start-server.sh "${stage_dir}/server/start-server.sh"
+              cp scripts/join-friend-server.sh scripts/Download-Real-Assets.sh "${stage_dir}/tools/"
+              chmod +x "${stage_dir}/PLAY-GAME.sh" "${stage_dir}/OverHorizon.Client" \
+                       "${stage_dir}/server/start-server.sh" "${stage_dir}/server/OverHorizon.Server" \
+                       "${stage_dir}/tools/"*.sh
+            fi
+
+            echo "=== Root layout for ${pkg_name} ==="
+            ls -la "${stage_dir}"
+            (cd stage && zip -r -q "../release-zips/${pkg_name}.zip" "${pkg_name}")
+          done
+          ls -lh release-zips/
+
+      - name: Upload Playable Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: OverHorizon-v0.12.0-alpha-playable-builds
+          path: release-zips/*.zip
+          retention-days: 30
+
+      - name: Publish or Update GitHub Pre-Release v0.12.0-alpha
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="v0.12.0-alpha"
+          NOTES=$'### Over-the-Horizon: C# EDITION (`v0.12.0-alpha`) — Настоящие текстуры Нижнего мира, звуки портала и Адская крепость!\n\nГотовые самодостаточные сборки (**установка .NET не требуется — один чистый исполняемый файл в корне без сотен `.dll`!**):\n- **Windows 10/11 (x64)**: `OverHorizon-v0.12.0-alpha-win-x64.zip` -> запускайте сразу `OverHorizon.Client.exe` или `PLAY-GAME.bat`\n- **Linux (x86_64)**: `OverHorizon-v0.12.0-alpha-linux-x64.zip` -> `./OverHorizon.Client` или `./PLAY-GAME.sh`\n- **macOS Apple Silicon (M1-M4)**: `OverHorizon-v0.12.0-alpha-osx-arm64.zip` -> `./OverHorizon.Client` или `./PLAY-GAME.sh`\n- **macOS Intel (x64)**: `OverHorizon-v0.12.0-alpha-osx-x64.zip` -> `./OverHorizon.Client` или `./PLAY-GAME.sh`\n\n#### Ключевые улучшения и исправления в `v0.12.0-alpha`:\n\n1. **Исправлена поломка текстур (главная причина «прозрачного ада»)**: когда атлас вырос до `512x512` (`32` тайла в строке), процедурная отрисовка продолжала считать адрес тайла по старой сетке `16x16`. Все тайлы с номером `16` и выше — а это в том числе весь Нижний мир — рисовались не в свои ячейки, поэтому блоки выглядели пустыми и прозрачными. Теперь адрес считается от живых констант `TilesPerRow`, и ни одна текстура больше не теряется.\n2. **Настоящие текстуры Нижнего мира из оригинального пака `23w13a__or__b`**: клиент теперь сам скачивает нидеррак, багровый и искажённый нилиум (верх и бок), душащий песок и почву, базальт, магму, нидер-кварц и нидер-золото, древние обломки, нидер-кирпичи, чёрный камень, вартовые блоки, шармлайт и сам портал. Никаких самодельных заменителей — если ассет недоступен, тайл остаётся честно пустым.\n3. **Незерит**: добавлен настоящий блок незерита (`netherite_block.png`, твёрдость `50`) с рецептами `9` слитков в блок и обратно, а также собственный тайл атласа.\n4. **Портал снова выглядит порталом**: подключена оригинальная текстура `nether_portal.png` (с учётом кадров анимации), а сама плоскость портала переведена в проход с альфа-смешиванием — она мерцает и просвечивает, а не рисуется глухой стеной.\n5. **Звуки портала**: из оригинального пака добавлены `sounds/portal/portal.ogg` (гул), `travel.ogg` (перенос) и `trigger.ogg` (возгорание). Гул повторяется, пока вы стоите внутри портала, перенос проигрывается в точке прибытия, а поджиг обсидиановой рамки огнивом озвучен отдельным триггером.\n6. **Адская крепость (Nether Fortress) — главная структура Нижнего мира**: двухъярусный донжон из нидер-кирпича с внутренней лестницей и люстрами из светокамня, четыре закрытых коридорных крыла с бойницами-окнами, зал со спавнером близов, ферма вартов на душащем песке и комната с сундуками. Снаружи крепость опоясана мостами с парапетами и несущими опорами, уходящими в лавовое море. Крепости ставятся по сетке `27x27` чанков и полностью детерминированы.\n7. **Разрушенный портал (Ruined Portal) — вторая структура**: полуразрушенная обсидиановая рама с провалами на фундаменте из нидеррака, вокруг — магма, лужа лавы и зарытый блок золота под одной из стоек.\n8. **Архитектура и тесты**: манифест звуков вынесен в отдельный partial-файл (синкер снова проходит лимит в `500` строк), добавлены регрессионные тесты на адресацию тайлов атласа, наличие настоящих ассетов Нижнего мира, три звука портала, блок незерита и обе новые структуры.\n\nВсе сборки — это результат зелёного CI-прогона: сборка с `TreatWarningsAsErrors`, полный набор юнит- и архитектурных тестов, а также проверка самодостаточного загрузчика (GLFW + OpenAL) в чистой папке.'
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" release-zips/*.zip --clobber
+            gh release edit "${TAG}" --notes "${NOTES}"
+          else
+            gh release create "${TAG}" release-zips/*.zip \
+              --target "${GITHUB_SHA}" \
+              --prerelease \
+              --title "Over-the-Horizon: C# EDITION — v0.12.0-alpha" \
+              --notes "${NOTES}"
+          fi
