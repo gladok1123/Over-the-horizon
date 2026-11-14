@@ -51,10 +51,10 @@ internal static class ServerWorldTimeAndBlockSync
             }
         }
 
-        tntTicker?.NotifyWorldBlockChanged(primaryPos, world.GetBlockState, SetWorldAndRecord);
+        tntTicker?.NotifyWorldBlockChanged(primaryPos, static bp => world.GetBlockState(bp), SetWorldAndRecord);
 
         // 0. Vanilla track auto-connection: re-resolve straight / curved / ascending shapes of every adjacent rail!
-        RailPlacementRules.RefreshAdjacentRails(registries.Blocks, world.GetBlockState, SetWorldAndRecord, primaryPos);
+        RailPlacementRules.RefreshAdjacentRails(registries.Blocks, static bp => world.GetBlockState(bp), SetWorldAndRecord, primaryPos);
 
         // 1. Detach any unsupported neighbor blocks and spawn 3D item drops
         var checkQueue = new Queue<BlockPos>();
@@ -67,13 +67,13 @@ internal static class ServerWorldTimeAndBlockSync
                 var nPos = cur.Offset(SixNeighbors[i]);
                 var nState = world.GetBlockState(nPos);
                 if (nState.IsAir) continue;
-                if (!BlockAttachmentAndShapeRules.IsStillSupported(registries.Blocks, world.GetBlockState, nPos, nState) &&
+                if (!BlockAttachmentAndShapeRules.IsStillSupported(registries.Blocks, static bp => world.GetBlockState(bp), nPos, nState) &&
                     world.SetBlockState(nPos, BlockState.Air, tickNumber))
                 {
                     changed.Add((nPos, BlockState.Air.Id));
                     SpawnDropForDetachedBlock(registries, droppedItems, nPos, nState);
                     redstone.NotifyBlockChanged(nPos);
-                    tntTicker?.NotifyWorldBlockChanged(nPos, world.GetBlockState, SetWorldAndRecord);
+                    tntTicker?.NotifyWorldBlockChanged(nPos, static bp => world.GetBlockState(bp), SetWorldAndRecord);
                     checkQueue.Enqueue(nPos);
                 }
             }
@@ -84,13 +84,13 @@ internal static class ServerWorldTimeAndBlockSync
         var ignited = new List<BlockPos>();
         var sounds = new List<(BlockPos Pos, RedstoneSoundKind Sound)>();
         redstone.EvaluateImmediate(
-            world.GetBlockState,
+            static bp => world.GetBlockState(bp),
             (pos, st) =>
             {
                 if (world.SetBlockState(pos, st, tickNumber))
                 {
                     changed.Add((pos, st.Id));
-                    tntTicker?.NotifyWorldBlockChanged(pos, world.GetBlockState, SetWorldAndRecord);
+                    tntTicker?.NotifyWorldBlockChanged(pos, static bp => world.GetBlockState(bp), SetWorldAndRecord);
                 }
             },
             ignited,

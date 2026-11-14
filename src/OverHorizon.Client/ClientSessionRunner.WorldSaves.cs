@@ -406,6 +406,11 @@ public sealed partial class ClientSessionRunner
     {
         DrainInboundPackets();
         if (!_transport.IsConnected) await StreamLocalWorldStepAsync(maxChunks: 12, ct).ConfigureAwait(false);
+        if (!_transport.IsConnected && StepPortalTravel(_renderer, ct))
+        {
+            return;
+        }
+
         _menu.AdvanceAnimations(deltaSeconds, _player);
         _survivalCombat.StepTimers(deltaSeconds);
         _player.StepMovement(_worldCache, _blocks, _audio, movement, deltaSeconds);
