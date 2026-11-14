@@ -29,27 +29,54 @@ public static class WorldServiceCollectionExtensions
         services.AddSingleton<IWorldGenerator>(sp =>
             new OverworldGenerator(worldSeed, sp.GetRequiredService<CoreRegistries>()));
 
-        if (string.IsNullOrWhiteSpace(worldSaveDirectory))
-        {
-            services.AddSingleton<IChunkStorage>(static sp =>
-                new InMemoryChunkStorage(sp.GetRequiredService<CoreRegistries>()));
-        }
-        else
-        {
-            var dir = worldSaveDirectory;
-            services.AddSingleton<IChunkStorage>(sp =>
-                new FileChunkStorage(dir, sp.GetRequiredService<CoreRegistries>()));
-        }
+        // One independent chunk manager (generator + storage) per dimension: Overworld and Nether.
+        services.AddSingleton(static sp => BuildDimensions(sp, worldSeed, worldSaveDirectory));
 
-        services.AddSingleton<ChunkManager>(static sp => new ChunkManager(
-            sp.GetRequiredService<CoreRegistries>(),
-            sp.GetRequiredService<IWorldGenerator>(),
-            sp.GetRequiredService<IChunkStorage>()));
-
+        services.AddSingleton(static sp => sp.GetRequiredService<DimensionWorldCollection>()[DimensionId.Overworld]);
         services.AddSingleton<IChunkManager>(static sp => sp.GetRequiredService<ChunkManager>());
-        services.AddSingleton<IWorldSubsystem>(static sp => new WorldSubsystem(sp.GetRequiredService<ChunkManager>()));
+        services.AddSingleton<IWorldSubsystem>(static sp => new WorldSubsystem(sp.GetRequiredService<DimensionWorldCollection>()));
         services.AddSingleton<ITickSubsystem>(static sp => sp.GetRequiredService<IWorldSubsystem>());
 
         return services;
+    }
+
+    private static DimensionWorldCollection BuildDimensions(
+        IServiceProvider services,
+        long worldSeed,
+        string? worldSaveDirectory)
+    {
+        var registries = services.GetRequiredService<CoreRegistries>();
+        var collection = new DimensionWorldCollection();
+
+        collection.Register(DimensionId.Overworld, new ChunkManager(
+            registries,
+            new OverworldGenerator(worldSeed, registries),
+            CreateStorage(registries, worldSaveDirectory, DimensionId.Overworld),
+            DimensionId.Overworld));
+
+        collection.Register(DimensionId.Nether, new ChunkManager(
+            registries,
+            new NetherGenerator(worldSeed, registries),
+            CreateStorage(registries, worldSaveDirectory, DimensionId.Nether),
+            DimensionId.Nether));
+
+        return collection;
+    }
+
+    private static IChunkStorage CreateStorage(
+        CoreRegistries registries,
+        string? worldSaveDirectory,
+        DimensionId dimension)
+    {
+        if (string.IsNullOrWhiteSpace(worldSaveDirectory))
+        {
+            return new InMemoryChunkStorage(registries);
+        }
+
+        // Overworld chunks stay at the save root for backwards compatibility; the Nether gets its own DIM-1 folder.
+        var root = dimension == DimensionId.Nether
+            ? Path.Combine(worldSaveDirectory, "DIM-1")
+            : worldSaveDirectory;
+        return new FileChunkStorage(root, registries);
     }
 }

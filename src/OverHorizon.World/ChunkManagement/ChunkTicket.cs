@@ -1,3 +1,4 @@
+using OverHorizon.Core;
 using OverHorizon.Core.Math;
 
 namespace OverHorizon.World.ChunkManagement;
@@ -9,8 +10,10 @@ namespace OverHorizon.World.ChunkManagement;
 /// <param name="TicketType">Category of ticket.</param>
 /// <param name="Center">Center chunk coordinate.</param>
 /// <param name="Radius">Chebyshev chunk radius (<c>&gt;= 0</c>).</param>
+/// <param name="Dimension">Dimension the ticket keeps loaded (<see cref="DimensionId.Overworld"/> by default).</param>
 public readonly record struct ChunkTicket(
     long OwnerId,
     ChunkTicketType TicketType,
     ChunkPos Center,
-    int Radius);
+    int Radius,
+    DimensionId Dimension = DimensionId.Overworld);

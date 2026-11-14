@@ -279,7 +279,7 @@ public sealed class V9AssetsPhysicsDoorsBiomesAndPerfTests
     public void TenBiomesSkeletonLineOfSightThirdPersonCameraAndCreativeVoidDeath_BehaveAuthentically()
     {
         var registries = CoreRegistries.CreateDefault();
-        registries.Biomes.Count.Should().Be(10);
+        registries.Biomes.Count.Should().Be(15);
 
         var sampler = new BiomeSampler(worldSeed: 20261112L, registries.Biomes);
         var discovered = new HashSet<ResourceKey>();

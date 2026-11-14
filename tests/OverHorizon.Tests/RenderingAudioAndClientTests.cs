@@ -47,9 +47,9 @@ public sealed class RenderingAudioAndClientTests
         var atlasA = ProceduralAtlasGenerator.CreateDefault(registries.Blocks);
         var atlasB = ProceduralAtlasGenerator.CreateDefault(registries.Blocks);
 
-        atlasA.Width.Should().Be(256);
-        atlasA.Height.Should().Be(256);
-        atlasA.RgbaPixels.Length.Should().Be(256 * 256 * 4);
+        atlasA.Width.Should().Be(ProceduralAtlasGenerator.AtlasDimension);
+        atlasA.Height.Should().Be(ProceduralAtlasGenerator.AtlasDimension);
+        atlasA.RgbaPixels.Length.Should().Be(ProceduralAtlasGenerator.AtlasDimension * ProceduralAtlasGenerator.AtlasDimension * 4);
         atlasA.RgbaPixels.Span.SequenceEqual(atlasB.RgbaPixels.Span).Should().BeTrue();
 
         var grassKey = BuiltInBlocks.GrassBlock;

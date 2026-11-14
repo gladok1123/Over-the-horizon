@@ -2,10 +2,8 @@ using OverHorizon.Core.Registry;
 
 namespace OverHorizon.Core.Blocks;
 
-/// <summary>
-/// Clean-room built-in block definitions for Over-the-Horizon: C# Edition (67 blocks including Redstone, Pistons, Fire, and Beds).
-/// </summary>
-public static class BuiltInBlocks
+/// <summary>Clean-room built-in block definitions (Overworld set + the Nether set in <c>BuiltInBlocks.Nether.cs</c>).</summary>
+public static partial class BuiltInBlocks
 {
     /// <summary>Key for <c>overhorizon:air</c> (always ID 0).</summary>
     public static readonly ResourceKey Air = ResourceKey.OverHorizon("air");
@@ -484,6 +482,8 @@ public static class BuiltInBlocks
         _ = registry.Register(new BlockDefinition(RedSand, hardness: 0.5f));
         _ = registry.Register(new BlockDefinition(Terracotta, hardness: 1.25f));
         _ = registry.Register(new BlockDefinition(PackedIce, hardness: 0.5f));
+        // v0.11.0-alpha Nether dimension blocks (see BuiltInBlocks.Nether.cs)
+        PopulateNetherBlocks(registry);
     }
 
     /// <summary>Creates, populates, and freezes the default <see cref="BlockRegistry"/>.</summary>

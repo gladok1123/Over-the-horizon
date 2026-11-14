@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using OverHorizon.Core;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
 using OverHorizon.Gameplay;
@@ -160,7 +161,7 @@ public static class WorldSaveManager
         return true;
     }
 
-    /// <summary>Opens a <see cref="WorldSubsystem"/> backed by <see cref="FileChunkStorage"/> in <c>&lt;FolderPath&gt;/chunks</c>.</summary>
+    /// <summary>Opens a <see cref="WorldSubsystem"/> backed by <see cref="FileChunkStorage"/> in <c>&lt;FolderPath&gt;/chunks</c> plus a Nether in <c>DIM-1</c>.</summary>
     public static WorldSubsystem OpenWorldSubsystem(SavedWorldMetadata meta, CoreRegistries registries)
     {
         ArgumentNullException.ThrowIfNull(meta);
@@ -168,10 +169,24 @@ public static class WorldSaveManager
 
         var chunksDir = Path.Combine(meta.FolderPath, "chunks");
         Directory.CreateDirectory(chunksDir);
-        var generator = new OverworldGenerator(meta.Seed, registries);
-        var storage = new FileChunkStorage(chunksDir, registries);
-        var manager = new ChunkManager(registries, generator, storage);
-        return new WorldSubsystem(manager);
+        var overworld = new ChunkManager(
+            registries,
+            new OverworldGenerator(meta.Seed, registries),
+            new FileChunkStorage(chunksDir, registries),
+            DimensionId.Overworld);
+
+        var netherDir = Path.Combine(meta.FolderPath, "DIM-1", "chunks");
+        Directory.CreateDirectory(netherDir);
+        var nether = new ChunkManager(
+            registries,
+            new NetherGenerator(meta.Seed, registries),
+            new FileChunkStorage(Path.Combine(meta.FolderPath, "DIM-1"), registries),
+            DimensionId.Nether);
+
+        var dimensions = new DimensionWorldCollection();
+        dimensions.Register(DimensionId.Overworld, overworld);
+        dimensions.Register(DimensionId.Nether, nether);
+        return new WorldSubsystem(dimensions);
     }
 
     /// <summary>Extracts the optional bed respawn coordinate from <paramref name="meta"/>.</summary>

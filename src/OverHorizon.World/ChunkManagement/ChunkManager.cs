@@ -41,12 +41,14 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
     public ChunkManager(
         CoreRegistries registries,
         IWorldGenerator generator,
-        IChunkStorage storage)
+        IChunkStorage storage,
+        DimensionId dimension = DimensionId.Overworld)
     {
         ArgumentNullException.ThrowIfNull(registries);
         ArgumentNullException.ThrowIfNull(generator);
         ArgumentNullException.ThrowIfNull(storage);
 
+        Dimension = dimension;
         _registries = registries;
         _generator = generator;
         _storage = storage;
@@ -63,6 +65,9 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
 
     /// <inheritdoc />
     public int LoadedChunkCount => _loadedChunks.Count;
+
+    /// <summary>Gets the dimension this manager streams, generates, and persists.</summary>
+    public DimensionId Dimension { get; }
 
     /// <inheritdoc />
     public void UpsertTicket(ChunkTicket ticket)

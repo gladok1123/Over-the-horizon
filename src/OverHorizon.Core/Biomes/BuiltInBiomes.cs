@@ -3,10 +3,8 @@ using OverHorizon.Core.Registry;
 
 namespace OverHorizon.Core.Biomes;
 
-/// <summary>
-/// Clean-room built-in biome definitions for the OverHorizon MVP.
-/// </summary>
-public static class BuiltInBiomes
+/// <summary>Clean-room built-in biome definitions (Overworld set + the Nether set in <c>BuiltInBiomes.Nether.cs</c>).</summary>
+public static partial class BuiltInBiomes
 {
     /// <summary>Key for <c>overhorizon:plains</c>.</summary>
     public static readonly ResourceKey Plains = ResourceKey.OverHorizon("plains");
@@ -65,6 +63,9 @@ public static class BuiltInBiomes
         _ = registry.Register(Badlands, new BiomeDefinition(Badlands, Temperature: 2.0f, Downfall: 0.0f, SurfaceState: redSand, UnderSurfaceState: terracotta));
         _ = registry.Register(IceSpikes, new BiomeDefinition(IceSpikes, Temperature: 0.0f, Downfall: 0.5f, SurfaceState: snow, UnderSurfaceState: snow));
         _ = registry.Register(Savanna, new BiomeDefinition(Savanna, Temperature: 1.2f, Downfall: 0.0f, SurfaceState: grass, UnderSurfaceState: dirt));
+
+        // v0.11.0-alpha Nether biomes (see BuiltInBiomes.Nether.cs)
+        PopulateNetherBiomes(registry, blocks);
     }
 
     /// <summary>
