@@ -49,8 +49,7 @@ public sealed partial class PrimedTntAndWorldTicker
     /// <param name="getBlock">World block-state accessor.</param>
     /// <param name="getLight">World light accessor returning sky and block light.</param>
     /// <param name="setBlock">World block-state mutator.</param>
-    /// <returns>Number of blocks mutated this tick.</returns>
-    private int StepCropGrowth(
+    private void StepCropGrowth(
         Func<BlockPos, BlockState> getBlock,
         Func<BlockPos, (byte Sky, byte Block)> getLight,
         Action<BlockPos, BlockState> setBlock)
@@ -122,6 +121,6 @@ public sealed partial class PrimedTntAndWorldTicker
             _ = _activeCrops.Remove(stale[i]);
         }
 
-        return mutations;
+        _ = mutations;
     }
 }

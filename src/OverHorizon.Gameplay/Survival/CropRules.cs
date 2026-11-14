@@ -1,3 +1,5 @@
+using System.Globalization;
+using OverHorizon.Core;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
@@ -51,7 +53,7 @@ public static class CropRules
     /// <param name="age">Target growth stage in <c>[0, 7]</c>.</param>
     /// <returns>The updated block state.</returns>
     public static BlockState WithAge(IBlockRegistry blocks, BlockState cropState, int age) =>
-        blocks.WithProperty(cropState, "age", Math.Clamp(age, 0, MatureAge).ToString());
+        blocks.WithProperty(cropState, "age", Math.Clamp(age, 0, MatureAge).ToString(CultureInfo.InvariantCulture));
 
     /// <summary>Returns a copy of <paramref name="farmlandState"/> hydrated to <paramref name="moisture"/>.</summary>
     /// <param name="blocks">Block registry used to rewrite the <c>moisture</c> property.</param>
@@ -59,7 +61,7 @@ public static class CropRules
     /// <param name="moisture">Target hydration level in <c>[0, 7]</c>.</param>
     /// <returns>The updated block state.</returns>
     public static BlockState WithMoisture(IBlockRegistry blocks, BlockState farmlandState, int moisture) =>
-        blocks.WithProperty(farmlandState, "moisture", Math.Clamp(moisture, 0, MaxMoisture).ToString());
+        blocks.WithProperty(farmlandState, "moisture", Math.Clamp(moisture, 0, MaxMoisture).ToString(CultureInfo.InvariantCulture));
 
     /// <summary>Determines whether a crop at <paramref name="meta"/> is fully grown and ready to harvest.</summary>
     /// <param name="meta">Parsed block-state metadata of the crop.</param>
