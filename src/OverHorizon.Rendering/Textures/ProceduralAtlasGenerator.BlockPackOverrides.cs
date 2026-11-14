@@ -132,6 +132,28 @@ public static partial class ProceduralAtlasGenerator
         _ = pack.TryBlitTile(pixels, TileTerracotta, "terracotta");
         _ = pack.TryBlitTile(pixels, TilePackedIce, "packed_ice");
 
+        _ = pack.TryBlitTile(pixels, TileNetherrack, "netherrack");
+        _ = pack.TryBlitTile(pixels, TileSoulSand, "soul_sand");
+        _ = pack.TryBlitTile(pixels, TileSoulSoil, "soul_soil");
+        _ = pack.TryBlitTile(pixels, TileBasaltSide, "basalt_side");
+        _ = pack.TryBlitTile(pixels, TileBasaltTop, "basalt_top");
+        _ = pack.TryBlitTile(pixels, TileMagma, "magma");
+        _ = pack.TryBlitTile(pixels, TileNetherQuartzOre, "nether_quartz_ore");
+        _ = pack.TryBlitTile(pixels, TileNetherGoldOre, "nether_gold_ore");
+        _ = pack.TryBlitTile(pixels, TileAncientDebrisSide, "ancient_debris_side");
+        _ = pack.TryBlitTile(pixels, TileAncientDebrisTop, "ancient_debris_top");
+        _ = pack.TryBlitTile(pixels, TileNetherBricks, "nether_bricks");
+        _ = pack.TryBlitTile(pixels, TileBlackstone, "blackstone");
+        _ = pack.TryBlitTile(pixels, TileNetherWartBlock, "nether_wart_block");
+        _ = pack.TryBlitTile(pixels, TileWarpedWartBlock, "warped_wart_block");
+        _ = pack.TryBlitTile(pixels, TileShroomlight, "shroomlight");
+        _ = pack.TryBlitTile(pixels, TileCrimsonNyliumTop, "crimson_nylium");
+        _ = pack.TryBlitTile(pixels, TileCrimsonNyliumSide, "crimson_nylium_side");
+        _ = pack.TryBlitTile(pixels, TileWarpedNyliumTop, "warped_nylium");
+        _ = pack.TryBlitTile(pixels, TileWarpedNyliumSide, "warped_nylium_side");
+        _ = pack.TryBlitTile(pixels, TileNetherPortal, "nether_portal");
+        _ = pack.TryBlitTile(pixels, TileLava, "lava_still");
+
         for (var stage = 0; stage < 10; stage++)
         {
             _ = pack.TryBlitTile(pixels, (ushort)(FirstDestroyStageTile + stage), $"destroy_stage_{stage}");

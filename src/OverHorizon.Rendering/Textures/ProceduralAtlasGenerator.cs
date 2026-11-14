@@ -27,8 +27,8 @@ public static partial class ProceduralAtlasGenerator
     /// <summary>Total number of addressable tiles in the atlas (<c>1024</c>).</summary>
     public const int TileCount = TilesPerRow * TilesPerRow;
 
-    /// <summary>First tile index of the 10-stage mining crack sprites (<c>destroy_stage_0..9</c> at <c>90..99</c>).</summary>
-    public const ushort FirstDestroyStageTile = 90;
+    /// <summary>First tile index of the 10-stage mining crack sprites (<c>destroy_stage_0..9</c> at <c>768..777</c>).</summary>
+    public const ushort FirstDestroyStageTile = 768;
 
     internal const ushort TileStone = 0;
     internal const ushort TileDirt = 1;
@@ -166,6 +166,29 @@ public static partial class ProceduralAtlasGenerator
     internal const ushort TileSpruceLogTop = 250;
     internal const ushort TileTerracotta = 251;
     internal const ushort TilePackedIce = 252;
+
+    // v0.11.0-alpha Nether dimension tiles (256..277)
+    internal const ushort TileNetherrack = 256;
+    internal const ushort TileSoulSand = 257;
+    internal const ushort TileSoulSoil = 258;
+    internal const ushort TileBasaltSide = 259;
+    internal const ushort TileBasaltTop = 260;
+    internal const ushort TileMagma = 261;
+    internal const ushort TileNetherQuartzOre = 262;
+    internal const ushort TileNetherGoldOre = 263;
+    internal const ushort TileAncientDebrisSide = 264;
+    internal const ushort TileAncientDebrisTop = 265;
+    internal const ushort TileNetherBricks = 266;
+    internal const ushort TileBlackstone = 267;
+    internal const ushort TileNetherPortal = 268;
+    internal const ushort TileLava = 269;
+    internal const ushort TileCrimsonNyliumTop = 270;
+    internal const ushort TileCrimsonNyliumSide = 271;
+    internal const ushort TileWarpedNyliumTop = 272;
+    internal const ushort TileWarpedNyliumSide = 273;
+    internal const ushort TileNetherWartBlock = 274;
+    internal const ushort TileWarpedWartBlock = 275;
+    internal const ushort TileShroomlight = 276;
 
     private const ushort FirstCustomTile = 278;
     private const ushort FirstItemSpriteTile = 384;

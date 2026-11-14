@@ -144,6 +144,29 @@ public static partial class ProceduralAtlasGenerator
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileTerracotta, 152, 94, 68, variation: 12, alpha: 255);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TilePackedIce, 146, 184, 244, variation: 14, alpha: 255);
 
+        // v0.11.0-alpha Nether fallbacks
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileNetherrack, 110, 56, 54, variation: 22, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileSoulSand, 78, 58, 44, variation: 16, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileSoulSoil, 62, 46, 38, variation: 14, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileBasaltSide, 76, 72, 78, variation: 16, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileBasaltTop, 56, 54, 60, variation: 16, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileMagma, 198, 104, 38, variation: 30, alpha: 255);
+        ProceduralBlockTilePainter.PaintOreTile(pixels, TileNetherQuartzOre, 110, 56, 54, 0x51E1_0011UL);
+        ProceduralBlockTilePainter.PaintOreTile(pixels, TileNetherGoldOre, 110, 56, 54, 0x51E1_0012UL);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileAncientDebrisSide, 74, 60, 62, variation: 18, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileAncientDebrisTop, 92, 76, 80, variation: 18, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileNetherBricks, 46, 28, 34, variation: 14, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileBlackstone, 42, 36, 42, variation: 16, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileNetherPortal, 152, 62, 214, variation: 34, alpha: 190);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileLava, 226, 108, 28, variation: 26, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileCrimsonNyliumTop, 148, 54, 62, variation: 20, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileCrimsonNyliumSide, 110, 56, 54, variation: 20, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileWarpedNyliumTop, 42, 132, 122, variation: 20, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileWarpedNyliumSide, 110, 56, 54, variation: 20, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileNetherWartBlock, 122, 32, 44, variation: 18, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileWarpedWartBlock, 30, 116, 108, variation: 18, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileShroomlight, 226, 174, 82, variation: 18, alpha: 255);
+
         for (var stage = 0; stage < 10; stage++)
         {
             ProceduralItemTilePainter.PaintDestroyCrackStage(pixels, (ushort)(FirstDestroyStageTile + stage), stage);
@@ -373,6 +396,24 @@ public static partial class ProceduralAtlasGenerator
         MapAllFaces(lookup, BuiltInBlocks.RedSand, TileRedSand);
         MapAllFaces(lookup, BuiltInBlocks.Terracotta, TileTerracotta);
         MapAllFaces(lookup, BuiltInBlocks.PackedIce, TilePackedIce);
+
+        MapAllFaces(lookup, BuiltInBlocks.Netherrack, TileNetherrack);
+        MapBlockTopBottomSide(lookup, BuiltInBlocks.CrimsonNylium, TileCrimsonNyliumTop, TileNetherrack, TileCrimsonNyliumSide);
+        MapBlockTopBottomSide(lookup, BuiltInBlocks.WarpedNylium, TileWarpedNyliumTop, TileNetherrack, TileWarpedNyliumSide);
+        MapAllFaces(lookup, BuiltInBlocks.SoulSand, TileSoulSand);
+        MapAllFaces(lookup, BuiltInBlocks.SoulSoil, TileSoulSoil);
+        MapBlockTopBottomSide(lookup, BuiltInBlocks.Basalt, TileBasaltTop, TileBasaltTop, TileBasaltSide);
+        MapAllFaces(lookup, BuiltInBlocks.MagmaBlock, TileMagma);
+        MapAllFaces(lookup, BuiltInBlocks.NetherQuartzOre, TileNetherQuartzOre);
+        MapAllFaces(lookup, BuiltInBlocks.NetherGoldOre, TileNetherGoldOre);
+        MapBlockTopBottomSide(lookup, BuiltInBlocks.AncientDebris, TileAncientDebrisTop, TileAncientDebrisTop, TileAncientDebrisSide);
+        MapAllFaces(lookup, BuiltInBlocks.NetherBricks, TileNetherBricks);
+        MapAllFaces(lookup, BuiltInBlocks.Blackstone, TileBlackstone);
+        MapAllFaces(lookup, BuiltInBlocks.NetherWartBlock, TileNetherWartBlock);
+        MapAllFaces(lookup, BuiltInBlocks.WarpedWartBlock, TileWarpedWartBlock);
+        MapAllFaces(lookup, BuiltInBlocks.Shroomlight, TileShroomlight);
+        MapAllFaces(lookup, BuiltInBlocks.NetherPortal, TileNetherPortal);
+        MapAllFaces(lookup, BuiltInBlocks.Lava, TileLava);
         return lookup;
     }
 }

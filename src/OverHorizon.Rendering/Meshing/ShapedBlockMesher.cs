@@ -27,7 +27,8 @@ internal static partial class ShapedBlockMesher
                    string.Equals(ext, "true", StringComparison.OrdinalIgnoreCase);
         }
 
-        return key == BuiltInBlocks.Torch ||
+        return key == BuiltInBlocks.NetherPortal ||
+               key == BuiltInBlocks.Torch ||
                key == BuiltInBlocks.Lantern ||
                key == BuiltInBlocks.Ladder ||
                key == BuiltInBlocks.Rail ||
@@ -100,7 +101,12 @@ internal static partial class ShapedBlockMesher
                     }
 
                     var key = meta.BlockKey;
-                    if (key == BuiltInBlocks.Rail || key == BuiltInBlocks.PoweredRail)
+                    if (key == BuiltInBlocks.NetherPortal)
+                    {
+                        var axis = meta.Properties.TryGetValue("axis", out var ax) ? ax : "x";
+                        EmitPortalPlane(opaqueVerts, opaqueIndices, origin, atlas.GetTileIndex(key, Direction.North), axis, packedLight);
+                    }
+                    else if (key == BuiltInBlocks.Rail || key == BuiltInBlocks.PoweredRail)
                     {
                         EmitRailTrack(opaqueVerts, opaqueIndices, origin, meta, sky, effBlk);
                     }

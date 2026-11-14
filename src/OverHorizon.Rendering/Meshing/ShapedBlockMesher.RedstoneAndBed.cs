@@ -177,6 +177,24 @@ internal static partial class ShapedBlockMesher
         EmitDoubleSidedQuad(verts, indices, new Vector3(o.X + 1, o.Y, o.Z), new Vector3(o.X, o.Y, o.Z + 1), new Vector3(o.X, o.Y + 1, o.Z + 1), new Vector3(o.X + 1, o.Y + 1, o.Z), tile, 0.92f, packedLight);
     }
 
+    private static void EmitPortalPlane(
+        List<ChunkVertex> verts,
+        List<uint> indices,
+        Vector3 o,
+        ushort tile,
+        string axis,
+        float packedLight)
+    {
+        // A Nether Portal is a single shimmering plane spanning its frame opening.
+        if (string.Equals(axis, "z", StringComparison.Ordinal))
+        {
+            EmitDoubleSidedQuad(verts, indices, new Vector3(o.X + 0.5f, o.Y, o.Z), new Vector3(o.X + 0.5f, o.Y, o.Z + 1), new Vector3(o.X + 0.5f, o.Y + 1, o.Z + 1), new Vector3(o.X + 0.5f, o.Y + 1, o.Z), tile, 1.0f, packedLight);
+            return;
+        }
+
+        EmitDoubleSidedQuad(verts, indices, new Vector3(o.X, o.Y, o.Z + 0.5f), new Vector3(o.X + 1, o.Y, o.Z + 0.5f), new Vector3(o.X + 1, o.Y + 1, o.Z + 0.5f), new Vector3(o.X, o.Y + 1, o.Z + 0.5f), tile, 1.0f, packedLight);
+    }
+
     private static void EmitDoubleSidedQuad(List<ChunkVertex> verts, List<uint> indices, Vector3 c0, Vector3 c1, Vector3 c2, Vector3 c3, ushort tile, float shade, float packedLight)
     {
         EmitQuad(verts, indices, c0, c1, c2, c3, new Vector2(0.01f, 0.99f), new Vector2(0.99f, 0.99f), new Vector2(0.99f, 0.01f), new Vector2(0.01f, 0.01f), tile, shade, packedLight);
