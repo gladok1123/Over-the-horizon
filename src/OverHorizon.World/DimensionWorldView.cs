@@ -46,15 +46,21 @@ public sealed class DimensionWorldView : IWorldSubsystem
     public IChunkManager GetChunks(DimensionId dimension) => _inner.GetChunks(dimension);
 
     /// <inheritdoc />
-    public BlockState GetBlockState(BlockPos worldPos) => _inner.GetBlockState(worldPos, Dimension);
+    public BlockState GetBlockState(BlockPos worldPos, DimensionId dimension = DimensionId.Overworld) =>
+        _inner.GetBlockState(worldPos, dimension);
 
     /// <inheritdoc />
-    public bool SetBlockState(BlockPos worldPos, BlockState newState, long tickNumber = 0) =>
-        _inner.SetBlockState(worldPos, newState, tickNumber, Dimension);
+    public bool SetBlockState(BlockPos worldPos, BlockState newState, long tickNumber = 0, DimensionId dimension = DimensionId.Overworld) =>
+        _inner.SetBlockState(worldPos, newState, tickNumber, dimension);
 
     /// <inheritdoc />
-    public int SetBlockStatesBatch(ReadOnlySpan<(BlockPos Position, BlockState State)> changes, long tickNumber = 0) =>
-        _inner.SetBlockStatesBatch(changes, tickNumber, Dimension);
+    public int SetBlockStatesBatch(ReadOnlySpan<(BlockPos Position, BlockState State)> changes, long tickNumber = 0, DimensionId dimension = DimensionId.Overworld) =>
+        _inner.SetBlockStatesBatch(changes, tickNumber, dimension);
+
+    /// <summary>Reads a block from this view's pinned dimension (ignoring <c>dimension</c>-agnostic defaults).</summary>
+    /// <param name="worldPos">World block coordinate.</param>
+    /// <returns>Block state in the pinned dimension.</returns>
+    public BlockState GetBlockStateInDimension(BlockPos worldPos) => _inner.GetBlockState(worldPos, Dimension);
 
     /// <inheritdoc />
     public ValueTask TickAsync(long tickNumber, CancellationToken cancellationToken) => ValueTask.CompletedTask;

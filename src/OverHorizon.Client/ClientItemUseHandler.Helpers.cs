@@ -7,6 +7,8 @@ using OverHorizon.Gameplay;
 using OverHorizon.Gameplay.Effects;
 using OverHorizon.Gameplay.Inventory;
 using OverHorizon.Gameplay.Mobs;
+using OverHorizon.Gameplay.Survival;
+using OverHorizon.Physics;
 
 namespace OverHorizon.Client;
 
@@ -141,6 +143,14 @@ internal sealed partial class ClientItemUseHandler
         }
 
         var firePos = hit.AdjacentPosition;
+        if (TryIgnitePortalFrame(world, applyWorldBlockChange, targetKey, hit, firePos))
+        {
+            useCooldown = 0.35;
+            player.TriggerHandSwing(isOffhand);
+            _audio.PlayPositional(SoundCue.FireIgnite, hitCenter, gain: 0.95f * player.MasterVolume);
+            return true;
+        }
+
         if (world.GetBlockState(firePos).IsAir)
         {
             useCooldown = 0.20;
@@ -152,6 +162,48 @@ internal sealed partial class ClientItemUseHandler
 
         return false;
     }
+
+    private bool TryIgnitePortalFrame(
+        ClientWorldCache world,
+        Func<BlockPos, Direction, BlockState, bool> applyWorldBlockChange,
+        ResourceKey targetKey,
+        VoxelRaycastHit hit,
+        BlockPos firePos)
+    {
+        bool TryAt(BlockPos seed) => NetherPortalRules.TryActivateFrame(
+            _blocks,
+            world.GetBlockState,
+            (p, state) => applyWorldBlockChange(p, Direction.Up, state),
+            seed,
+            out _);
+
+        if (TryAt(firePos))
+        {
+            return true;
+        }
+
+        if (targetKey != BuiltInBlocks.Obsidian)
+        {
+            return false;
+        }
+
+        // Striking the outside face of an Obsidian frame must light the opening on the other side (vanilla parity).
+        for (var i = 0; i < SixNeighborOffsets.Length; i++)
+        {
+            var o = SixNeighborOffsets[i];
+            if (TryAt(new BlockPos(hit.BlockPosition.X + o.X, hit.BlockPosition.Y + o.Y, hit.BlockPosition.Z + o.Z)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static readonly (int X, int Y, int Z)[] SixNeighborOffsets =
+    [
+        (1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1),
+    ];
 
     private bool TryFindFluidBlockAlongRay(ClientPlayerController player, ClientWorldCache world, out BlockPos fluidPos)
     {

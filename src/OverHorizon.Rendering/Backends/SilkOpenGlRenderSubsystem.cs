@@ -261,6 +261,13 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         }
 
         var chunkFogDist = overlay is { ChunkFogDistance: > 16.0f } ? overlay.ChunkFogDistance : camera.FarPlane;
+        var isNether = overlay?.IsNetherDimension == true;
+        if (isNether)
+        {
+            // The Nether has no sky: a flat sulfurous haze with heavy volcanic fog.
+            skyColor = new Vector3(0.145f, 0.052f, 0.048f);
+            chunkFogDist = Math.Min(chunkFogDist, 34.0f);
+        }
 
         gl.ClearColor(skyColor.X, skyColor.Y, skyColor.Z, 1.0f);
         gl.Clear((uint)(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit));
@@ -279,8 +286,8 @@ public sealed class SilkOpenGlRenderSubsystem : IRenderSubsystem
         gl.Uniform1(prog.LocAtlas, 0);
         gl.Uniform1(prog.LocSkyBrightness, clampedSky);
         gl.Uniform1(prog.LocHeldTorchLight, overlay?.HeldTorchLightLevel ?? 0.0f);
-        gl.Uniform1(prog.LocFogStart, underwater ? 0.8f : chunkFogDist * 0.62f);
-        gl.Uniform1(prog.LocFogEnd, underwater ? 13.5f : chunkFogDist * 0.96f);
+        gl.Uniform1(prog.LocFogStart, underwater ? 0.8f : isNether ? 1.5f : chunkFogDist * 0.62f);
+        gl.Uniform1(prog.LocFogEnd, underwater ? 13.5f : isNether ? chunkFogDist * 0.78f : chunkFogDist * 0.96f);
         gl.Uniform3(prog.LocSkyColor, skyColor.X, skyColor.Y, skyColor.Z);
         gl.Uniform1(prog.LocUnderwater, underwater ? 1.0f : 0.0f);
 

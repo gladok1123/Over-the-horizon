@@ -1,3 +1,4 @@
+using OverHorizon.Core;
 using System.Globalization;
 using System.Numerics;
 using OverHorizon.Core.Math;
@@ -293,6 +294,7 @@ internal sealed partial class ClientMenuController
             SleepFadeAlpha = player.SleepFadeAlpha,
             IsThirdPersonCamera = localThirdPersonAvatar.HasValue,
             LocalThirdPersonPlayer = localThirdPersonAvatar,
+            IsNetherDimension = player.Dimension == DimensionId.Nether,
         };
     }
 

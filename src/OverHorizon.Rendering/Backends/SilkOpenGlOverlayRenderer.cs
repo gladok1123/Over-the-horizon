@@ -66,7 +66,7 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
     /// <summary>Draws Sun, Moon, and Stars behind all terrain with DepthTest &amp; DepthMask disabled so FarPlane never clips them.</summary>
     public unsafe int RenderSkyDome(FirstPersonCamera camera, FrameOverlayState state)
     {
-        if (state.IsUnderwater) return 0;
+        if (state.IsUnderwater || state.IsNetherDimension) return 0;
         if (camera.Position.Y < OverHorizon.Core.EngineConstants.WorldMinY + 1.0 ||
             (camera.Position.Y < 44.0 && state.CameraSkyLightNormalized < 0.05f))
         {

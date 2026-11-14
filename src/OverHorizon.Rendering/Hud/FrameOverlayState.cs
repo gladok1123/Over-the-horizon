@@ -95,4 +95,5 @@ public sealed record FrameOverlayState(
     IReadOnlyList<HudStatusEffectVisual>? StatusEffects = null,
     bool IsSpectatorMode = false,
     RemotePlayerAvatar? LocalThirdPersonPlayer = null,
-    bool IsThirdPersonCamera = false);
+    bool IsThirdPersonCamera = false,
+    bool IsNetherDimension = false);
