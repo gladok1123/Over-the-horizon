@@ -13,6 +13,7 @@ using OverHorizon.Gameplay.Mobs;
 using OverHorizon.Gameplay.Physics;
 using OverHorizon.Gameplay.Survival;
 using OverHorizon.Physics;
+using OverHorizon.Rendering.Hud;
 using OverHorizon.Rendering.Textures;
 using OverHorizon.World.Storage;
 using Xunit;
