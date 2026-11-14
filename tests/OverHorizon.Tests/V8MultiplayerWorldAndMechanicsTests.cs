@@ -290,12 +290,48 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
         collected.Should().BeGreaterThan(0);
         inv.CountItem(goldId).Should().Be(7, "both 3D Gold Ingot drops merged/collected into inventory");
 
-        // 3. Smart A* Mob Pathfinding around obstacle wall + Strong Vanilla Knockback!
+        // 3. Smart A* Mob Pathfinding around obstacle wall + Vanilla line-of-sight targeting!
         var mobs = new WorldMobManager();
         var zombie = mobs.SpawnMob(MobType.Zombie, new Vec3d(6.5, 64.0, 10.5));
-        for (var t = 0; t < 110; t++)
+        var playerAt = new Vec3d(6.5, 64.0, 13.5);
+
+        // Vanilla: the Zombie must actually SEE the player (clear line of sight) before it starts chasing at all!
+        for (var t = 0; t < 6; t++)
         {
             _ = mobs.Step(
+                cache,
+                _ => (0, 0, false, true, true),
+                playerAt,
+                GameMode.Survival,
+                0,
+                0.1f,
+                0.05f);
+        }
+
+        zombie.IsTargetingPlayer.Should().BeTrue("a hostile mob in the open with clear line of sight acquires the player");
+
+        // Player retreats behind the 2-block wall: the Zombie now keeps the remembered target and A*-routes around it!
+        playerAt = new Vec3d(6.5, 64.0, 5.5);
+        for (var t = 0; t < 120; t++)
+        {
+            _ = mobs.Step(
+                cache,
+                _ => (0, 0, false, true, true),
+                playerAt,
+                GameMode.Survival,
+                0,
+                0.1f,
+                0.05f);
+        }
+
+        zombie.FeetPosition.Z.Should().BeLessThan(8.2, "A* Zombie routed around the X=3..9 wall instead of getting stuck at Z=9");
+
+        // A mob that NEVER had line of sight must not magically home in through solid stone!
+        var blindMobs = new WorldMobManager();
+        var blindZombie = blindMobs.SpawnMob(MobType.Zombie, new Vec3d(6.5, 64.0, 10.5));
+        for (var t = 0; t < 40; t++)
+        {
+            _ = blindMobs.Step(
                 cache,
                 _ => (0, 0, false, true, true),
                 new Vec3d(6.5, 64.0, 5.5),
@@ -305,7 +341,7 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
                 0.05f);
         }
 
-        zombie.FeetPosition.Z.Should().BeLessThan(8.2, "A* Zombie routed around the X=3..9 wall instead of getting stuck at Z=9");
+        blindZombie.IsTargetingPlayer.Should().BeFalse("hostile mobs must not acquire a player through a solid wall");
 
         // 4. ParticleSystem & StatusEffectTracker
         var particles = new ParticleSystem();

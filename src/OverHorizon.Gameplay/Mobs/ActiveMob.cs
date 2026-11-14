@@ -81,6 +81,12 @@ public sealed class ActiveMob
     /// <summary>Gets or sets whether this hostile mob is actively pursuing a Survival player.</summary>
     public bool IsTargetingPlayer { get; set; }
 
+    /// <summary>
+    /// Gets or sets remaining seconds this hostile mob keeps chasing a player it can no longer see.
+    /// Vanilla mobs only acquire a target with a clear line of sight and forget it after a short grace window.
+    /// </summary>
+    public float TargetMemoryTimer { get; set; }
+
     /// <summary>Gets or sets whether this Sheep has been sheared.</summary>
     public bool IsSheared { get; set; }
 

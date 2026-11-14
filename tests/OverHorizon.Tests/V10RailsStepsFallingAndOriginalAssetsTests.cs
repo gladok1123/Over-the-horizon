@@ -5,6 +5,7 @@ using OverHorizon.Client;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
+using OverHorizon.Gameplay.Mobs;
 using OverHorizon.Gameplay.Physics;
 using OverHorizon.Gameplay.Survival;
 using OverHorizon.Physics;
@@ -187,9 +188,96 @@ public sealed class V10RailsStepsFallingAndOriginalAssetsTests
         Minecraft23w13aAssetSyncer.AssetManifest.Should().Contain("sounds/block/chest/close1.ogg");
     }
 
+    [Fact]
+    public void Skeletons_NeverShootOrAggroThroughSolidWalls()
+    {
+        var world = new WallTestCollisionWorld();
+        world.FillSolid(new BlockPos(-4, 63, -4), new BlockPos(20, 63, 20));
+
+        // 2-block solid wall at Z = 8 spanning X = 0..12 completely separates the Skeleton from the player!
+        world.FillSolid(new BlockPos(0, 64, 8), new BlockPos(12, 65, 8));
+
+        // --- Blocked skeleton: must neither shoot nor even acquire the player through the wall ---
+        var blockedMobs = new WorldMobManager();
+        _ = blockedMobs.SpawnMob(MobType.Skeleton, new Vec3d(6.5, 64.0, 12.5));
+        var blockedArrows = new List<(Vec3d Origin, Vec3d Velocity)>();
+        for (var t = 0; t < 60; t++)
+        {
+            _ = blockedMobs.Step(
+                world,
+                _ => (0, 0, false, true, true),
+                new Vec3d(6.5, 64.0, 4.5),
+                GameMode.Survival,
+                playerArmorDefense: 0,
+                skyBrightness: 0.1f,
+                deltaSeconds: 0.05f,
+                onSkeletonShootArrow: (o, v) => blockedArrows.Add((o, v)));
+        }
+
+        blockedArrows.Should().BeEmpty("a Skeleton must never fire an arrow through solid stone");
+
+        // --- Clear skeleton: same distance, unobstructed sight line -> fires as vanilla does ---
+        var openMobs = new WorldMobManager();
+        _ = openMobs.SpawnMob(MobType.Skeleton, new Vec3d(6.5, 64.0, 12.5));
+        var openArrows = new List<(Vec3d Origin, Vec3d Velocity)>();
+        for (var t = 0; t < 60; t++)
+        {
+            _ = openMobs.Step(
+                world,
+                _ => (0, 0, false, true, true),
+                new Vec3d(6.5, 64.0, 12.5 + 9.0),
+                GameMode.Survival,
+                playerArmorDefense: 0,
+                skyBrightness: 0.1f,
+                deltaSeconds: 0.05f,
+                onSkeletonShootArrow: (o, v) => openArrows.Add((o, v)));
+        }
+
+        openArrows.Should().NotBeEmpty("a Skeleton in the open with clear line of sight still shoots");
+    }
+
+    [Fact]
+    public void LineOfSight_FailsClosedOnUnloadedChunkColumns()
+    {
+        var registries = CoreRegistries.CreateDefault();
+        var atlas = ProceduralAtlasGenerator.CreateDefault(registries.Blocks);
+        var cache = new ClientWorldCache(registries.Blocks, atlas);
+
+        // Nothing is loaded yet, so sight must be treated as blocked instead of see-through!
+        WorldMobManager.HasClearLineOfSight(cache, new Vec3d(2.5, 65.6, 2.5), new Vec3d(8.5, 65.6, 2.5)).Should().BeFalse();
+
+        cache.UpsertColumn(new ChunkColumn(new ChunkPos(0, 0)));
+
+        // With the column loaded and completely empty the same sight line is genuinely clear!
+        WorldMobManager.HasClearLineOfSight(cache, new Vec3d(2.5, 65.6, 2.5), new Vec3d(8.5, 65.6, 2.5)).Should().BeTrue();
+    }
+
     private static string Shape(Dictionary<BlockPos, BlockState> world, IBlockRegistry blocks, BlockPos pos)
     {
         var state = world.TryGetValue(pos, out var s) ? s : BlockState.Air;
         return RailPlacementRules.GetRailShape(blocks.GetStateMetadata(state));
+    }
+
+    private sealed class WallTestCollisionWorld : IVoxelCollisionReader
+    {
+        private readonly HashSet<BlockPos> _solids = [];
+
+        public void FillSolid(BlockPos min, BlockPos max)
+        {
+            for (var x = min.X; x <= max.X; x++)
+            {
+                for (var y = min.Y; y <= max.Y; y++)
+                {
+                    for (var z = min.Z; z <= max.Z; z++)
+                    {
+                        _ = _solids.Add(new BlockPos(x, y, z));
+                    }
+                }
+            }
+        }
+
+        public bool IsColumnLoaded(BlockPos pos) => true;
+        public bool IsSolidBlock(BlockPos pos) => _solids.Contains(pos);
+        public int GetFluidLevelOrNegative(BlockPos pos) => -1;
     }
 }

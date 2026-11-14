@@ -16,6 +16,9 @@ public sealed partial class WorldMobManager
     private const int MaxHostileMobs = 18;
     private const double DespawnDistance = 88.0;
 
+    /// <summary>Seconds a hostile mob remembers a player after losing line of sight (vanilla forget timeout).</summary>
+    public const float MobTargetMemorySeconds = 4.0f;
+
     private readonly List<ActiveMob> _mobs = [];
     private int _nextMobId = 1;
     private uint _rng = 0x5A17C9E3U;
@@ -222,6 +225,7 @@ public sealed partial class WorldMobManager
         if (!playerCanBeTargeted)
         {
             mob.IsTargetingPlayer = false;
+            mob.TargetMemoryTimer = 0.0f;
             mob.CreeperFuseTimer = 0.0f;
             mob.CreeperFuseHissTriggered = false;
             mob.PathWaypoints = null;
@@ -235,7 +239,24 @@ public sealed partial class WorldMobManager
         var distSq = (dx * dx) + (dy * dy) + (dz * dz);
         var aggroRange = mob.Type == MobType.Spider ? 20.0 : 24.0;
 
-        if (distSq <= aggroRange * aggroRange)
+        // Vanilla targeting: hostile mobs acquire a player ONLY with a clear line of sight (never through walls),
+        // then keep chasing for a short grace window after losing sight before giving up and wandering off.
+        var inAggroRange = distSq <= aggroRange * aggroRange;
+        var hasSight = false;
+        if (inAggroRange)
+        {
+            var mobEye = new Vec3d(mob.FeetPosition.X, mob.FeetPosition.Y + (mob.Height * 0.85), mob.FeetPosition.Z);
+            var playerChest = new Vec3d(playerFeetPos.X, playerFeetPos.Y + 1.35, playerFeetPos.Z);
+            hasSight = HasClearLineOfSight(world, mobEye, playerChest);
+        }
+
+        mob.TargetMemoryTimer = hasSight
+            ? MobTargetMemorySeconds
+            : MathF.Max(0.0f, mob.TargetMemoryTimer - dt);
+
+        var keepsRememberedTarget = mob.IsTargetingPlayer && inAggroRange && mob.TargetMemoryTimer > 0.0f;
+
+        if (hasSight || keepsRememberedTarget)
         {
             mob.IsTargetingPlayer = true;
             var dist = Math.Sqrt(distSq);
@@ -332,7 +353,7 @@ public sealed partial class WorldMobManager
             {
                 var shootOrigin = new Vec3d(mob.FeetPosition.X, mob.FeetPosition.Y + 1.52, mob.FeetPosition.Z);
                 var playerChest = new Vec3d(playerFeetPos.X, playerFeetPos.Y + 1.35, playerFeetPos.Z);
-                if (HasClearLineOfSight(world, shootOrigin, playerChest))
+                if (hasSight && HasClearLineOfSight(world, shootOrigin, playerChest))
                 {
                     mob.YawDegrees = (float)(Math.Atan2(dx, dz) * (180.0 / Math.PI));
                     mob.DesiredSpeed = dist > 9.5 ? 2.45f : 0.0f;
@@ -372,6 +393,7 @@ public sealed partial class WorldMobManager
         else
         {
             mob.IsTargetingPlayer = false;
+            mob.TargetMemoryTimer = 0.0f;
             mob.CreeperFuseTimer = 0.0f;
             mob.CreeperFuseHissTriggered = false;
             mob.PathWaypoints = null;
@@ -423,6 +445,13 @@ public sealed partial class WorldMobManager
             if (bp != lastChecked)
             {
                 lastChecked = bp;
+
+                // Fail closed: an unloaded column is treated as opaque so mobs never shoot or aggro through ungenerated terrain!
+                if (!world.IsColumnLoaded(bp))
+                {
+                    return false;
+                }
+
                 hasCachedBox = world.TryGetCollisionBox(bp, out cachedBox);
             }
 
