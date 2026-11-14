@@ -38,7 +38,7 @@ public sealed partial class ServerPlaySessionBridge
             }
         }
 
-        _minecarts.Step(dtSeconds, _collisionReader, static bp => _world.GetBlockState(bp), playerFeet, riderLook, riderSteer);
+        _minecarts.Step(dtSeconds, _collisionReader, bp => _world.GetBlockState(bp), playerFeet, riderLook, riderSteer);
         foreach (var (sid, pl) in _players)
         {
             if (pl.RidingMinecartId == 0) continue;
@@ -105,7 +105,7 @@ public sealed partial class ServerPlaySessionBridge
                 _ = _tntAndWorld.DetonateRaycastExplosion(
                     blastCenter,
                     power: 3.1f,
-                    static bp => _world.GetBlockState(bp),
+                    bp => _world.GetBlockState(bp),
                     (pos, st) =>
                     {
                         if (_world.SetBlockState(pos, st, tickNumber))
@@ -141,7 +141,7 @@ public sealed partial class ServerPlaySessionBridge
         var arrowDmg = _arrows.Step(
             dtSeconds,
             _collisionReader,
-            static bp => _world.GetBlockState(bp),
+            bp => _world.GetBlockState(bp),
             _mobs,
             _registries.Items,
             arrowTargetPos,
@@ -268,14 +268,14 @@ public sealed partial class ServerPlaySessionBridge
         var sounds = new List<(BlockPos Pos, RedstoneSoundKind Sound)>();
         if (_redstone.TryInteractComponent(
                 pos,
-                static bp => _world.GetBlockState(bp),
+                bp => _world.GetBlockState(bp),
                 (bp, st) =>
                 {
                     if (_world.SetBlockState(bp, st, tickNumber)) changed.Add((bp, st.Id));
                 }))
         {
             _redstone.EvaluateImmediate(
-                static bp => _world.GetBlockState(bp),
+                bp => _world.GetBlockState(bp),
                 (bp, st) =>
                 {
                     if (_world.SetBlockState(bp, st, tickNumber)) changed.Add((bp, st.Id));
@@ -299,7 +299,7 @@ public sealed partial class ServerPlaySessionBridge
         if (ComposterAndTrapdoorMechanics.TryToggleTrapdoor(
                 _registries.Blocks,
                 pos,
-                static bp => _world.GetBlockState(bp),
+                bp => _world.GetBlockState(bp),
                 (bp, st) =>
                 {
                     if (_world.SetBlockState(bp, st, tickNumber)) changed.Add((bp, st.Id));
@@ -313,7 +313,7 @@ public sealed partial class ServerPlaySessionBridge
                 _registries.Blocks,
                 _registries.Items,
                 pos,
-                static bp => _world.GetBlockState(bp),
+                bp => _world.GetBlockState(bp),
                 (bp, st) =>
                 {
                     if (_world.SetBlockState(bp, st, tickNumber)) changed.Add((bp, st.Id));
