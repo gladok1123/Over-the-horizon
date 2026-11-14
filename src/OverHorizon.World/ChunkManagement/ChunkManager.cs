@@ -38,6 +38,7 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
     /// <param name="registries">Frozen domain registries.</param>
     /// <param name="generator">Thread-safe chunk generator.</param>
     /// <param name="storage">Async chunk storage backend.</param>
+    /// <param name="dimension">Dimension this manager streams, generates, and persists.</param>
     public ChunkManager(
         CoreRegistries registries,
         IWorldGenerator generator,
