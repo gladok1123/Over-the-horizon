@@ -319,7 +319,9 @@ public sealed class V10RailsStepsFallingAndOriginalAssetsTests
         containers.ActiveContainer!.SetSlot(13, new ItemStack(stoneId, 7));
         containers.ActiveContainer!.GetSlot(13).Count.Should().Be(7);
 
-        containers.CloseContainer().Should().BeNull("the barrel still has no viewers and was already closed");
+        var closedChest = containers.CloseContainer();
+        closedChest.Should().NotBeNull("the viewing player just shut the lid");
+        closedChest!.Position.Should().Be(chestPos);
         containers.ActiveContainer.Should().BeNull();
 
         // Contents survive closing and re-opening, and spill into the inventory when the block is broken.

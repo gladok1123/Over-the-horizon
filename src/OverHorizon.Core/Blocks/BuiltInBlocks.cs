@@ -130,11 +130,7 @@ public static class BuiltInBlocks
     /// <summary>Key for <c>overhorizon:farmland</c> (tilled soil).</summary>
     public static readonly ResourceKey Farmland = ResourceKey.OverHorizon("farmland");
 
-    /// <summary>
-    /// Key for <c>overhorizon:wheat_crop</c> (8-stage crop grown from Wheat Seeds on Farmland).
-    /// The block key is deliberately distinct from the <c>overhorizon:wheat</c> item because every block is
-    /// auto-registered into the shared item registry.
-    /// </summary>
+    /// <summary>Key for <c>overhorizon:wheat_crop</c> (kept distinct from the <c>wheat</c> item, since every block is auto-registered as an item).</summary>
     public static readonly ResourceKey Wheat = ResourceKey.OverHorizon("wheat_crop");
 
     /// <summary>Key for <c>overhorizon:hay_block</c>.</summary>
