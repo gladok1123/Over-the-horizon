@@ -18,7 +18,7 @@ namespace OverHorizon.World.ChunkManagement;
 /// (scaling cleanly up to 64-chunk view distances without full-grid allocations),
 /// double-buffered <see cref="ChunkSnapshot"/>s, and <see cref="Channel{T}"/>-backed async persistence.
 /// </summary>
-public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
+public sealed partial class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
 {
     private readonly CoreRegistries _registries;
     private readonly IWorldGenerator _generator;
@@ -300,25 +300,6 @@ public sealed class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
         }
 
         return saved;
-    }
-
-    /// <inheritdoc />
-    public ulong ComputeLoadedWorldHash()
-    {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-
-        var chunks = _loadedChunks.Values
-            .OrderBy(static c => c.Position)
-            .ToArray();
-
-        var hasher = Fnv1a64.Create();
-        hasher.AppendInt32(chunks.Length);
-        for (var i = 0; i < chunks.Length; i++)
-        {
-            hasher.AppendInt64(unchecked((long)chunks[i].ComputeDeterministicHash()));
-        }
-
-        return hasher.Value;
     }
 
     /// <inheritdoc />
