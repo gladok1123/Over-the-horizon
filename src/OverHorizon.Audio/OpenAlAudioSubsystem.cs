@@ -181,7 +181,6 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        _ = Interlocked.Increment(ref _totalSoundsTriggered);
         var cueIndex = (int)cue;
         if ((uint)cueIndex >= MaxCueSlots)
         {
@@ -214,6 +213,7 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
                 return;
             }
 
+            _ = Interlocked.Increment(ref _totalSoundsTriggered);
             _lastCuePlayTick[cueIndex] = nowTick;
             var relFloat = new Vector3((float)rel.X, (float)rel.Y, (float)rel.Z);
             var clampedPitch = Math.Clamp(pitch, 0.5f, 2.0f);
