@@ -265,14 +265,16 @@ public static class NetherPortalRules
             top++;
         }
 
+        // Both horizontal scans are hard-bounded: an entirely empty region (all air) must terminate
+        // after MaxPortalWidth steps instead of walking the whole world line forever.
         var left = seed;
-        while (IsOpen(blocks, getBlock(Offset(left, -1))))
+        for (var steps = 0; steps < MaxPortalWidth - 1 && IsOpen(blocks, getBlock(Offset(left, -1))); steps++)
         {
             left = Offset(left, -1);
         }
 
         var right = seed;
-        while (IsOpen(blocks, getBlock(Offset(right, 1))))
+        for (var steps = 0; steps < MaxPortalWidth - 1 && IsOpen(blocks, getBlock(Offset(right, 1))); steps++)
         {
             right = Offset(right, 1);
         }
