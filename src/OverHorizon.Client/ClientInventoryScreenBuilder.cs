@@ -26,6 +26,10 @@ internal static class ClientInventoryScreenBuilder
     public const int FurnaceFuelCellId = 401;
     public const int FurnaceOutputCellId = 402;
     public const int CreativeDeleteTrashCellId = 499;
+
+    /// <summary>First cell id of the <c>27</c>-slot (<c>9x3</c>) Barrel / Chest storage grid.</summary>
+    public const int ContainerCellBase = 500;
+
     public const int CreativeCatalogCellOffset = 1000;
 
     private static readonly (string Id, string Title, ItemCategory? Filter)[] CreativeTabs =
@@ -165,7 +169,8 @@ internal static class ClientInventoryScreenBuilder
         CraftingGrid grid2x2,
         CraftingGrid grid3x3,
         FurnaceBlockEntity? activeFurnace,
-        List<UiInventoryCell> cells)
+        List<UiInventoryCell> cells,
+        ContainerBlockEntity? activeContainer = null)
     {
         var (winX, winY, _, _) = GetContainerWindowBounds(width, height);
         const float s = ContainerGuiScale;
@@ -227,6 +232,18 @@ internal static class ClientInventoryScreenBuilder
             AddStackCell(cells, activeFurnace.InputSlot, FurnaceInputCellId, winX + (56.0f * s), winY + (17.0f * s), slotSize, mousePos, items, player.Hotbar, "Smelting Input");
             AddStackCell(cells, activeFurnace.FuelSlot, FurnaceFuelCellId, winX + (56.0f * s), winY + (53.0f * s), slotSize, mousePos, items, player.Hotbar, "Fuel Slot");
             AddStackCell(cells, activeFurnace.OutputSlot, FurnaceOutputCellId, winX + (116.0f * s), winY + (35.0f * s), slotSize, mousePos, items, player.Hotbar, "Smelted Output");
+        }
+        else if (mode is UiOverlayMode.BarrelScreen or UiOverlayMode.ChestScreen && activeContainer is not null)
+        {
+            // Authentic vanilla 9x3 x 27-slot Barrel / Chest storage grid!
+            for (var r = 0; r < 3; r++)
+            {
+                for (var c = 0; c < 9; c++)
+                {
+                    var cellId = ContainerCellBase + (r * 9) + c;
+                    AddStackCell(cells, activeContainer.GetSlot((r * 9) + c), cellId, winX + ((8.0f + (c * 18.0f)) * s), winY + ((18.0f + (r * 18.0f)) * s), slotSize, mousePos, items, player.Hotbar, string.Empty);
+                }
+            }
         }
     }
 

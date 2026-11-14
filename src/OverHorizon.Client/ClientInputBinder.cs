@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Numerics;
 using Microsoft.Extensions.Logging;
 using OverHorizon.Audio;
+using OverHorizon.Core.Math;
 using OverHorizon.Gameplay;
 using OverHorizon.Rendering.Hud;
 using Silk.NET.Input;
@@ -252,6 +253,10 @@ internal sealed class ClientInputBinder
                 // Esc in Options saves options.json and returns to the exact menu it was opened from (PauseMenu or TitleMenu)!
                 _menu.CloseOptionsAndReturn(_player);
             }
+            else if (_menu.Mode is UiOverlayMode.BarrelScreen or UiOverlayMode.ChestScreen)
+            {
+                CloseOpenContainerScreen(closeCue: true);
+            }
             else if (_menu.Mode is UiOverlayMode.BlockInventory or UiOverlayMode.SurvivalInventory or UiOverlayMode.CraftingTableScreen or UiOverlayMode.FurnaceScreen)
             {
                 _menu.CloseContainerAndRefundCursor(_player);
@@ -282,6 +287,12 @@ internal sealed class ClientInputBinder
                 _audio.PlayPositional(SoundCue.ItemPop, _player.Camera.Position, gain: 0.45f * _player.MasterVolume);
                 return;
             }
+        }
+
+        if (_menu.Mode is UiOverlayMode.BarrelScreen or UiOverlayMode.ChestScreen && key == Key.E)
+        {
+            CloseOpenContainerScreen(closeCue: true);
+            return;
         }
 
         if (_menu.Mode is UiOverlayMode.SurvivalInventory or UiOverlayMode.CraftingTableScreen or UiOverlayMode.FurnaceScreen && key == Key.E)
@@ -366,6 +377,22 @@ internal sealed class ClientInputBinder
             var slot = (int)key - (int)Key.Number1;
             _player.Hotbar.SelectSlot(slot);
             _audio.PlayPositional(SoundCue.UiClick, _player.Camera.Position, gain: 0.25f * _player.MasterVolume);
+        }
+    }
+
+    /// <summary>
+    /// Closes the open Barrel / Chest screen and plays the original <c>block/barrel/close.ogg</c> /
+    /// <c>block/chest/close1.ogg</c> cue when that was the last viewer shutting the lid.
+    /// </summary>
+    private void CloseOpenContainerScreen(bool closeCue)
+    {
+        var closed = _menu.CloseContainerScreen(_player);
+        _menu.Mode = UiOverlayMode.InGame;
+
+        if (closeCue && closed is { } c)
+        {
+            var center = new Vec3d(c.Position.X + 0.5, c.Position.Y + 0.5, c.Position.Z + 0.5);
+            _audio.PlayPositional(c.Cue, center, gain: 0.65f * _player.MasterVolume);
         }
     }
 

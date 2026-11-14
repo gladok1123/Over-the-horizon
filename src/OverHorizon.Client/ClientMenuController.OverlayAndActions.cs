@@ -58,7 +58,8 @@ internal sealed partial class ClientMenuController
                 return _containers.HandleCellClick(Mode, c.BlockIndex, isRightClick, player);
             }
 
-            if (Mode is UiOverlayMode.SurvivalInventory or UiOverlayMode.CraftingTableScreen or UiOverlayMode.FurnaceScreen)
+            if (Mode is UiOverlayMode.SurvivalInventory or UiOverlayMode.CraftingTableScreen or UiOverlayMode.FurnaceScreen or
+                UiOverlayMode.BarrelScreen or UiOverlayMode.ChestScreen)
             {
                 return _containers.HandleCellClick(Mode, c.BlockIndex, isRightClick, player);
             }
@@ -440,9 +441,10 @@ internal sealed partial class ClientMenuController
             return;
         }
 
-        if (Mode is UiOverlayMode.SurvivalInventory or UiOverlayMode.CraftingTableScreen or UiOverlayMode.FurnaceScreen)
+        if (Mode is UiOverlayMode.SurvivalInventory or UiOverlayMode.CraftingTableScreen or UiOverlayMode.FurnaceScreen or
+            UiOverlayMode.BarrelScreen or UiOverlayMode.ChestScreen)
         {
-            ClientInventoryScreenBuilder.BuildContainerScreen(Mode, width, height, MousePosition, player, _items, _recipes, _containers.Grid2x2, _containers.Grid3x3, _containers.ActiveFurnace, cells);
+            ClientInventoryScreenBuilder.BuildContainerScreen(Mode, width, height, MousePosition, player, _items, _recipes, _containers.Grid2x2, _containers.Grid3x3, _containers.ActiveFurnace, cells, _containers.ActiveContainer);
             return;
         }
 

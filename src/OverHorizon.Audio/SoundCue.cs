@@ -283,4 +283,16 @@ public enum SoundCue : byte
 
     /// <summary>Flattening grass or dirt into a dirt path with a Shovel (<c>item/shovel/flatten1.ogg</c>).</summary>
     ShovelFlatten = 93,
+
+    /// <summary>Opening a Barrel (<c>block/barrel/open1.ogg</c>).</summary>
+    BarrelOpen = 94,
+
+    /// <summary>Closing a Barrel (<c>block/barrel/close.ogg</c>).</summary>
+    BarrelClose = 95,
+
+    /// <summary>Opening a Chest (<c>block/chest/open.ogg</c>).</summary>
+    ChestOpen = 96,
+
+    /// <summary>Closing a Chest (<c>block/chest/close1.ogg</c>).</summary>
+    ChestClose = 97,
 }

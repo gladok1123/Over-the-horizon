@@ -253,6 +253,63 @@ public sealed partial class ResourcePackLoader : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Extracts authentic <c>16x16</c> Chest side, lid-top, and body tiles straight out of the original
+    /// <c>textures/entity/chest/normal.png</c> (<c>64x64</c>) when present, edge-clamping the vanilla
+    /// <c>14x14</c> / <c>14x10</c> UV regions into a seamless tile.
+    /// </summary>
+    public bool TryExtractChestTiles(byte[] atlas, ushort sideTile, ushort topTile, ushort bottomTile)
+    {
+        ArgumentNullException.ThrowIfNull(atlas);
+
+        if ((!_entityTextures.TryGetValue("chest/normal", out var pngBytes) &&
+             !_entityTextures.TryGetValue("normal", out pngBytes)) ||
+            !PngImageDecoder.TryDecodeRgba(pngBytes, out var w, out var h, out var chestRgba) ||
+            w < 42 || h < 43)
+        {
+            return false;
+        }
+
+        BlitChestSubRect(chestRgba, w, h, 14, 19, 14, 14, atlas, sideTile);
+        BlitChestSubRect(chestRgba, w, h, 14, 0, 14, 14, atlas, topTile);
+        BlitChestSubRect(chestRgba, w, h, 0, 33, 14, 10, atlas, bottomTile);
+        return true;
+    }
+
+    /// <summary>
+    /// Copies a vanilla Chest sub-rectangle into a <c>16x16</c> atlas tile, clamping source coordinates so the
+    /// authentic <c>14</c>-pixel-wide UV regions fill the tile with their own border pixels instead of neighbours.
+    /// </summary>
+    private static void BlitChestSubRect(
+        byte[] src,
+        int srcW,
+        int srcH,
+        int sx,
+        int sy,
+        int rectW,
+        int rectH,
+        byte[] atlas,
+        ushort tile)
+    {
+        var ax0 = (tile % 16) * 16;
+        var ay0 = (tile / 16) * 16;
+
+        for (var y = 0; y < 16; y++)
+        {
+            var syc = sy + Math.Clamp(y * rectH / 16, 0, rectH - 1);
+            for (var x = 0; x < 16; x++)
+            {
+                var sxc = sx + Math.Clamp(x * rectW / 16, 0, rectW - 1);
+                var si = (((Math.Min(syc, srcH - 1)) * srcW) + Math.Min(sxc, srcW - 1)) * 4;
+                var di = (((ay0 + y) * 256) + ax0 + x) * 4;
+                atlas[di + 0] = src[si + 0];
+                atlas[di + 1] = src[si + 1];
+                atlas[di + 2] = src[si + 2];
+                atlas[di + 3] = 255;
+            }
+        }
+    }
+
     private static void BlitSubRect16(byte[] src, int srcW, int sx, int sy, byte[] atlas, ushort tile)
     {
         var ax0 = (tile % 16) * 16;

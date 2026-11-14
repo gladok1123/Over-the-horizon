@@ -55,6 +55,8 @@ public static partial class ProceduralAtlasGenerator
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileChestTop, 152, 108, 46, variation: 14, alpha: 255);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileBarrelSide, 124, 90, 54, variation: 16, alpha: 255);
         ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileBarrelTop, 138, 102, 62, variation: 14, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileBarrelBottom, 112, 82, 48, variation: 14, alpha: 255);
+        ProceduralBlockTilePainter.PaintNoiseTile(pixels, TileChestBottom, 142, 100, 44, variation: 14, alpha: 255);
         ProceduralItemTilePainter.PaintLadderTile(pixels, TileLadder);
         ProceduralItemTilePainter.PaintRailTile(pixels, TileRail);
         ProceduralItemTilePainter.PaintCobwebTile(pixels, TileCobweb);
@@ -304,8 +306,8 @@ public static partial class ProceduralAtlasGenerator
         lookup[(BuiltInBlocks.Furnace, Direction.North)] = TileFurnaceFront;
         MapBlockTopBottomSide(lookup, BuiltInBlocks.LitFurnace, TileFurnaceTop, TileFurnaceTop, TileFurnaceSide);
         lookup[(BuiltInBlocks.LitFurnace, Direction.North)] = TileFurnaceFrontLit;
-        MapBlockTopBottomSide(lookup, BuiltInBlocks.Chest, TileChestTop, TileChestTop, TileChestSide);
-        MapBlockTopBottomSide(lookup, BuiltInBlocks.Barrel, TileBarrelTop, TileBarrelTop, TileBarrelSide);
+        MapBlockTopBottomSide(lookup, BuiltInBlocks.Chest, TileChestTop, TileChestBottom, TileChestSide);
+        MapBlockTopBottomSide(lookup, BuiltInBlocks.Barrel, TileBarrelTop, TileBarrelBottom, TileBarrelSide);
         MapAllFaces(lookup, BuiltInBlocks.Ladder, TileLadder);
         MapAllFaces(lookup, BuiltInBlocks.Rail, TileRail);
         MapAllFaces(lookup, BuiltInBlocks.PoweredRail, TilePoweredRailOff);

@@ -112,6 +112,16 @@ internal sealed partial class ClientItemUseHandler
                 return true;
             }
 
+            if (clickedKey == BuiltInBlocks.Barrel || clickedKey == BuiltInBlocks.Chest)
+            {
+                openContainerMode = clickedKey == BuiltInBlocks.Barrel
+                    ? UiOverlayMode.BarrelScreen
+                    : UiOverlayMode.ChestScreen;
+                openedContainerPos = targetHit.BlockPosition;
+                useCooldown = 0.20;
+                return true;
+            }
+
             if (clickedKey == BuiltInBlocks.Lever ||
                 clickedKey == BuiltInBlocks.StoneButton ||
                 clickedKey == BuiltInBlocks.RedstoneRepeater ||

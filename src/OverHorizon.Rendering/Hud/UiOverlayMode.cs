@@ -43,4 +43,10 @@ public enum UiOverlayMode : byte
 
     /// <summary>Singleplayer Create New World screen (editable World Name, Survival/Creative Game Mode toggle, Seed).</summary>
     CreateWorldMenu = 12,
+
+    /// <summary>Authentic <c>27</c>-slot (<c>9x3</c>) Barrel container screen (opened by right-clicking a Barrel).</summary>
+    BarrelScreen = 13,
+
+    /// <summary>Authentic <c>27</c>-slot (<c>9x3</c>) Chest container screen (opened by right-clicking a Chest).</summary>
+    ChestScreen = 14,
 }

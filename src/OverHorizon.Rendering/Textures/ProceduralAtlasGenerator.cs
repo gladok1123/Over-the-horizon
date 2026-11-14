@@ -68,6 +68,8 @@ public static partial class ProceduralAtlasGenerator
     internal const ushort TileChestTop = 40;
     internal const ushort TileBarrelSide = 41;
     internal const ushort TileBarrelTop = 42;
+    internal const ushort TileChestBottom = 253;
+    internal const ushort TileBarrelBottom = 254;
     internal const ushort TileLadder = 43;
     internal const ushort TileRail = 44;
     internal const ushort TileCobweb = 45;

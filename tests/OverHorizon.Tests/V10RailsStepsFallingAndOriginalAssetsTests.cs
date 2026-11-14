@@ -3,8 +3,12 @@ using FluentAssertions;
 using OverHorizon.Audio;
 using OverHorizon.Client;
 using OverHorizon.Core.Blocks;
+using OverHorizon.Core.Items;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
+using OverHorizon.Gameplay;
+using OverHorizon.Gameplay.Crafting;
+using OverHorizon.Gameplay.Inventory;
 using OverHorizon.Gameplay.Mobs;
 using OverHorizon.Gameplay.Physics;
 using OverHorizon.Gameplay.Survival;
@@ -163,7 +167,7 @@ public sealed class V10RailsStepsFallingAndOriginalAssetsTests
     [Fact]
     public void LandingAndFallSounds_UseOriginalDamageOggClipsInsteadOfFootsteps()
     {
-        Enum.GetValues<SoundCue>().Should().HaveCount(93, "the fake synthesized jump cue is gone; vanilla has no jump sound");
+        Enum.GetValues<SoundCue>().Should().HaveCount(97, "the fake synthesized jump cue is gone; vanilla has no jump sound");
 
         var bank = ProceduralSoundBank.CreateDefaultBank();
         bank.Should().ContainKey(SoundCue.LandSoft);
@@ -250,6 +254,81 @@ public sealed class V10RailsStepsFallingAndOriginalAssetsTests
 
         // With the column loaded and completely empty the same sight line is genuinely clear!
         WorldMobManager.HasClearLineOfSight(cache, new Vec3d(2.5, 65.6, 2.5), new Vec3d(8.5, 65.6, 2.5)).Should().BeTrue();
+    }
+
+    [Fact]
+    public void ContainerBlockEntity_HoldsTwentySevenSlotsTracksViewersAndDropsEverything()
+    {
+        var registries = CoreRegistries.CreateDefault();
+        var items = registries.Items;
+        var stoneId = (ushort)items.GetId(BuiltInItems.Coal);
+
+        var container = new ContainerBlockEntity(new BlockPos(4, 64, 4));
+        container.IsEmpty.Should().BeTrue();
+        container.IsOpen.Should().BeFalse();
+
+        container.SetSlot(0, new ItemStack(stoneId, 32));
+        container.SetSlot(26, new ItemStack(stoneId, 5));
+        container.GetSlot(0).Count.Should().Be(32);
+        container.GetSlot(26).Count.Should().Be(5);
+        container.IsEmpty.Should().BeFalse();
+
+        // Out-of-range reads/writes are ignored instead of throwing!
+        container.GetSlot(27).Should().Be(ItemStack.Empty);
+        container.SetSlot(-1, new ItemStack(stoneId, 1));
+
+        // Vanilla viewer counting drives the open block property and the open/close cues!
+        container.AddViewer();
+        container.IsOpen.Should().BeTrue();
+        container.AddViewer();
+        container.RemoveViewer().Should().BeFalse("a second viewer is still looking inside");
+        container.RemoveViewer().Should().BeTrue("the last viewer closed the lid");
+
+        var dropped = new List<ItemStack>();
+        container.DropAllContents(dropped.Add);
+        dropped.Should().HaveCount(2, "breaking a Barrel/Chest spills every stored stack");
+        container.IsEmpty.Should().BeTrue();
+    }
+
+    [Fact]
+    public void BarrelAndChestScreens_OpenTwentySevenSlotContainersWithOriginalCues()
+    {
+        var registries = CoreRegistries.CreateDefault();
+        var containers = new ClientContainerSlotController(registries.Items, BuiltInRecipes.CreateFrozen(registries.Items));
+        var barrelPos = new BlockPos(3, 64, 3);
+        var chestPos = new BlockPos(9, 64, 9);
+
+        Enum.GetValues<UiOverlayMode>().Should().Contain(UiOverlayMode.BarrelScreen);
+        Enum.GetValues<UiOverlayMode>().Should().Contain(UiOverlayMode.ChestScreen);
+
+        containers.OpenContainer(UiOverlayMode.BarrelScreen, barrelPos).Should().BeTrue("first viewer opens the barrel");
+        containers.ActiveContainer.Should().NotBeNull();
+        containers.ActiveContainer!.Position.Should().Be(barrelPos);
+        containers.OpenedContainerMode.Should().Be(UiOverlayMode.BarrelScreen);
+
+        // Re-opening the same barrel from a different screen does not double-fire the cue!
+        containers.OpenContainer(UiOverlayMode.ChestScreen, chestPos).Should().BeTrue();
+        containers.ActiveContainer!.Position.Should().Be(chestPos);
+
+        // 27 storage cells are addressable through the screen cell-id range!
+        ClientInventoryScreenBuilder.ContainerCellBase.Should().Be(500);
+        ContainerBlockEntity.SlotCount.Should().Be(27);
+
+        var stoneId = (ushort)registries.Items.GetId(BuiltInItems.Coal);
+        containers.ActiveContainer!.SetSlot(13, new ItemStack(stoneId, 7));
+        containers.ActiveContainer!.GetSlot(13).Count.Should().Be(7);
+
+        containers.CloseContainer().Should().BeNull("the barrel still has no viewers and was already closed");
+        containers.ActiveContainer.Should().BeNull();
+
+        // Contents survive closing and re-opening, and spill into the inventory when the block is broken.
+        containers.OpenContainer(UiOverlayMode.ChestScreen, chestPos);
+        containers.ActiveContainer!.GetSlot(13).Count.Should().Be(7, "chest contents persist across open/close");
+
+        var inv = new PlayerInventory();
+        containers.RemoveContainerAndDropContents(chestPos, inv).Should().BeTrue();
+        inv.CountItem(stoneId).Should().Be(7, "breaking a Chest drops its 27-slot contents into the player inventory");
+        containers.PeekContainer(chestPos).Should().BeNull();
     }
 
     private static string Shape(Dictionary<BlockPos, BlockState> world, IBlockRegistry blocks, BlockPos pos)

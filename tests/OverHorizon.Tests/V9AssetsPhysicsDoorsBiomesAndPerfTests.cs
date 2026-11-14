@@ -86,10 +86,10 @@ public sealed class V9AssetsPhysicsDoorsBiomesAndPerfTests
     public void SoundBankAndBlockSoundProfile_CoverAll93CuesAndMaterialFamilies()
     {
         var allCues = Enum.GetValues<SoundCue>();
-        allCues.Should().HaveCount(93);
+        allCues.Should().HaveCount(97);
 
         var bank = ProceduralSoundBank.CreateDefaultBank();
-        bank.Should().HaveCount(93);
+        bank.Should().HaveCount(97);
 
         Minecraft23w13aAssetSyncer.AssetManifest.Should().Contain("sounds/block/wooden_door/open1.ogg");
         Minecraft23w13aAssetSyncer.AssetManifest.Should().Contain("sounds/block/iron_door/open1.ogg");

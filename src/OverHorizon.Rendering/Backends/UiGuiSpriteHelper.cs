@@ -90,6 +90,7 @@ internal static class UiGuiSpriteHelper
         {
             UiOverlayMode.CraftingTableScreen => (GuiTextureAtlasGenerator.CraftingOriginX, GuiTextureAtlasGenerator.CraftingOriginY),
             UiOverlayMode.FurnaceScreen => (GuiTextureAtlasGenerator.FurnaceOriginX, GuiTextureAtlasGenerator.FurnaceOriginY),
+            UiOverlayMode.BarrelScreen or UiOverlayMode.ChestScreen => (GuiTextureAtlasGenerator.GenericContainerOriginX, GuiTextureAtlasGenerator.GenericContainerOriginY),
             _ => (GuiTextureAtlasGenerator.InventoryOriginX, GuiTextureAtlasGenerator.InventoryOriginY),
         };
 

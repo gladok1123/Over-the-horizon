@@ -20,8 +20,12 @@ internal sealed class ClientContainerSlotController
     private readonly FurnaceRecipes _furnaceRecipes;
     private readonly Dictionary<BlockPos, FurnaceBlockEntity> _furnaces = [];
 
+    private readonly Dictionary<BlockPos, ContainerBlockEntity> _containers = [];
+
     private ItemStack _cursorStack = ItemStack.Empty;
     private BlockPos? _openedFurnacePos;
+    private BlockPos? _openedContainerPos;
+    private UiOverlayMode _openedContainerMode = UiOverlayMode.InGame;
 
     public ClientContainerSlotController(IRegistry<ItemDefinition> items, IRegistry<ICraftingRecipe> recipes)
     {
@@ -71,6 +75,83 @@ internal sealed class ClientContainerSlotController
 
     public FurnaceBlockEntity? ActiveFurnace =>
         _openedFurnacePos is { } fp && _furnaces.TryGetValue(fp, out var fe) ? fe : null;
+
+    /// <summary>Gets the <c>27</c>-slot Barrel or Chest currently open on screen, or <see langword="null"/> when none.</summary>
+    public ContainerBlockEntity? ActiveContainer =>
+        _openedContainerPos is { } cp && _containers.TryGetValue(cp, out var ce) ? ce : null;
+
+    /// <summary>Gets the screen mode (<see cref="UiOverlayMode.BarrelScreen"/> / <see cref="UiOverlayMode.ChestScreen"/>) of the open container.</summary>
+    public UiOverlayMode OpenedContainerMode => _openedContainerPos is null ? UiOverlayMode.InGame : _openedContainerMode;
+
+    /// <summary>
+    /// Opens (or closes) the <c>27</c>-slot Barrel / Chest container at <paramref name="pos"/>, maintaining the
+    /// viewer count that drives the original <c>open</c> block-state property and open/close sound cues.
+    /// </summary>
+    /// <param name="mode">Container screen being opened.</param>
+    /// <param name="pos">Container block position, or <see langword="null"/> to close any open container.</param>
+    /// <returns><see langword="true"/> when this call flipped the container's open state.</returns>
+    public bool OpenContainer(UiOverlayMode mode, BlockPos? pos)
+    {
+        CloseContainer();
+
+        if (pos is not { } cp)
+        {
+            return false;
+        }
+
+        if (!_containers.TryGetValue(cp, out var entity))
+        {
+            entity = new ContainerBlockEntity(cp);
+            _containers[cp] = entity;
+        }
+
+        entity.AddViewer();
+        _openedContainerPos = cp;
+        _openedContainerMode = mode;
+        return entity.ViewerCount == 1;
+    }
+
+    /// <summary>Closes the currently open Barrel / Chest (if any).</summary>
+    /// <returns>The container whose last viewer just closed it, or <see langword="null"/> when nothing changed.</returns>
+    public ContainerBlockEntity? CloseContainer()
+    {
+        if (_openedContainerPos is not { } cp || !_containers.TryGetValue(cp, out var entity))
+        {
+            _openedContainerPos = null;
+            return null;
+        }
+
+        _openedContainerPos = null;
+        return entity.RemoveViewer() ? entity : null;
+    }
+
+    /// <summary>Looks up the persistent Barrel / Chest container at <paramref name="pos"/> without opening it.</summary>
+    /// <param name="pos">Container block position.</param>
+    /// <returns>The stored container, or <see langword="null"/> when none exists yet.</returns>
+    public ContainerBlockEntity? PeekContainer(BlockPos pos) => _containers.GetValueOrDefault(pos);
+
+    /// <summary>
+    /// Removes the Barrel / Chest container at <paramref name="pos"/> and spills every stored stack into
+    /// <paramref name="inv"/> (vanilla behaviour when the block is broken).
+    /// </summary>
+    /// <param name="pos">Container block position.</param>
+    /// <param name="inv">Receiving player inventory.</param>
+    /// <returns><see langword="true"/> when that container was the one currently open on screen.</returns>
+    public bool RemoveContainerAndDropContents(BlockPos pos, PlayerInventory inv)
+    {
+        if (_containers.Remove(pos, out var entity))
+        {
+            entity.DropAllContents(s => _ = inv.AddItem(s, _items));
+        }
+
+        if (_openedContainerPos == pos)
+        {
+            _openedContainerPos = null;
+            return true;
+        }
+
+        return false;
+    }
 
     public FurnaceBlockEntity GetOrCreateFurnace(BlockPos pos)
     {
@@ -151,6 +232,7 @@ internal sealed class ClientContainerSlotController
         RefundGrid(Grid2x2, inv);
         RefundGrid(Grid3x3, inv);
         _openedFurnacePos = null;
+        _ = CloseContainer();
         player.Hotbar.RefreshSlotVisuals(player.Mode);
     }
 
@@ -203,6 +285,16 @@ internal sealed class ClientContainerSlotController
                 furnace.OutputSlot = st;
                 return "crafted_item";
             }
+        }
+
+        if (ActiveContainer is { } container &&
+            cellId is >= ClientInventoryScreenBuilder.ContainerCellBase and < ClientInventoryScreenBuilder.ContainerCellBase + ContainerBlockEntity.SlotCount)
+        {
+            var slotIndex = cellId - ClientInventoryScreenBuilder.ContainerCellBase;
+            var containerStack = container.GetSlot(slotIndex);
+            SlotClickInteraction.ClickSlot(ref containerStack, ref _cursorStack, isRightClick, _items);
+            container.SetSlot(slotIndex, containerStack);
+            return "click_slot";
         }
 
         if (cellId is >= 0 and < PlayerInventory.TotalSlotCount)

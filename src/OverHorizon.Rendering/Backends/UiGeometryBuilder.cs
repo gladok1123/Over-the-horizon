@@ -76,7 +76,8 @@ public static class UiGeometryBuilder
 
         DrawRect(v, 0, 0, width, height, new Vector4(0.03f, 0.04f, 0.07f, 0.72f));
 
-        if (state.Mode is UiOverlayMode.SurvivalInventory or UiOverlayMode.CraftingTableScreen or UiOverlayMode.FurnaceScreen)
+        if (state.Mode is UiOverlayMode.SurvivalInventory or UiOverlayMode.CraftingTableScreen or UiOverlayMode.FurnaceScreen or
+            UiOverlayMode.BarrelScreen or UiOverlayMode.ChestScreen)
         {
             BuildRealGameContainerScreen(v, width, height, state);
             return;
@@ -129,6 +130,14 @@ public static class UiGeometryBuilder
         else if (state.Mode == UiOverlayMode.FurnaceScreen)
         {
             DrawText(v, "Furnace", winX + (62.0f * s), winY + (6.0f * s), 1.55f, labelCol, shadow: false);
+        }
+        else if (state.Mode == UiOverlayMode.BarrelScreen)
+        {
+            DrawText(v, "Barrel", winX + (8.0f * s), winY + (6.0f * s), 1.55f, labelCol, shadow: false);
+        }
+        else if (state.Mode == UiOverlayMode.ChestScreen)
+        {
+            DrawText(v, "Chest", winX + (8.0f * s), winY + (6.0f * s), 1.55f, labelCol, shadow: false);
         }
 
         DrawText(v, "Inventory", winX + (8.0f * s), winY + (73.0f * s), 1.55f, labelCol, shadow: false);

@@ -242,6 +242,14 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
         if (openContainer is { } containerMode)
         {
             _menu.OpenContainerScreen(containerMode, containerPos);
+
+            // Original 23w13a Barrel / Chest lid cues fire only on the closed -> open transition!
+            if (_menu.ContainerOpenedAt is { } openedPos && _menu.ContainerToggledOpen)
+            {
+                var center = new Vec3d(openedPos.X + 0.5, openedPos.Y + 0.5, openedPos.Z + 0.5);
+                var cue = containerMode == UiOverlayMode.BarrelScreen ? SoundCue.BarrelOpen : SoundCue.ChestOpen;
+                _audio.PlayPositional(cue, center, gain: 0.70f * _player.MasterVolume);
+            }
         }
 
         return used;

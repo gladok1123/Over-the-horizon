@@ -57,6 +57,9 @@ public static class GuiTextureAtlasGenerator
     internal const int TitlePanoramaOriginX = 768;
     internal const int TitlePanoramaOriginY = 512;
 
+    internal const int GenericContainerOriginX = 0;
+    internal const int GenericContainerOriginY = 768;
+
     /// <summary>Generates the <c>1024x1024</c> RGBA8 composite GUI texture sheet.</summary>
     public static byte[] Generate(string? externalAssetsPath = null)
     {
@@ -91,6 +94,7 @@ public static class GuiTextureAtlasGenerator
         TryOverlaySheet(rgba, pack, "title/edition", TitleEditionOriginX, TitleEditionOriginY, 128, 32);
         TryOverlayTiledSheet(rgba, pack, "options_background", OptionsBgOriginX, OptionsBgOriginY, 32, 32);
         TryOverlaySheet(rgba, pack, "title/background/panorama_0", TitlePanoramaOriginX, TitlePanoramaOriginY, 256, 256);
+        TryOverlaySheet(rgba, pack, "container/generic_54", GenericContainerOriginX, GenericContainerOriginY, 256, 256);
         return rgba;
     }
 

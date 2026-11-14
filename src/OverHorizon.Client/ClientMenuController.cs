@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
+using OverHorizon.Audio;
 using OverHorizon.Core.Items;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
@@ -150,19 +151,71 @@ internal sealed partial class ClientMenuController
         _selectedWorldIndex = Math.Clamp(_selectedWorldIndex, 0, Math.Max(0, _savedWorlds.Count - 1));
     }
 
+    /// <summary>Spills Furnace / Barrel / Chest contents into the inventory when its block is broken.</summary>
+    /// <param name="pos">Broken container block position.</param>
+    /// <param name="inv">Receiving player inventory.</param>
     public void RemoveFurnaceAndDropContents(BlockPos pos, PlayerInventory inv)
     {
         if (_containers.RemoveFurnaceAndDropContents(pos, inv) && Mode == UiOverlayMode.FurnaceScreen)
         {
             Mode = UiOverlayMode.InGame;
         }
+
+        if (_containers.RemoveContainerAndDropContents(pos, inv) &&
+            Mode is UiOverlayMode.BarrelScreen or UiOverlayMode.ChestScreen)
+        {
+            Mode = UiOverlayMode.InGame;
+        }
     }
 
+    /// <summary>Opens the requested Furnace / Barrel / Chest container screen.</summary>
+    /// <param name="containerMode">Container screen mode to open.</param>
+    /// <param name="blockPos">Container block position.</param>
     public void OpenContainerScreen(UiOverlayMode containerMode, BlockPos? blockPos)
     {
         _containers.OpenFurnace(containerMode == UiOverlayMode.FurnaceScreen ? blockPos : null);
+        if (containerMode is UiOverlayMode.BarrelScreen or UiOverlayMode.ChestScreen)
+        {
+            ContainerOpenedAt = blockPos;
+            ContainerToggledOpen = _containers.OpenContainer(containerMode, blockPos);
+        }
+
         StatusMessage = string.Empty;
         Mode = containerMode;
+    }
+
+    /// <summary>Gets the Barrel / Chest block position most recently opened by <see cref="OpenContainerScreen"/>.</summary>
+    public BlockPos? ContainerOpenedAt { get; private set; }
+
+    /// <summary>Gets whether the last <see cref="OpenContainerScreen"/> call flipped the container from closed to open.</summary>
+    public bool ContainerToggledOpen { get; private set; }
+
+    /// <summary>
+    /// Closes any open Barrel / Chest container screen, refunds the floating cursor stack, and reports the
+    /// authentic vanilla close cue so the caller can play <c>block/barrel/close.ogg</c> or <c>block/chest/close1.ogg</c>.
+    /// </summary>
+    /// <param name="player">Local player whose cursor stack must be refunded.</param>
+    /// <returns>The close cue and block position when a container fully closed; otherwise <see langword="null"/>.</returns>
+    public (SoundCue Cue, BlockPos Position)? CloseContainerScreen(ClientPlayerController player)
+    {
+        var closingMode = Mode;
+        var closedContainer = _containers.CloseContainer();
+        CloseContainerAndRefundCursor(player);
+
+        if (closingMode is UiOverlayMode.BarrelScreen or UiOverlayMode.ChestScreen)
+        {
+            Mode = UiOverlayMode.InGame;
+        }
+
+        ContainerOpenedAt = null;
+        ContainerToggledOpen = false;
+
+        if (closedContainer is null)
+        {
+            return null;
+        }
+
+        return (closingMode == UiOverlayMode.BarrelScreen ? SoundCue.BarrelClose : SoundCue.ChestClose, closedContainer.Position);
     }
 
     public void AdvanceAnimations(double dt, ClientPlayerController? player = null)
@@ -185,7 +238,8 @@ internal sealed partial class ClientMenuController
 
     public void OpenOrCloseInventory(ClientPlayerController player)
     {
-        if (Mode is UiOverlayMode.BlockInventory or UiOverlayMode.SurvivalInventory or UiOverlayMode.CraftingTableScreen or UiOverlayMode.FurnaceScreen)
+        if (Mode is UiOverlayMode.BlockInventory or UiOverlayMode.SurvivalInventory or UiOverlayMode.CraftingTableScreen or UiOverlayMode.FurnaceScreen or
+            UiOverlayMode.BarrelScreen or UiOverlayMode.ChestScreen)
         {
             CloseContainerAndRefundCursor(player);
             Mode = UiOverlayMode.InGame;
