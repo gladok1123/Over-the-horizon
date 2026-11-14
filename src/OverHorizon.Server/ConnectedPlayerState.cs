@@ -1,7 +1,9 @@
 using System.Numerics;
+using OverHorizon.Core;
 using OverHorizon.Core.Math;
 using OverHorizon.Gameplay;
 using OverHorizon.Modding.Commands;
+using OverHorizon.World.ChunkManagement;
 using OverHorizon.Networking.Packets.Clientbound;
 
 namespace OverHorizon.Server;
@@ -16,6 +18,9 @@ internal sealed class ConnectedPlayerState(
     public const float MaxPlayerHealth = 20.0f;
 
     public long EntityId { get; } = entityId;
+
+    /// <summary>Gets or sets the network session identifier owning this player.</summary>
+    public long SessionId { get; set; }
 
     public string Username { get; } = username;
 
@@ -60,6 +65,18 @@ internal sealed class ConnectedPlayerState(
     public float RiderForwardSteer { get; set; }
 
     public HashSet<long> SentChunks { get; } = [];
+
+    /// <summary>Gets or sets the dimension this player currently inhabits.</summary>
+    public DimensionId Dimension { get; set; } = DimensionId.Overworld;
+
+    /// <summary>Gets or sets elapsed seconds this player has continuously stood inside a Nether Portal.</summary>
+    public double PortalDwellSeconds { get; set; }
+
+    /// <summary>Gets or sets remaining seconds before this player may travel through another Nether Portal.</summary>
+    public double PortalCooldownSeconds { get; set; }
+
+    /// <summary>Gets or sets chunks queued for streaming to this player but not yet sent (smooths dimension switches).</summary>
+    public Queue<ChunkPos> PendingChunkQueue { get; } = new();
 
     /// <summary>Gets a value indicating whether the player is immune to combat and environmental damage.</summary>
     public bool IsInvulnerable => GameMode is GameMode.Creative or GameMode.Spectator;

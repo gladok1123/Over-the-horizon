@@ -269,6 +269,16 @@ public sealed partial class JavaProtocolCodec : IProtocolCodec
                 EncodeInventoryGrantAndEvent(destination, grantEv);
                 break;
 
+            case PlayerDimensionPacket playerDimension:
+                PacketBufferWriter.WriteVarInt(destination, 0x0F);
+                PacketBufferWriter.WriteVarInt(destination, (int)playerDimension.Dimension);
+                PacketBufferWriter.WriteFloat64(destination, playerDimension.Position.X);
+                PacketBufferWriter.WriteFloat64(destination, playerDimension.Position.Y);
+                PacketBufferWriter.WriteFloat64(destination, playerDimension.Position.Z);
+                PacketBufferWriter.WriteFloat32(destination, playerDimension.YawDegrees);
+                PacketBufferWriter.WriteFloat32(destination, playerDimension.PitchDegrees);
+                break;
+
             default:
                 throw new ProtocolException($"Unsupported clientbound packet type '{packet.GetType().Name}'.");
         }
@@ -322,6 +332,11 @@ public sealed partial class JavaProtocolCodec : IProtocolCodec
             (ConnectionState.Play, 0x0C) => DecodeRemotePlayerEquipment(ref reader),
             (ConnectionState.Play, 0x0D) => DecodeWorldEntitiesSnapshot(ref reader),
             (ConnectionState.Play, 0x0E) => DecodeInventoryGrantAndEvent(ref reader),
+            (ConnectionState.Play, 0x0F) => new PlayerDimensionPacket(
+                (OverHorizon.Core.DimensionId)reader.ReadVarInt(),
+                new Vec3d(reader.ReadFloat64(), reader.ReadFloat64(), reader.ReadFloat64()),
+                reader.ReadFloat32(),
+                reader.ReadFloat32()),
             _ => throw new ProtocolException($"Unknown clientbound packet ID 0x{packetId:X2} in state {state}."),
         };
 

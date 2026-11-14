@@ -169,7 +169,10 @@ public sealed partial class ServerPlaySessionBridge : IServerPlayHandler
             controllingSessionId: session.SessionId);
         _ = _gameplay.TrySetEntityKinematics(entityId, spawnPos, Vec3d.Zero, onGround: true);
 
-        var state = new ConnectedPlayerState(entityId, session.Username, spawnChunk, spawnPos, _options.DefaultPlayerPermission);
+        var state = new ConnectedPlayerState(entityId, session.Username, spawnChunk, spawnPos, _options.DefaultPlayerPermission)
+        {
+            SessionId = session.SessionId,
+        };
         _players[session.SessionId] = state;
 
         initialPlayPackets.Add(new SynchronizePlayerPositionPacket(spawnPos, 0.0f, 0.0f, state.NextTeleportId++));
@@ -335,23 +338,27 @@ public sealed partial class ServerPlaySessionBridge : IServerPlayHandler
             BroadcastToPeers(session.SessionId, broadcaster, new RemotePlayerMovePacket(playerState.EntityId, target, move.YawDegrees, move.PitchDegrees));
         }
 
+        var travelled = await TryStepPortalTravelAsync(playerState, broadcaster, ct).ConfigureAwait(false);
+        if (travelled)
+        {
+            return;
+        }
+
         var newChunk = target.ToBlockPos().ToChunkPos();
         if (newChunk != playerState.CenterChunk)
         {
             playerState.CenterChunk = newChunk;
             var radius = Math.Max(0, _options.PlayerViewDistanceChunks);
-            _world.Chunks.UpsertTicket(new ChunkTicket(session.SessionId, ChunkTicketType.Player, newChunk, radius));
+            _world.GetChunks(playerState.Dimension).UpsertTicket(
+                new ChunkTicket(session.SessionId, ChunkTicketType.Player, newChunk, radius, playerState.Dimension));
 
             var diameter = (radius * 2) + 1;
-            _ = await _world.Chunks.ProcessTicketsAsync(Math.Min(4, diameter), ct).ConfigureAwait(false);
+            _ = await _world.GetChunks(playerState.Dimension).ProcessTicketsAsync(Math.Min(4, diameter), ct).ConfigureAwait(false);
 
-            var streamed = new List<IClientboundPacket>(diameter);
-            CollectUnsentChunksAround(playerState, newChunk, radius, streamed);
-            for (var i = 0; i < streamed.Count; i++)
-            {
-                _ = broadcaster.SendToSession(session.SessionId, streamed[i]);
-            }
+            StreamChunksAround(playerState, newChunk, broadcaster);
         }
+
+        DrainPendingChunks(playerState, broadcaster, MaxChunksStreamedPerMove);
     }
 
     private void CollectUnsentChunksAround(ConnectedPlayerState state, ChunkPos center, int radius, IList<IClientboundPacket> sink)
@@ -362,7 +369,7 @@ public sealed partial class ServerPlaySessionBridge : IServerPlayHandler
             {
                 var pos = new ChunkPos(center.X + dx, center.Z + dz);
                 if (!state.SentChunks.Contains(pos.PackInt64()) &&
-                    _world.Chunks.TryGetSnapshot(pos, out var snapshot))
+                    _world.GetChunks(state.Dimension).TryGetSnapshot(pos, out var snapshot))
                 {
                     sink.Add(new ChunkDataPacket(pos, ChunkNetworkSerializer.SerializeSnapshotToArray(snapshot)));
                     _ = state.SentChunks.Add(pos.PackInt64());

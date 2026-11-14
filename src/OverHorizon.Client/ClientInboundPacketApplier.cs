@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using OverHorizon.Audio;
+using OverHorizon.Core;
 using OverHorizon.Core.Blocks;
 using OverHorizon.Core.Items;
 using OverHorizon.Core.Math;
@@ -19,6 +20,26 @@ namespace OverHorizon.Client;
 /// </summary>
 internal static class ClientInboundPacketApplier
 {
+    /// <summary>
+    /// Handles an authoritative dimension change (Nether Portal travel) by clearing every cached chunk from the
+    /// previous dimension, repointing the player at the new dimension, and snapping to the arrival pose.
+    /// </summary>
+    /// <param name="packet">Authoritative dimension packet.</param>
+    /// <param name="player">Local player controller.</param>
+    /// <param name="worldCache">Client chunk &amp; light cache.</param>
+    /// <param name="renderer">Render subsystem used to release staged chunk meshes.</param>
+    private static void ApplyDimensionSwap(
+        PlayerDimensionPacket packet,
+        ClientPlayerController player,
+        ClientWorldCache worldCache,
+        IRenderSubsystem renderer)
+    {
+        worldCache.ClearAll(renderer);
+        player.SetDimension(packet.Dimension);
+        player.ApplyAuthoritativePose(packet.Position, packet.YawDegrees, packet.PitchDegrees);
+        player.ApplyPortalCooldown(5.0);
+    }
+
     public static void Apply(
         IClientboundPacket packet,
         long localEntityId,
@@ -43,6 +64,10 @@ internal static class ClientInboundPacketApplier
 
         switch (packet)
         {
+            case PlayerDimensionPacket dimensionPkt:
+                ApplyDimensionSwap(dimensionPkt, player, worldCache, renderer);
+                break;
+
             case SynchronizePlayerPositionPacket syncPos:
                 if (!receivedInitialSpawnSync || (syncPos.Position - player.FeetPosition).LengthSquared > 256.0)
                 {
