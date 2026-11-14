@@ -187,6 +187,15 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
             return;
         }
 
+        // Camera-relative floating-point origin prevents 32-bit float precision jitter far from world origin.
+        var rel = worldPosition - ListenerPosition;
+        if (rel.LengthSquared > 64.0 * 64.0)
+        {
+            return;
+        }
+
+        _ = Interlocked.Increment(ref _totalSoundsTriggered);
+
         lock (_sync)
         {
             if (!IsInitialized || _al is null)
@@ -206,14 +215,6 @@ public sealed unsafe class OpenAlAudioSubsystem : IAudioSubsystem
                 return;
             }
 
-            // Camera-relative floating-point origin prevents 32-bit float precision jitter far from world origin.
-            var rel = worldPosition - ListenerPosition;
-            if (rel.LengthSquared > 64.0 * 64.0)
-            {
-                return;
-            }
-
-            _ = Interlocked.Increment(ref _totalSoundsTriggered);
             _lastCuePlayTick[cueIndex] = nowTick;
             var relFloat = new Vector3((float)rel.X, (float)rel.Y, (float)rel.Z);
             var clampedPitch = Math.Clamp(pitch, 0.5f, 2.0f);
