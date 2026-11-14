@@ -354,12 +354,14 @@ public static partial class Minecraft23w13aAssetSyncer
         "textures/block/lava_flow.png",
     ];
 
-    private static readonly Lazy<string[]> AllAssetPaths = new(static () => [.. RelativeAssetPaths, .. SoundAssetPaths]);
+    private static string[]? _combinedAssetPaths;
 
     /// <summary>
-    /// Gets the list of relative <c>assets/minecraft/...</c> paths synced from <c>23w13a__or__b</c>.
+    /// Gets the list of relative <c>assets/minecraft/...</c> paths synced from <c>23w13a__or__b</c>,
+    /// combining the texture/model manifest with the split-out <c>.ogg</c> sound manifest.
     /// </summary>
-    public static IReadOnlyList<string> AssetManifest => AllAssetPaths.Value;
+    public static IReadOnlyList<string> AssetManifest =>
+        _combinedAssetPaths ??= [.. RelativeAssetPaths, .. SoundAssetPaths];
 
     /// <summary>
     /// Downloads any missing <c>23w13a__or__b</c> PNG/OGG/JSON assets into <paramref name="targetPackRoot"/>.
