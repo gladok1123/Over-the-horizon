@@ -7,6 +7,7 @@ using OverHorizon.Core.Registry;
 using OverHorizon.Gameplay.Mobs;
 using OverHorizon.Gameplay.Survival;
 using OverHorizon.Networking;
+using OverHorizon.Networking.Packets;
 using OverHorizon.Networking.Codec;
 using OverHorizon.Networking.Framing;
 using OverHorizon.Networking.Packets.Clientbound;
@@ -153,13 +154,13 @@ public sealed class V11NetherPhysicsAndMultiplayerTests
     public void NetherGenerator_CarvesBedrockFloorAndCeilingWithALavaSea()
     {
         var registries = CoreRegistries.CreateDefault();
-        var generator = new NetherGenerator(12345L, registries.Blocks, registries.Biomes);
+        var generator = new NetherGenerator(12345L, registries);
         var chunk = new ChunkColumn(new ChunkPos(0, 0));
         generator.GenerateChunk(chunk);
 
-        registries.Blocks.GetStateMetadata(chunk.GetBlockState(0, 0, 0, registries.Blocks)).BlockKey
+        registries.Blocks.GetStateMetadata(chunk.GetBlockState(0, 0, 0)).BlockKey
             .Should().Be(BuiltInBlocks.Bedrock, "the Nether floor is bedrock");
-        registries.Blocks.GetStateMetadata(chunk.GetBlockState(0, 127, 0, registries.Blocks)).BlockKey
+        registries.Blocks.GetStateMetadata(chunk.GetBlockState(0, 127, 0)).BlockKey
             .Should().Be(BuiltInBlocks.Bedrock, "the Nether roof is bedrock");
 
         var sawLava = false;
@@ -169,7 +170,7 @@ public sealed class V11NetherPhysicsAndMultiplayerTests
             {
                 for (var y = 8; y <= 34; y++)
                 {
-                    var key = registries.Blocks.GetStateMetadata(chunk.GetBlockState(x, y, z, registries.Blocks)).BlockKey;
+                    var key = registries.Blocks.GetStateMetadata(chunk.GetBlockState(x, y, z)).BlockKey;
                     if (key == BuiltInBlocks.Lava)
                     {
                         sawLava = true;
@@ -287,7 +288,7 @@ public sealed class V11NetherPhysicsAndMultiplayerTests
     public void PlayerDimensionPacket_RoundTripsThroughThePlayCodec()
     {
         var codec = new JavaProtocolCodec();
-        var packet = new PlayerDimensionPacket(DimensionId.Nether, new Vec3d(12.5, 40.0, -8.25), yawDegrees: 91.5f, pitchDegrees: -12.25f);
+        var packet = new PlayerDimensionPacket(DimensionId.Nether, new Vec3d(12.5, 40.0, -8.25), YawDegrees: 91.5f, PitchDegrees: -12.25f);
 
         var payload = new byte[256];
         var writer = new ArrayBufferWriter<byte>();
