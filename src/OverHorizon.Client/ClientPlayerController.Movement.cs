@@ -110,6 +110,11 @@ public sealed partial class ClientPlayerController
         return true;
     }
 
+    /// <summary>Applies an authoritative server pose (position + look angles) to the local player.</summary>
+    /// <param name="feetPosition">Authoritative world-space feet position.</param>
+    /// <param name="yawDegrees">Authoritative body yaw in degrees.</param>
+    /// <param name="pitchDegrees">Authoritative head pitch in degrees.</param>
+    /// <param name="updateSpawn">When <see langword="true"/>, the respawn anchor moves to <paramref name="feetPosition"/>.</param>
     public void ApplyAuthoritativePose(Vec3d feetPosition, float yawDegrees, float pitchDegrees, bool updateSpawn = true)
     {
         FeetPosition = feetPosition;

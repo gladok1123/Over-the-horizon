@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Diagnostics.CodeAnalysis;
 using OverHorizon.Audio;
 using OverHorizon.Core;
 using OverHorizon.Core.Blocks;
@@ -29,6 +30,7 @@ namespace OverHorizon.Client;
 /// <see cref="PrimedTntAndWorldTicker"/> (batch craters, smooth 60 FPS <see cref="FallingBlockEntity"/>, controlled Fire, Water),
 /// <see cref="DroppedItemManager"/>, <see cref="ParticleSystem"/>, <see cref="MinecartManager"/>, <see cref="ArrowProjectileManager"/>, and 3D Mobs.
 /// </summary>
+[SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable", Justification = "The bridge borrows the session-owned world subsystem created by ClientSessionRunner; disposing it here would tear down the active world.")]
 internal sealed partial class ClientWorldSyncAndMobBridge
 {
     private static readonly Direction[] SixNeighbors =
