@@ -246,6 +246,7 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
         var clampedSky = Math.Clamp(skyBrightness, 0.08f, 1.0f);
         var chunkFogDist = overlay is { ChunkFogDistance: > 16.0f } ? overlay.ChunkFogDistance : camera.FarPlane;
         var skyColor = ComputeSkyAndFogColor(overlay, camera, clampedSky, ref chunkFogDist, out var isNether);
+        var underwater = overlay?.IsUnderwater == true;
 
         gl.ClearColor(skyColor.X, skyColor.Y, skyColor.Z, 1.0f);
         gl.Clear((uint)(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit));
