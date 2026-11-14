@@ -60,7 +60,10 @@ public sealed class WorldSubsystem : IWorldSubsystem
     public IChunkManager GetChunks(DimensionId dimension) => _dimensions[dimension];
 
     /// <inheritdoc />
-    public BlockState GetBlockState(BlockPos worldPos, DimensionId dimension = DimensionId.Overworld)
+    public BlockState GetBlockState(BlockPos worldPos) => GetBlockState(worldPos, DimensionId.Overworld);
+
+    /// <inheritdoc />
+    public BlockState GetBlockState(BlockPos worldPos, DimensionId dimension)
     {
         if (worldPos.Y < EngineConstants.WorldMinY || worldPos.Y >= EngineConstants.WorldMaxY)
         {
@@ -76,11 +79,19 @@ public sealed class WorldSubsystem : IWorldSubsystem
     }
 
     /// <inheritdoc />
-    public bool SetBlockState(BlockPos worldPos, BlockState newState, long tickNumber = 0, DimensionId dimension = DimensionId.Overworld) =>
+    public bool SetBlockState(BlockPos worldPos, BlockState newState, long tickNumber = 0) =>
+        SetBlockState(worldPos, newState, tickNumber, DimensionId.Overworld);
+
+    /// <inheritdoc />
+    public bool SetBlockState(BlockPos worldPos, BlockState newState, long tickNumber, DimensionId dimension) =>
         _dimensions[dimension].SetBlockState(worldPos, newState, tickNumber);
 
     /// <inheritdoc />
-    public int SetBlockStatesBatch(ReadOnlySpan<(BlockPos Position, BlockState State)> changes, long tickNumber = 0, DimensionId dimension = DimensionId.Overworld) =>
+    public int SetBlockStatesBatch(ReadOnlySpan<(BlockPos Position, BlockState State)> changes, long tickNumber = 0) =>
+        SetBlockStatesBatch(changes, tickNumber, DimensionId.Overworld);
+
+    /// <inheritdoc />
+    public int SetBlockStatesBatch(ReadOnlySpan<(BlockPos Position, BlockState State)> changes, long tickNumber, DimensionId dimension) =>
         _dimensions[dimension].SetBlockStatesBatch(changes, tickNumber);
 
     /// <inheritdoc />

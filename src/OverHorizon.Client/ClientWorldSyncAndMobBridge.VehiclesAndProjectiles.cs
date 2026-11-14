@@ -354,7 +354,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
 
     private bool IsBurningHazardBlock(BlockPos pos)
     {
-        var key = _blocks.GetStateMetadata(_localWorld.GetBlockState(pos)).BlockKey;
+        var key = _blocks.GetStateMetadata(_localWorld.GetBlockState(pos, ActiveDimension)).BlockKey;
         return key == BuiltInBlocks.Fire || key == BuiltInBlocks.Lava;
     }
 

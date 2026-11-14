@@ -38,7 +38,7 @@ public sealed partial class ServerPlaySessionBridge
             }
         }
 
-        _minecarts.Step(dtSeconds, _collisionReader, bp => _world.GetBlockState(bp), playerFeet, riderLook, riderSteer);
+        _minecarts.Step(dtSeconds, _collisionReader, _world.GetBlockState, playerFeet, riderLook, riderSteer);
         foreach (var (sid, pl) in _players)
         {
             if (pl.RidingMinecartId == 0) continue;
@@ -105,7 +105,7 @@ public sealed partial class ServerPlaySessionBridge
                 _ = _tntAndWorld.DetonateRaycastExplosion(
                     blastCenter,
                     power: 3.1f,
-                    bp => _world.GetBlockState(bp),
+                    _world.GetBlockState,
                     (pos, st) =>
                     {
                         if (_world.SetBlockState(pos, st, tickNumber))
@@ -141,7 +141,7 @@ public sealed partial class ServerPlaySessionBridge
         var arrowDmg = _arrows.Step(
             dtSeconds,
             _collisionReader,
-            bp => _world.GetBlockState(bp),
+            _world.GetBlockState,
             _mobs,
             _registries.Items,
             arrowTargetPos,
@@ -268,14 +268,14 @@ public sealed partial class ServerPlaySessionBridge
         var sounds = new List<(BlockPos Pos, RedstoneSoundKind Sound)>();
         if (_redstone.TryInteractComponent(
                 pos,
-                bp => _world.GetBlockState(bp),
+                _world.GetBlockState,
                 (bp, st) =>
                 {
                     if (_world.SetBlockState(bp, st, tickNumber)) changed.Add((bp, st.Id));
                 }))
         {
             _redstone.EvaluateImmediate(
-                bp => _world.GetBlockState(bp),
+                _world.GetBlockState,
                 (bp, st) =>
                 {
                     if (_world.SetBlockState(bp, st, tickNumber)) changed.Add((bp, st.Id));
@@ -299,7 +299,7 @@ public sealed partial class ServerPlaySessionBridge
         if (ComposterAndTrapdoorMechanics.TryToggleTrapdoor(
                 _registries.Blocks,
                 pos,
-                bp => _world.GetBlockState(bp),
+                _world.GetBlockState,
                 (bp, st) =>
                 {
                     if (_world.SetBlockState(bp, st, tickNumber)) changed.Add((bp, st.Id));
@@ -313,7 +313,7 @@ public sealed partial class ServerPlaySessionBridge
                 _registries.Blocks,
                 _registries.Items,
                 pos,
-                bp => _world.GetBlockState(bp),
+                _world.GetBlockState,
                 (bp, st) =>
                 {
                     if (_world.SetBlockState(bp, st, tickNumber)) changed.Add((bp, st.Id));
