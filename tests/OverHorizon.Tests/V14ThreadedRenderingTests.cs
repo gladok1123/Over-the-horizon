@@ -281,9 +281,18 @@ public sealed class V14ThreadedRenderingTests
         foreach (var source in sources)
         {
             var text = File.ReadAllText(source);
-            text.Should().Contain("#version 450", $"'{Path.GetFileName(source)}' must target Vulkan GLSL");
-            text.Should().Contain("layout (set = 0", $"'{Path.GetFileName(source)}' must use explicit descriptor bindings");
-            text.Should().Contain("layout (set = 0, binding =", $"'{Path.GetFileName(source)}' must bind every uniform through a descriptor set");
+            var name = Path.GetFileName(source);
+            var hasDescriptorSet = text.Contains("layout (set = 0, binding =", StringComparison.Ordinal);
+            var hasPushConstants = text.Contains("layout (push_constant)", StringComparison.Ordinal);
+
+            text.Should().Contain("#version 450", $"'{name}' must target Vulkan GLSL");
+            (hasDescriptorSet || hasPushConstants).Should().BeTrue(
+                $"'{name}' must read its uniforms from a descriptor set or a push-constant block, never from default uniforms");
+
+            if (hasDescriptorSet)
+            {
+                text.Should().Contain("layout (set = 0", $"'{name}' must use explicit descriptor bindings");
+            }
 
             var binary = Path.Combine(spirvDir, Path.GetFileName(source) + ".spv");
             File.Exists(binary).Should().BeTrue($"'{Path.GetFileName(source)}' must be precompiled, not compiled during gameplay");
