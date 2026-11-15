@@ -17,7 +17,7 @@ internal static class SilkOpenGlChunkPassDrawer
         SkyAtmosphere.ComputeColor(skyBrightness, worldTimeTicks, underwater);
 
     /// <summary>
-    /// Replays the opaque draw list produced by <see cref="CullVisibleSections"/> on the render thread.
+    /// Replays the opaque draw list produced by <see cref="ChunkPassCuller.CullVisibleSections"/> on the render thread.
     /// </summary>
     /// <param name="gl">OpenGL context.</param>
     /// <param name="prog">Bound chunk shader resources.</param>
