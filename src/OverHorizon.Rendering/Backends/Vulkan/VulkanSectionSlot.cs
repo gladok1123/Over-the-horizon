@@ -11,6 +11,7 @@ namespace OverHorizon.Rendering.Backends.Vulkan;
 internal sealed unsafe class VulkanSectionSlot : IResidentSection, IDisposable
 {
     private readonly List<VulkanBuffer> _buffers = [];
+    private VulkanBufferArena? _arena;
     private bool _disposed;
 
     private VulkanSectionSlot(SectionPos sectionPosition, BoundingBox worldBounds)
@@ -46,44 +47,21 @@ internal sealed unsafe class VulkanSectionSlot : IResidentSection, IDisposable
     /// <summary>
     /// Uploads one meshed section to the GPU.
     /// </summary>
-    /// <param name="vk">Vulkan API.</param>
-    /// <param name="device">Logical device.</param>
-    /// <param name="physicalDevice">Physical device used for memory-type selection.</param>
-    /// <param name="commandPool">Command pool used for the staging copies.</param>
-    /// <param name="queue">Queue used for the staging copies.</param>
+    /// <param name="arena">Device-local arena the section's buffers are sub-allocated from.</param>
+    /// <param name="uploads">Batched staging uploader.</param>
     /// <param name="mesh">CPU mesh produced by the greedy mesher.</param>
     /// <returns>The resident GPU section.</returns>
-    public static VulkanSectionSlot Create(
-        Vk vk,
-        Device device,
-        PhysicalDevice physicalDevice,
-        CommandPool commandPool,
-        Queue queue,
-        SectionMeshData mesh)
+    public static VulkanSectionSlot Create(VulkanBufferArena arena, VulkanUploadQueue uploads, SectionMeshData mesh)
     {
         ArgumentNullException.ThrowIfNull(mesh);
 
         var slot = new VulkanSectionSlot(mesh.SectionPosition, mesh.WorldBounds);
+        slot._arena = arena;
 
         if (!mesh.OpaqueIndices.IsEmpty)
         {
-            slot.OpaqueVertices = VulkanBuffer.CreateDeviceLocal(
-                vk,
-                device,
-                physicalDevice,
-                commandPool,
-                queue,
-                mesh.OpaqueVertices.Span,
-                BufferUsageFlags.VertexBufferBit);
-
-            slot.OpaqueIndices = VulkanBuffer.CreateDeviceLocal(
-                vk,
-                device,
-                physicalDevice,
-                commandPool,
-                queue,
-                mesh.OpaqueIndices.Span,
-                BufferUsageFlags.IndexBufferBit);
+            slot.OpaqueVertices = Upload(arena, uploads, mesh.OpaqueVertices.Span, BufferUsageFlags.VertexBufferBit);
+            slot.OpaqueIndices = Upload(arena, uploads, mesh.OpaqueIndices.Span, BufferUsageFlags.IndexBufferBit);
 
             slot.OpaqueIndexCount = mesh.OpaqueIndices.Length;
             slot.Track(slot.OpaqueVertices);
@@ -92,23 +70,8 @@ internal sealed unsafe class VulkanSectionSlot : IResidentSection, IDisposable
 
         if (!mesh.TranslucentIndices.IsEmpty)
         {
-            slot.TranslucentVertices = VulkanBuffer.CreateDeviceLocal(
-                vk,
-                device,
-                physicalDevice,
-                commandPool,
-                queue,
-                mesh.TranslucentVertices.Span,
-                BufferUsageFlags.VertexBufferBit);
-
-            slot.TranslucentIndices = VulkanBuffer.CreateDeviceLocal(
-                vk,
-                device,
-                physicalDevice,
-                commandPool,
-                queue,
-                mesh.TranslucentIndices.Span,
-                BufferUsageFlags.IndexBufferBit);
+            slot.TranslucentVertices = Upload(arena, uploads, mesh.TranslucentVertices.Span, BufferUsageFlags.VertexBufferBit);
+            slot.TranslucentIndices = Upload(arena, uploads, mesh.TranslucentIndices.Span, BufferUsageFlags.IndexBufferBit);
 
             slot.TranslucentIndexCount = mesh.TranslucentIndices.Length;
             slot.Track(slot.TranslucentVertices);
@@ -129,10 +92,12 @@ internal sealed unsafe class VulkanSectionSlot : IResidentSection, IDisposable
         _disposed = true;
         foreach (var buffer in _buffers)
         {
+            _arena?.Free(buffer.Memory, 0, buffer.AllocatedSize);
             buffer.Dispose();
         }
 
         _buffers.Clear();
+        _arena = null;
         OpaqueVertices = null;
         OpaqueIndices = null;
         TranslucentVertices = null;
@@ -142,4 +107,22 @@ internal sealed unsafe class VulkanSectionSlot : IResidentSection, IDisposable
     }
 
     private void Track(VulkanBuffer buffer) => _buffers.Add(buffer);
+
+    private static VulkanBuffer Upload<T>(
+        VulkanBufferArena arena,
+        VulkanUploadQueue uploads,
+        ReadOnlySpan<T> data,
+        BufferUsageFlags usage)
+        where T : unmanaged
+    {
+        var buffer = VulkanBuffer.Create(
+            uploads.Api,
+            uploads.Device,
+            arena,
+            Math.Max((ulong)(data.Length * sizeof(T)), 1UL),
+            BufferUsageFlags.TransferDstBit | usage);
+
+        uploads.CopyTo(data, buffer);
+        return buffer;
+    }
 }

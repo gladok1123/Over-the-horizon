@@ -227,10 +227,13 @@ internal sealed unsafe partial class VulkanDevice : IDisposable
             _khrSurface.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, ref formatCount, formatsPtr);
         }
 
+        // The shaders do their lighting maths on the raw texel values and the OpenGL backend wrote them to a
+        // plain UNORM default framebuffer, so the swapchain must stay UNORM too: an sRGB format would apply a
+        // linear->sRGB encode on write and wash the whole scene out.
         _swapchainFormat = formats[0].Format;
         foreach (var candidate in formats)
         {
-            if (candidate.Format == Format.B8G8R8A8Srgb && candidate.ColorSpace == ColorSpaceKHR.SpaceSrgbNonlinearKhr)
+            if (candidate.Format == Format.B8G8R8A8Unorm || candidate.Format == Format.R8G8B8A8Unorm)
             {
                 _swapchainFormat = candidate.Format;
                 break;

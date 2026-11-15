@@ -78,6 +78,8 @@ public sealed unsafe partial class VulkanRenderSubsystem
         }
 
         _atlasSampler = VulkanImage.CreateNearestSampler(vk, device.LogicalDevice);
+        _uploads = new VulkanUploadQueue(device);
+        _meshArena = new VulkanBufferArena(device, MemoryPropertyFlags.DeviceLocalBit);
         _overlayStream = new VulkanVertexStream(vk, device.LogicalDevice, device.PhysicalDevice, 4UL * 1024 * 1024);
         _uiRenderer = new VulkanUiRenderer(device, _pipelines, _descriptorSets, _atlasSampler);
 
@@ -93,6 +95,8 @@ public sealed unsafe partial class VulkanRenderSubsystem
 
         if (_stagedColumns.Count > 0)
         {
+            // One submission for the whole backlog instead of one wait per section.
+            _batchingUploads = true;
             foreach (var colMap in _stagedColumns.Values)
             {
                 foreach (var mesh in colMap.Values)
@@ -100,6 +104,9 @@ public sealed unsafe partial class VulkanRenderSubsystem
                     UploadMeshToDevice(mesh);
                 }
             }
+
+            _batchingUploads = false;
+            _uploads!.Flush();
 
             _stagedColumns.Clear();
             _stagedSectionCount = 0;
@@ -170,6 +177,8 @@ public sealed unsafe partial class VulkanRenderSubsystem
         _cullColumnsDirty = true;
 
         _uiRenderer?.Dispose();
+        _meshArena?.Dispose();
+        _uploads?.Dispose();
         _overlayStream?.Dispose();
         _entityAtlasImage?.Dispose();
         _blockAtlasImage?.Dispose();
@@ -191,6 +200,8 @@ public sealed unsafe partial class VulkanRenderSubsystem
         _inputContext?.Dispose();
 
         _uiRenderer = null;
+        _meshArena = null;
+        _uploads = null;
         _overlayStream = null;
         _entityAtlasImage = null;
         _blockAtlasImage = null;

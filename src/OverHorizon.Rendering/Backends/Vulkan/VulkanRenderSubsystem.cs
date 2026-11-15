@@ -53,6 +53,9 @@ public sealed unsafe partial class VulkanRenderSubsystem : IWindowRenderSubsyste
     private VulkanImage? _blockAtlasImage;
     private VulkanImage? _entityAtlasImage;
     private VulkanVertexStream? _overlayStream;
+    private VulkanUploadQueue? _uploads;
+    private VulkanBufferArena? _meshArena;
+    private bool _batchingUploads;
     private VulkanUiRenderer? _uiRenderer;
 
     /// <summary>Initializes a new instance of the <see cref="VulkanRenderSubsystem"/> class.</summary>
@@ -292,13 +295,7 @@ public sealed unsafe partial class VulkanRenderSubsystem : IWindowRenderSubsyste
     private void UploadMeshToDevice(SectionMeshData mesh)
     {
         var device = _device!;
-        var slot = VulkanSectionSlot.Create(
-            device.Api,
-            device.LogicalDevice,
-            device.PhysicalDevice,
-            device.Pool,
-            device.GraphicsQueue,
-            mesh);
+        var slot = VulkanSectionSlot.Create(_meshArena!, _uploads!, mesh);
 
         var chunkPos = new ChunkPos(mesh.SectionPosition.X, mesh.SectionPosition.Z);
         if (!_gpuColumns.TryGetValue(chunkPos, out var col))
@@ -308,6 +305,13 @@ public sealed unsafe partial class VulkanRenderSubsystem : IWindowRenderSubsyste
         }
 
         _gpuSectionCount += col.UpsertSection(slot);
+
+        // Outside a bulk upload the copy is submitted straight away: a section evicted a few lines later must
+        // never leave a recorded-but-unsubmitted copy pointing at a destroyed buffer.
+        if (!_batchingUploads)
+        {
+            _uploads!.Flush();
+        }
     }
 
     /// <inheritdoc />

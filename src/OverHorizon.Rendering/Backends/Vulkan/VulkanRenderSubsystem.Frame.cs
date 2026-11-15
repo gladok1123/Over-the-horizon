@@ -37,6 +37,10 @@ public sealed unsafe partial class VulkanRenderSubsystem
             return SimulateCpuVisibilityPass(in frustum);
         }
 
+        // Every mesh handed to us since the last frame is uploaded in one submission and one wait here, instead
+        // of stalling the queue four times per section while chunks stream in.
+        _uploads?.Flush();
+
         var clampedSky = Math.Clamp(skyBrightness, 0.08f, 1.0f);
         var chunkFogDist = overlay is { ChunkFogDistance: > 16.0f } ? overlay.ChunkFogDistance : camera.FarPlane;
         var skyColor = FrameAtmosphere.ComputeSkyAndFogColor(overlay, camera, clampedSky, ref chunkFogDist, out var isNether);
@@ -132,9 +136,23 @@ public sealed unsafe partial class VulkanRenderSubsystem
         return LastFrameMetrics;
     }
 
+    /// <summary>
+    /// Binds the full-framebuffer dynamic viewport and scissor.
+    /// <para>
+    /// The view-projection matrices are built for OpenGL's NDC, where <c>+Y</c> points up; Vulkan's framebuffer
+    /// space points <c>+Y</c> down, so without a correction the whole scene lands upside down. A negative
+    /// viewport height flips the image back and, because it mirrors the framebuffer Y axis, it also restores the
+    /// triangle winding — so the pipelines can keep <c>FrontFace.CounterClockwise</c> and cull back faces exactly
+    /// like the OpenGL backend did. Depth is untouched: the viewport depth range maps <c>[-1,1]</c> onto
+    /// <c>[0,1]</c> linearly, which is the same window depth OpenGL produced.
+    /// </para>
+    /// </summary>
+    /// <param name="vk">Vulkan API.</param>
+    /// <param name="cmd">Active command buffer.</param>
+    /// <param name="extent">Framebuffer extent in pixels.</param>
     private static void SetViewportAndScissor(Vk vk, CommandBuffer cmd, Extent2D extent)
     {
-        var viewport = new Viewport(0.0f, 0.0f, extent.Width, extent.Height, 0.0f, 1.0f);
+        var viewport = new Viewport(0.0f, extent.Height, extent.Width, -(float)extent.Height, 0.0f, 1.0f);
         vk.CmdSetViewport(cmd, 0, 1, &viewport);
 
         var scissor = new Rect2D(new Offset2D(0, 0), extent);

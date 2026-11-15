@@ -72,7 +72,7 @@ internal sealed unsafe class VulkanImage : IDisposable
             Extent = extent,
             MipLevels = 1,
             ArrayLayers = 1,
-            Format = Format.R8G8B8A8Srgb,
+            Format = Format.R8G8B8A8Unorm,
             Tiling = ImageTiling.Optimal,
             InitialLayout = ImageLayout.Undefined,
             Usage = ImageUsageFlags.TransferDstBit | ImageUsageFlags.SampledBit,
@@ -138,7 +138,7 @@ internal sealed unsafe class VulkanImage : IDisposable
             SType = StructureType.ImageViewCreateInfo,
             Image = image,
             ViewType = ImageViewType.Type2D,
-            Format = Format.R8G8B8A8Srgb,
+            Format = Format.R8G8B8A8Unorm,
             SubresourceRange = new ImageSubresourceRange(ImageAspectFlags.ColorBit, 0, 1, 0, 1),
         };
 

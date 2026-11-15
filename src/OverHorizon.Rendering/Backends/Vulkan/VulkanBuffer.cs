@@ -12,17 +12,20 @@ internal sealed unsafe class VulkanBuffer : IDisposable
 {
     private readonly Vk _vk;
     private readonly Device _device;
+    private readonly bool _ownsMemory;
     private Buffer _buffer;
     private DeviceMemory _memory;
     private bool _disposed;
 
-    private VulkanBuffer(Vk vk, Device device, Buffer buffer, DeviceMemory memory, ulong size)
+    private VulkanBuffer(Vk vk, Device device, Buffer buffer, DeviceMemory memory, ulong size, bool ownsMemory, MemoryRequirements requirements)
     {
         _vk = vk;
         _device = device;
         _buffer = buffer;
         _memory = memory;
+        _ownsMemory = ownsMemory;
         Size = size;
+        MemoryRequirements = requirements;
     }
 
     /// <summary>Gets the capacity of the buffer in bytes.</summary>
@@ -30,6 +33,15 @@ internal sealed unsafe class VulkanBuffer : IDisposable
 
     /// <summary>Gets the raw buffer handle.</summary>
     public Buffer Handle => _buffer;
+
+    /// <summary>Gets the memory requirements reported for this buffer.</summary>
+    public MemoryRequirements MemoryRequirements { get; }
+
+    /// <summary>Gets the device memory backing this buffer (possibly shared with other buffers).</summary>
+    public DeviceMemory Memory => _memory;
+
+    /// <summary>Gets the number of bytes this buffer occupies inside its backing memory.</summary>
+    public ulong AllocatedSize => MemoryRequirements.Size;
 
     /// <summary>
     /// Allocates a buffer bound to freshly allocated memory.
@@ -71,57 +83,41 @@ internal sealed unsafe class VulkanBuffer : IDisposable
         DeviceMemory memory;
         VulkanResult.Ensure(vk.AllocateMemory(device, in allocateInfo, null, out memory), "vkAllocateMemory");
         VulkanResult.Ensure(vk.BindBufferMemory(device, buffer, memory, 0), "vkBindBufferMemory");
-        return new VulkanBuffer(vk, device, buffer, memory, size);
+        return new VulkanBuffer(vk, device, buffer, memory, size, ownsMemory: true, requirements);
     }
 
     /// <summary>
-    /// Allocates a device-local buffer and fills it with <paramref name="data"/> through a staging buffer.
+    /// Allocates a buffer inside a range reserved from <paramref name="arena"/> instead of taking out a fresh
+    /// <c>vkAllocateMemory</c> of its own.
     /// </summary>
-    /// <typeparam name="T">Unmanaged element type.</typeparam>
     /// <param name="vk">Vulkan API.</param>
     /// <param name="device">Logical device.</param>
-    /// <param name="physicalDevice">Physical device used for memory-type selection.</param>
-    /// <param name="commandPool">Command pool used for the staging copy.</param>
-    /// <param name="queue">Queue used for the staging copy.</param>
-    /// <param name="data">Source data.</param>
-    /// <param name="usage">Extra usage flags for the destination buffer.</param>
-    /// <returns>The device-local buffer holding a copy of <paramref name="data"/>.</returns>
-    public static VulkanBuffer CreateDeviceLocal<T>(
+    /// <param name="arena">Arena the backing memory comes from.</param>
+    /// <param name="size">Capacity in bytes.</param>
+    /// <param name="usage">Buffer usage flags.</param>
+    /// <returns>The allocated buffer.</returns>
+    public static VulkanBuffer Create(
         Vk vk,
         Device device,
-        PhysicalDevice physicalDevice,
-        CommandPool commandPool,
-        Queue queue,
-        ReadOnlySpan<T> data,
+        VulkanBufferArena arena,
+        ulong size,
         BufferUsageFlags usage)
-        where T : unmanaged
     {
-        var size = (ulong)(data.Length * sizeof(T));
-        if (size == 0)
+        var bufferInfo = new BufferCreateInfo
         {
-            size = (ulong)sizeof(T);
-        }
+            SType = StructureType.BufferCreateInfo,
+            Size = size,
+            Usage = usage,
+            SharingMode = SharingMode.Exclusive,
+        };
 
-        using var staging = Create(
-            vk,
-            device,
-            physicalDevice,
-            size,
-            BufferUsageFlags.TransferSrcBit,
-            MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit);
+        Buffer buffer;
+        VulkanResult.Ensure(vk.CreateBuffer(device, in bufferInfo, null, out buffer), "vkCreateBuffer");
 
-        staging.Upload(data);
-
-        var destination = Create(
-            vk,
-            device,
-            physicalDevice,
-            size,
-            BufferUsageFlags.TransferDstBit | usage,
-            MemoryPropertyFlags.DeviceLocalBit);
-
-        VulkanMemory.CopyBuffer(vk, device, commandPool, queue, staging.Handle, destination.Handle, size);
-        return destination;
+        vk.GetBufferMemoryRequirements(device, buffer, out var requirements);
+        arena.Allocate(requirements.Size, out var memory, out var offset);
+        VulkanResult.Ensure(vk.BindBufferMemory(device, buffer, memory, offset), "vkBindBufferMemory");
+        return new VulkanBuffer(vk, device, buffer, memory, size, ownsMemory: false, requirements);
     }
 
     /// <summary>
@@ -173,7 +169,10 @@ internal sealed unsafe class VulkanBuffer : IDisposable
 
         _disposed = true;
         _vk.DestroyBuffer(_device, _buffer, null);
-        _vk.FreeMemory(_device, _memory, null);
+        if (_ownsMemory)
+        {
+            _vk.FreeMemory(_device, _memory, null);
+        }
         _buffer = default;
         _memory = default;
     }

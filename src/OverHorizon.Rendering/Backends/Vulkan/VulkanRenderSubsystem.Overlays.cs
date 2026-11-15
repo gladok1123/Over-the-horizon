@@ -191,24 +191,27 @@ public sealed unsafe partial class VulkanRenderSubsystem
             return 0;
         }
 
-        var screenH = overlay.ViewportSize.Y > 64.0f ? overlay.ViewportSize.Y : 720.0f;
         var rect = overlay.InventoryPlayerPreviewRect;
 
-        var vx = (int)MathF.Round(rect.X);
-        var vy = (int)MathF.Round(screenH - (rect.Y + rect.W));
-        var vw = Math.Max(8, (int)MathF.Round(rect.Z));
-        var vh = Math.Max(8, (int)MathF.Round(rect.W));
+        // Rect is in pixel space with the origin at the top-left, which is exactly Vulkan's framebuffer space;
+        // the negative viewport height mirrors it the same way the full-screen viewport does.
+        var vx = MathF.Round(rect.X);
+        var vy = MathF.Round(rect.Y);
+        var vw = Math.Max(8.0f, MathF.Round(rect.Z));
+        var vh = Math.Max(8.0f, MathF.Round(rect.W));
 
         var vk = device.Api;
-        var viewport = new Viewport(vx, vy, vw, vh, 0.0f, 1.0f);
+        var viewport = new Viewport(vx, vy + vh, vw, -vh, 0.0f, 1.0f);
         vk.CmdSetViewport(cmd, 0, 1, &viewport);
 
-        var scissor = new Rect2D(new Offset2D(vx, vy), new Extent2D((uint)vw, (uint)vh));
+        var scissor = new Rect2D(
+            new Offset2D((int)vx, (int)vy),
+            new Extent2D((uint)vw, (uint)vh));
         vk.CmdSetScissor(cmd, 0, 1, &scissor);
 
         ClearDepthAttachment(cmd);
 
-        var aspect = (float)vw / vh;
+        var aspect = vw / vh;
         var view = Matrix4x4.CreateLookAt(new Vector3(0.0f, 0.06f, 2.85f), new Vector3(0.0f, 0.02f, 0.0f), Vector3.UnitY);
         var proj = Matrix4x4.CreatePerspectiveFieldOfView(42.0f * (MathF.PI / 180.0f), aspect, 0.2f, 10.0f);
         var drawCalls = DrawOverlayBatch(
