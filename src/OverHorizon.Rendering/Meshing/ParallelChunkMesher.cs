@@ -103,17 +103,17 @@ public static class ParallelChunkMesher
     /// <param name="neighborhoods">Batch of chunk neighborhoods to mesh.</param>
     /// <param name="blocks">Frozen block registry.</param>
     /// <param name="atlas">Procedural block texture atlas.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
     /// <param name="maxThreads">
     /// Worker cap for the per-column fan-out (<c>0</c> selects <see cref="RenderParallelism.AutoWorkerCount"/>).
     /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Deterministically sorted list of non-empty <see cref="SectionMeshData"/>.</returns>
     public static async ValueTask<IReadOnlyList<SectionMeshData>> MeshColumnsParallelAsync(
         IReadOnlyList<ChunkNeighborhood> neighborhoods,
         IBlockRegistry blocks,
         TextureAtlasData atlas,
-        CancellationToken cancellationToken = default,
-        int maxThreads = 0)
+        int maxThreads = 0,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(neighborhoods);
         ArgumentNullException.ThrowIfNull(blocks);

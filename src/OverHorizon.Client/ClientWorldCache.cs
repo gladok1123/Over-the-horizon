@@ -394,7 +394,7 @@ public sealed partial class ClientWorldCache : IVoxelSelectionReader
             neighborhoods,
             _blocks,
             _atlas,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         foreach (var nb in neighborhoods)
         {
