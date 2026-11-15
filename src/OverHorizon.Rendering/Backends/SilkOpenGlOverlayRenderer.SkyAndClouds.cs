@@ -10,6 +10,12 @@ namespace OverHorizon.Rendering.Backends;
 /// </summary>
 internal sealed partial class SilkOpenGlOverlayRenderer
 {
+    /// <summary>Half-extent of the cloud grid in cells: the deck spans <c>2 * CloudGridRadius + 1</c> rows.</summary>
+    internal const int CloudGridRadius = 13;
+
+    /// <summary>Total rows covered by the cloud grid, used to size the parallel row bands.</summary>
+    internal const int CloudGridExtent = (CloudGridRadius * 2) + 1;
+
     internal static void AppendCelestialBodies(List<OverlayVertex> dst, long worldTimeTicks, double cameraY)
     {
         var frac = (((worldTimeTicks % 24000L) + 24000L) % 24000L) / 24000.0f;
@@ -74,7 +80,34 @@ internal sealed partial class SilkOpenGlOverlayRenderer
         }
     }
 
+    /// <summary>Tessellates the whole drifting cloud deck.</summary>
+    /// <param name="dst">Vertex sink receiving the cloud quads.</param>
+    /// <param name="cameraPos">Camera world position.</param>
+    /// <param name="worldTimeTicks">World time used for the day/night tint.</param>
+    /// <param name="driftOffset">Cloud drift offset in blocks.</param>
+    /// <param name="skyBrightness">Current sky brightness multiplier.</param>
     internal static void AppendWorldClouds(List<OverlayVertex> dst, Vec3d cameraPos, long worldTimeTicks, float driftOffset, float skyBrightness = 1.0f)
+        => AppendWorldClouds(dst, cameraPos, worldTimeTicks, driftOffset, skyBrightness, -CloudGridRadius, CloudGridRadius + 1);
+
+    /// <summary>
+    /// Tessellates the band of cloud grid rows <c>[<paramref name="rowStart"/>, <paramref name="rowEndExclusive"/>)</c>,
+    /// which is how one worker of the parallel cloud pass owns its slice of the deck.
+    /// </summary>
+    /// <param name="dst">Vertex sink receiving the cloud quads.</param>
+    /// <param name="cameraPos">Camera world position.</param>
+    /// <param name="worldTimeTicks">World time used for the day/night tint.</param>
+    /// <param name="driftOffset">Cloud drift offset in blocks.</param>
+    /// <param name="skyBrightness">Current sky brightness multiplier.</param>
+    /// <param name="rowStart">Inclusive first grid row to emit.</param>
+    /// <param name="rowEndExclusive">Exclusive last grid row to emit.</param>
+    internal static void AppendWorldClouds(
+        List<OverlayVertex> dst,
+        Vec3d cameraPos,
+        long worldTimeTicks,
+        float driftOffset,
+        float skyBrightness,
+        int rowStart,
+        int rowEndExclusive)
     {
         var tod = (int)(((worldTimeTicks % 24000L) + 24000L) % 24000L);
         var frac = tod / 24000.0f;
@@ -113,9 +146,9 @@ internal sealed partial class SilkOpenGlOverlayRenderer
         var yBot = (float)(144.0 - cameraPos.Y);
         var yTop = yBot + 4.5f;
 
-        for (var gz = -13; gz <= 13; gz++)
+        for (var gz = rowStart; gz < rowEndExclusive; gz++)
         {
-            for (var gx = -13; gx <= 13; gx++)
+            for (var gx = -CloudGridRadius; gx <= CloudGridRadius; gx++)
             {
                 var wx = baseCellX + gx;
                 var wz = baseCellZ + gz;

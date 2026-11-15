@@ -4,6 +4,7 @@ using OverHorizon.Core.Math;
 using OverHorizon.Rendering.Camera;
 using OverHorizon.Rendering.Meshing;
 using OverHorizon.Rendering.Textures;
+using OverHorizon.Rendering.Threading;
 using Silk.NET.Core.Loader;
 using Silk.NET.Input;
 using Silk.NET.Maths;
@@ -25,7 +26,11 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
     private readonly ILogger<SilkOpenGlRenderSubsystem> _logger;
     private readonly Dictionary<ChunkPos, Dictionary<int, SectionMeshData>> _stagedColumns = [];
     private readonly Dictionary<ChunkPos, GpuChunkColumn> _gpuColumns = [];
-    private readonly List<(GpuSectionBuffer Buffer, float DistanceSq)> _translucentSortScratch = [];
+    private readonly SectionCullScratch _cullScratch = new(RenderParallelism.AutoWorkerCount);
+
+    private GpuChunkColumn[] _cullColumnArray = [];
+    private int _cullColumnCount;
+    private bool _cullColumnsDirty = true;
 
     private TextureAtlasData? _stagedAtlas;
     private TextureAtlasData? _stagedEntityAtlas;
@@ -46,6 +51,33 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
         ArgumentNullException.ThrowIfNull(logger);
         _options = options;
         _logger = logger;
+    }
+
+    private GpuChunkColumn[] GetCullColumnSnapshot(out int columnCount)
+    {
+        if (_cullColumnsDirty)
+        {
+            RebuildCullColumnArray();
+        }
+
+        columnCount = _cullColumnCount;
+        return _cullColumnArray;
+    }
+
+    private void RebuildCullColumnArray()
+    {
+        if (_cullColumnArray.Length < _gpuColumns.Count)
+        {
+            _cullColumnArray = new GpuChunkColumn[Math.Max(64, _gpuColumns.Count * 2)];
+        }
+
+        _cullColumnCount = 0;
+        foreach (var col in _gpuColumns.Values)
+        {
+            _cullColumnArray[_cullColumnCount++] = col;
+        }
+
+        _cullColumnsDirty = false;
     }
 
     /// <inheritdoc />
@@ -140,6 +172,7 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
 
         RemoveStagedSection(mesh.SectionPosition);
         UploadMeshToGpu(_gl, mesh);
+        _cullColumnsDirty = true;
     }
 
     /// <inheritdoc />
@@ -150,6 +183,7 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
         if (_gpuColumns.TryGetValue(chunkPos, out var col))
         {
             _gpuSectionCount -= col.RemoveSection(sectionPosition.Y);
+            _cullColumnsDirty = true;
             if (col.IsEmpty)
             {
                 _gpuColumns.Remove(chunkPos);
@@ -169,6 +203,7 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
         if (_gpuColumns.Remove(chunkPosition, out var gpuCol))
         {
             _gpuSectionCount -= gpuCol.Count;
+            _cullColumnsDirty = true;
             gpuCol.Dispose();
         }
     }
@@ -240,7 +275,7 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
     {
         gl.Viewport(framebufferSize);
         _program = new SilkOpenGlProgramResources(gl);
-        _overlayRenderer = new SilkOpenGlOverlayRenderer(gl);
+        _overlayRenderer = new SilkOpenGlOverlayRenderer(gl, _options.MaxRenderThreads);
 
         RenderingLog.ContextInitialized(_logger, framebufferSize.X, framebufferSize.Y, _options.VSync);
 
@@ -265,6 +300,7 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
 
             _stagedColumns.Clear();
             _stagedSectionCount = 0;
+            _cullColumnsDirty = true;
         }
     }
 
@@ -344,6 +380,8 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
 
         _gpuColumns.Clear();
         _gpuSectionCount = 0;
+        _cullColumnCount = 0;
+        _cullColumnsDirty = true;
         _overlayRenderer = null;
         _program = null;
         _inputContext = null;

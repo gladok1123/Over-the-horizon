@@ -1,6 +1,7 @@
 using OverHorizon.Core;
 using OverHorizon.Rendering.Camera;
 using OverHorizon.Rendering.Hud;
+using OverHorizon.Rendering.Threading;
 using Silk.NET.OpenGL;
 
 namespace OverHorizon.Rendering.Backends;
@@ -12,6 +13,9 @@ namespace OverHorizon.Rendering.Backends;
 /// </summary>
 public sealed partial class SilkOpenGlRenderSubsystem
 {
+    /// <summary>Minimum number of chunk columns a worker must own before the culling stage is split at all.</summary>
+    private const int CullMinColumnsPerWorker = 24;
+
     /// <inheritdoc />
     public unsafe RenderFrameMetrics RenderFrame(FirstPersonCamera camera, float skyBrightness = 1.0f, FrameOverlayState? overlay = null)
     {
@@ -72,7 +76,25 @@ public sealed partial class SilkOpenGlRenderSubsystem
         gl.BindTexture(TextureTarget.Texture2D, prog.AtlasTexture);
 
         var maxHorizDistSq = (chunkFogDist + 24.0f) * (chunkFogDist + 24.0f);
-        var (visible, culled, drawCalls, triangles) = SilkOpenGlChunkPassDrawer.DrawOpaqueAndCollectTranslucent(gl, prog, _gpuColumns, _translucentSortScratch, in frustum, camera.Position, maxHorizDistSq);
+
+        // Stage 1: cull every resident column, fanning the work out over the worker pool. This is the single
+        // biggest per-frame CPU cost on high view distances, and it touches no OpenGL state at all.
+        var cullColumns = GetCullColumnSnapshot(out var cullColumnCount);
+        var cullWorkers = RenderParallelism.ResolveWorkerCount(
+            cullColumnCount,
+            CullMinColumnsPerWorker,
+            _options.MaxRenderThreads);
+        SilkOpenGlChunkPassDrawer.CullVisibleSections(
+            cullColumns,
+            cullColumnCount,
+            in frustum,
+            camera.Position,
+            maxHorizDistSq,
+            _cullScratch,
+            cullWorkers);
+
+        // Stage 2: replay the culled draw list on the render thread (OpenGL contexts are single-threaded).
+        var (drawCalls, triangles) = SilkOpenGlChunkPassDrawer.DrawOpaqueList(gl, prog, _cullScratch);
 
         // Clouds, mobs, dropped items and particles are emitted BEFORE the translucent terrain pass: water, ice
         // and Nether Portals then blend over them, so nothing behind a translucent surface reads as "on top".
@@ -84,14 +106,19 @@ public sealed partial class SilkOpenGlRenderSubsystem
         gl.ActiveTexture(TextureUnit.Texture0);
         gl.BindTexture(TextureTarget.Texture2D, prog.AtlasTexture);
 
-        var (transCalls, transTris) = SilkOpenGlChunkPassDrawer.DrawTranslucentPass(gl, prog, _translucentSortScratch, camera.Position);
+        var (transCalls, transTris) = SilkOpenGlChunkPassDrawer.DrawTranslucentPass(gl, prog, _cullScratch);
         var screenOverlayCalls = (overlay is not null && _overlayRenderer is not null)
             ? _overlayRenderer.RenderScreenOverlays(camera, overlay, prog.AtlasTexture, prog.EntityAtlasTexture, _stagedAtlas)
             : 0;
 
         gl.BindVertexArray(0);
         _frameCount++;
-        LastFrameMetrics = new RenderFrameMetrics(visible, culled, skyCalls + drawCalls + worldOverlayCalls + transCalls + screenOverlayCalls, triangles + transTris, _frameCount);
+        LastFrameMetrics = new RenderFrameMetrics(
+            _cullScratch.VisibleCount,
+            _cullScratch.CulledCount,
+            skyCalls + drawCalls + worldOverlayCalls + transCalls + screenOverlayCalls,
+            triangles + transTris,
+            _frameCount);
         return LastFrameMetrics;
     }
 

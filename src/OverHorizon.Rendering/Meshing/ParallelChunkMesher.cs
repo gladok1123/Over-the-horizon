@@ -1,5 +1,6 @@
 using OverHorizon.Core.Blocks;
 using OverHorizon.Rendering.Textures;
+using OverHorizon.Rendering.Threading;
 using OverHorizon.World.Storage;
 
 namespace OverHorizon.Rendering.Meshing;
@@ -9,33 +10,77 @@ namespace OverHorizon.Rendering.Meshing;
 /// </summary>
 public static class ParallelChunkMesher
 {
+    /// <summary>Minimum number of non-air sections a worker must own before one column is meshed in parallel.</summary>
+    private const int MinSectionsPerWorker = 2;
+
+    /// <summary>Minimum number of columns a worker must own before a batch is meshed in parallel.</summary>
+    private const int MinColumnsPerWorker = 1;
+
     /// <summary>
-    /// Meshes all non-empty vertical sections of <paramref name="neighborhood"/> synchronously.
+    /// Meshes all non-empty vertical sections of <paramref name="neighborhood"/>, spreading the sections across
+    /// the worker pool when the column is tall enough to pay for the hand-off.
     /// </summary>
     /// <param name="neighborhood">Target chunk and neighbor snapshots.</param>
     /// <param name="blocks">Frozen block registry.</param>
     /// <param name="atlas">Procedural block texture atlas.</param>
+    /// <param name="maxThreads">
+    /// Worker cap for the per-section fan-out (<c>0</c> selects <see cref="RenderParallelism.AutoWorkerCount"/>,
+    /// <c>1</c> keeps the column on the calling thread, which is what callers that already parallelise over
+    /// columns pass so the two levels never oversubscribe the pool).
+    /// </param>
     /// <returns>Non-empty <see cref="SectionMeshData"/> entries ordered from bottom section to top section.</returns>
     public static IReadOnlyList<SectionMeshData> MeshColumn(
         in ChunkNeighborhood neighborhood,
         IBlockRegistry blocks,
-        TextureAtlasData atlas)
+        TextureAtlasData atlas,
+        int maxThreads = 0)
     {
         ArgumentNullException.ThrowIfNull(blocks);
         ArgumentNullException.ThrowIfNull(atlas);
 
-        var results = new List<SectionMeshData>(8);
+        var sectionIndices = new int[ChunkColumn.SectionCount];
+        var pendingCount = 0;
         var sections = neighborhood.Center.Sections;
 
         for (var s = 0; s < ChunkColumn.SectionCount; s++)
         {
-            if (sections[s].IsOnlyAir)
+            if (!sections[s].IsOnlyAir)
             {
-                continue;
+                sectionIndices[pendingCount++] = s;
             }
+        }
 
-            var mesh = GreedySectionMesher.MeshSection(in neighborhood, s, blocks, atlas);
-            if (!mesh.IsEmpty)
+        if (pendingCount == 0)
+        {
+            return [];
+        }
+
+        // An `in` parameter cannot be captured by a lambda, so the neighbourhood is copied into a local first.
+        var captured = neighborhood;
+        var meshes = new SectionMeshData?[pendingCount];
+        var workers = RenderParallelism.ResolveWorkerCount(pendingCount, MinSectionsPerWorker, maxThreads);
+
+        if (workers <= 1)
+        {
+            for (var i = 0; i < pendingCount; i++)
+            {
+                meshes[i] = MeshSection(ref captured, sectionIndices[i], blocks, atlas);
+            }
+        }
+        else
+        {
+            Parallel.For(
+                0,
+                pendingCount,
+                new ParallelOptions { MaxDegreeOfParallelism = workers },
+                i => meshes[i] = MeshSection(ref captured, sectionIndices[i], blocks, atlas));
+        }
+
+        var results = new List<SectionMeshData>(pendingCount);
+        for (var i = 0; i < pendingCount; i++)
+        {
+            var mesh = meshes[i];
+            if (mesh is not null && !mesh.IsEmpty)
             {
                 results.Add(mesh);
             }
@@ -43,6 +88,13 @@ public static class ParallelChunkMesher
 
         return results;
     }
+
+    private static SectionMeshData MeshSection(
+        ref ChunkNeighborhood neighborhood,
+        int sectionIndex,
+        IBlockRegistry blocks,
+        TextureAtlasData atlas) =>
+        GreedySectionMesher.MeshSection(in neighborhood, sectionIndex, blocks, atlas);
 
     /// <summary>
     /// Meshes a batch of <see cref="ChunkNeighborhood"/> columns concurrently across worker threads
@@ -52,12 +104,16 @@ public static class ParallelChunkMesher
     /// <param name="blocks">Frozen block registry.</param>
     /// <param name="atlas">Procedural block texture atlas.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="maxThreads">
+    /// Worker cap for the per-column fan-out (<c>0</c> selects <see cref="RenderParallelism.AutoWorkerCount"/>).
+    /// </param>
     /// <returns>Deterministically sorted list of non-empty <see cref="SectionMeshData"/>.</returns>
     public static async ValueTask<IReadOnlyList<SectionMeshData>> MeshColumnsParallelAsync(
         IReadOnlyList<ChunkNeighborhood> neighborhoods,
         IBlockRegistry blocks,
         TextureAtlasData atlas,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int maxThreads = 0)
     {
         ArgumentNullException.ThrowIfNull(neighborhoods);
         ArgumentNullException.ThrowIfNull(blocks);
@@ -69,27 +125,37 @@ public static class ParallelChunkMesher
         }
 
         var perChunkResults = new IReadOnlyList<SectionMeshData>[neighborhoods.Count];
+        var workers = RenderParallelism.ResolveWorkerCount(neighborhoods.Count, MinColumnsPerWorker, maxThreads);
 
-        if (neighborhoods.Count <= 2)
+        // Two levels of fan-out would oversubscribe the pool, so a column that is meshed as part of a
+        // parallel batch keeps its own sections on one thread, and a lone column spreads them out instead.
+        var sectionThreads = workers > 1 ? 1 : maxThreads;
+
+        if (workers <= 1)
         {
             for (var i = 0; i < neighborhoods.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var nb = neighborhoods[i];
-                perChunkResults[i] = MeshColumn(in nb, blocks, atlas);
+                perChunkResults[i] = MeshColumn(in nb, blocks, atlas, sectionThreads);
             }
         }
         else
         {
+            var options = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = workers,
+                CancellationToken = cancellationToken,
+            };
+
             await Parallel.ForAsync(
                 0,
                 neighborhoods.Count,
-                cancellationToken,
-                (index, ct) =>
+                options,
+                (index, _) =>
                 {
-                    ct.ThrowIfCancellationRequested();
                     var nb = neighborhoods[index];
-                    perChunkResults[index] = MeshColumn(in nb, blocks, atlas);
+                    perChunkResults[index] = MeshColumn(in nb, blocks, atlas, sectionThreads);
                     return ValueTask.CompletedTask;
                 }).ConfigureAwait(false);
         }

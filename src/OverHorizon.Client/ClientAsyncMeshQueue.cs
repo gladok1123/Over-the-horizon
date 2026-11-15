@@ -141,10 +141,14 @@ internal sealed class ClientAsyncMeshQueue : IAsyncDisposable
             {
                 try
                 {
+                    // Two levels of fan-out would oversubscribe the pool: while the batch itself is spread
+                    // across workers, every column keeps its own sections on one thread. A single-column
+                    // batch instead spreads those sections out, so lone chunk updates still use the pool.
+                    var sectionThreads = batch.Count > 1 ? 1 : 0;
                     Parallel.For(0, batch.Count, new ParallelOptions { CancellationToken = ct }, i =>
                     {
                         var (nb, gen) = batch[i];
-                        var sections = ParallelChunkMesher.MeshColumn(in nb, _blocks, _atlas);
+                        var sections = ParallelChunkMesher.MeshColumn(in nb, _blocks, _atlas, sectionThreads);
                         _ = _completed.Writer.TryWrite((nb.Center.Position, gen, sections));
                     });
                 }

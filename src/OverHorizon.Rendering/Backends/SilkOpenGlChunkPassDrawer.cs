@@ -1,6 +1,7 @@
 using System.Numerics;
 using OverHorizon.Core.Math;
 using OverHorizon.Rendering.Camera;
+using OverHorizon.Rendering.Threading;
 using Silk.NET.OpenGL;
 
 namespace OverHorizon.Rendering.Backends;
@@ -44,32 +45,74 @@ internal static class SilkOpenGlChunkPassDrawer
         return baseCol;
     }
 
-    public static unsafe (int Visible, int Culled, int DrawCalls, int Triangles) DrawOpaqueAndCollectTranslucent(
-        GL gl,
-        SilkOpenGlProgramResources prog,
-        Dictionary<ChunkPos, GpuChunkColumn> gpuColumns,
-        List<(GpuSectionBuffer Buffer, float DistanceSq)> translucentSortScratch,
+    /// <summary>
+    /// Runs the frustum + distance culling stage over every resident chunk column, optionally across several
+    /// worker threads, and fills <paramref name="scratch"/> with the draw lists the render thread then replays.
+    /// Culling is pure arithmetic with no OpenGL calls, so it is safe (and profitable) to fan out.
+    /// </summary>
+    /// <param name="columns">Snapshot array of every resident chunk column.</param>
+    /// <param name="columnCount">Number of valid entries in <paramref name="columns"/>.</param>
+    /// <param name="frustum">Camera frustum used for the visibility tests.</param>
+    /// <param name="cameraPos">Camera world position.</param>
+    /// <param name="maxHorizDistSq">Squared horizontal render distance cutoff.</param>
+    /// <param name="scratch">Per-worker staging buffers that receive the results.</param>
+    /// <param name="workerCount">Number of workers to use (<c>1</c> keeps the job on the calling thread).</param>
+    public static void CullVisibleSections(
+        GpuChunkColumn[] columns,
+        int columnCount,
         in Frustum frustum,
         Vec3d cameraPos,
-        float maxHorizDistSq)
+        float maxHorizDistSq,
+        SectionCullScratch scratch,
+        int workerCount)
     {
+        scratch.BeginFrame();
+
+        // An `in` parameter cannot be captured by a lambda, so the frustum is copied into a local first.
+        var cullFrustum = frustum;
+        var workers = Math.Clamp(workerCount, 1, scratch.WorkerCount);
+        if (workers <= 1)
+        {
+            CullColumnRange(columns, 0, columnCount, in cullFrustum, cameraPos, maxHorizDistSq, scratch, 0);
+        }
+        else
+        {
+            Parallel.For(0, workers, worker =>
+                CullColumnRange(columns, 0, columnCount, in cullFrustum, cameraPos, maxHorizDistSq, scratch, worker, workers));
+        }
+
+        scratch.Merge();
+    }
+
+    private static void CullColumnRange(
+        GpuChunkColumn[] columns,
+        int offset,
+        int count,
+        in Frustum frustum,
+        Vec3d cameraPos,
+        float maxHorizDistSq,
+        SectionCullScratch scratch,
+        int workerIndex,
+        int workerCount = 1)
+    {
+        var (start, end) = RenderParallelism.RangeFor(count, workerCount, workerIndex);
+        var opaque = scratch.OpaqueBucket(workerIndex);
+        var translucent = scratch.TranslucentBucket(workerIndex);
         var visible = 0;
         var culled = 0;
-        var drawCalls = 0;
-        var triangles = 0;
 
-        translucentSortScratch.Clear();
-        gl.Disable(EnableCap.Blend);
-        gl.DepthMask(true);
-
-        foreach (var col in gpuColumns.Values)
+        for (var i = start + offset; i < end + offset; i++)
         {
+            var col = columns[i];
             var mask = col.PresentMask;
-            if (mask == 0) continue;
+            if (mask == 0)
+            {
+                continue;
+            }
 
             var dx = (float)((col.ChunkPosition.X * 16.0) + 8.0 - cameraPos.X);
             var dz = (float)((col.ChunkPosition.Z * 16.0) + 8.0 - cameraPos.Z);
-            if ((dx * dx) + (dz * dz) > maxHorizDistSq || !frustum.Intersects(col.ActiveWorldBounds))
+            if (((dx * dx) + (dz * dz)) > maxHorizDistSq || !frustum.Intersects(col.ActiveWorldBounds))
             {
                 culled += BitOperations.PopCount(mask);
                 continue;
@@ -80,7 +123,10 @@ internal static class SilkOpenGlChunkPassDrawer
                 var slot = BitOperations.TrailingZeroCount(mask);
                 mask &= mask - 1;
                 var section = col.GetSlot(slot);
-                if (section is null) continue;
+                if (section is null)
+                {
+                    continue;
+                }
 
                 if (!frustum.Intersects(section.WorldBounds))
                 {
@@ -93,36 +139,71 @@ internal static class SilkOpenGlChunkPassDrawer
 
                 if (section.OpaqueIndexCount > 0)
                 {
-                    gl.Uniform3(prog.LocSectionOffset, relOffset.X, relOffset.Y, relOffset.Z);
-                    gl.BindVertexArray(section.OpaqueVao);
-                    gl.DrawElements(PrimitiveType.Triangles, (uint)section.OpaqueIndexCount, DrawElementsType.UnsignedInt, null);
-                    drawCalls++;
-                    triangles += section.OpaqueIndexCount / 3;
+                    opaque.Add(new CulledSectionDraw(section, relOffset, 0.0f));
                 }
 
                 if (section.TranslucentIndexCount > 0)
                 {
-                    var centerOffset = relOffset + new Vector3(8.0f, 8.0f, 8.0f);
-                    translucentSortScratch.Add((section, centerOffset.LengthSquared()));
+                    var center = relOffset + new Vector3(8.0f, 8.0f, 8.0f);
+                    translucent.Add(new CulledSectionDraw(section, relOffset, center.LengthSquared()));
                 }
             }
         }
 
-        return (visible, culled, drawCalls, triangles);
+        scratch.AddCounts(workerIndex, visible, culled);
     }
 
+    /// <summary>
+    /// Replays the opaque draw list produced by <see cref="CullVisibleSections"/> on the render thread.
+    /// </summary>
+    /// <param name="gl">OpenGL context.</param>
+    /// <param name="prog">Bound chunk shader resources.</param>
+    /// <param name="scratch">Scratch buffers holding the merged opaque list.</param>
+    /// <returns>Draw-call and triangle counts for telemetry.</returns>
+    public static unsafe (int DrawCalls, int Triangles) DrawOpaqueList(
+        GL gl,
+        SilkOpenGlProgramResources prog,
+        SectionCullScratch scratch)
+    {
+        gl.Disable(EnableCap.Blend);
+        gl.DepthMask(true);
+
+        var drawCalls = 0;
+        var triangles = 0;
+        var list = scratch.Opaque;
+
+        for (var i = 0; i < list.Count; i++)
+        {
+            var draw = list[i];
+            gl.Uniform3(prog.LocSectionOffset, draw.CameraRelativeOffset.X, draw.CameraRelativeOffset.Y, draw.CameraRelativeOffset.Z);
+            gl.BindVertexArray(draw.Section.OpaqueVao);
+            gl.DrawElements(PrimitiveType.Triangles, (uint)draw.Section.OpaqueIndexCount, DrawElementsType.UnsignedInt, null);
+            drawCalls++;
+            triangles += draw.Section.OpaqueIndexCount / 3;
+        }
+
+        return (drawCalls, triangles);
+    }
+
+    /// <summary>
+    /// Sorts the translucent draw list back-to-front and replays it on the render thread.
+    /// </summary>
+    /// <param name="gl">OpenGL context.</param>
+    /// <param name="prog">Bound chunk shader resources.</param>
+    /// <param name="scratch">Scratch buffers holding the merged translucent list.</param>
+    /// <returns>Draw-call and triangle counts for telemetry.</returns>
     public static unsafe (int DrawCalls, int Triangles) DrawTranslucentPass(
         GL gl,
         SilkOpenGlProgramResources prog,
-        List<(GpuSectionBuffer Buffer, float DistanceSq)> translucentSortScratch,
-        Vec3d cameraPos)
+        SectionCullScratch scratch)
     {
-        if (translucentSortScratch.Count == 0)
+        if (scratch.Translucent.Count == 0)
         {
             return (0, 0);
         }
 
-        translucentSortScratch.Sort(static (a, b) => b.DistanceSq.CompareTo(a.DistanceSq));
+        var list = scratch.Translucent;
+        list.Sort(static (a, b) => b.DistanceSq.CompareTo(a.DistanceSq));
 
         gl.Disable(EnableCap.CullFace);
         gl.Enable(EnableCap.Blend);
@@ -132,14 +213,14 @@ internal static class SilkOpenGlChunkPassDrawer
         var drawCalls = 0;
         var triangles = 0;
 
-        foreach (var (section, _) in translucentSortScratch)
+        for (var i = 0; i < list.Count; i++)
         {
-            var relOffset = ComputeCameraRelativeOffset(section.SectionPosition, cameraPos);
-            gl.Uniform3(prog.LocSectionOffset, relOffset.X, relOffset.Y, relOffset.Z);
-            gl.BindVertexArray(section.TranslucentVao);
-            gl.DrawElements(PrimitiveType.Triangles, (uint)section.TranslucentIndexCount, DrawElementsType.UnsignedInt, null);
+            var draw = list[i];
+            gl.Uniform3(prog.LocSectionOffset, draw.CameraRelativeOffset.X, draw.CameraRelativeOffset.Y, draw.CameraRelativeOffset.Z);
+            gl.BindVertexArray(draw.Section.TranslucentVao);
+            gl.DrawElements(PrimitiveType.Triangles, (uint)draw.Section.TranslucentIndexCount, DrawElementsType.UnsignedInt, null);
             drawCalls++;
-            triangles += section.TranslucentIndexCount / 3;
+            triangles += draw.Section.TranslucentIndexCount / 3;
         }
 
         gl.DepthMask(true);
