@@ -113,7 +113,7 @@ public sealed class V14ThreadedRenderingTests
 
         scratch.OpaqueBucket(0).Add(new CulledSectionDraw<GpuSectionBuffer>(null!, default, 0.0f));
         scratch.OpaqueBucket(1).Add(new CulledSectionDraw<GpuSectionBuffer>(null!, default, 0.0f));
-        scratch.TranslucentBucket(2).Add(new CulledSectionDraw(null!, default, 12.0f));
+        scratch.TranslucentBucket(2).Add(new CulledSectionDraw<GpuSectionBuffer>(null!, default, 12.0f));
 
         scratch.AddCounts(0, visible: 4, culled: 1);
         scratch.AddCounts(2, visible: 3, culled: 9);
@@ -291,7 +291,7 @@ public sealed class V14ThreadedRenderingTests
             var words = ReadSpirVWords(binary);
             words.Should().NotBeEmpty();
             words[0].Should().Be(0x07230203u, $"'{Path.GetFileName(binary)}' must start with the SPIR-V magic number");
-            words[1] >> 16.Should().Be(1, "the committed modules are SPIR-V 1.0");
+            (words[1] >> 16).Should().Be(1, "the committed modules are SPIR-V 1.0");
             words.Length.Should().BeGreaterThan(32, "a real shader module is more than an empty shell");
         }
     }
