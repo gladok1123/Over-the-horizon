@@ -260,6 +260,89 @@ public sealed class V14ThreadedRenderingTests
         capped.WindowWidth.Should().Be(1280);
     }
 
+    [Fact]
+    public void VulkanShaders_ArePrecompiledIntoEmbeddedSpiRV()
+    {
+        var root = FindRepositoryRoot();
+        var shaderDir = Path.Combine(root, "src", "OverHorizon.Rendering", "Shaders");
+        var spirvDir = Path.Combine(shaderDir, "SpirV");
+
+        Directory.Exists(shaderDir).Should().BeTrue("the Vulkan shader sources must live in the rendering project");
+        Directory.Exists(spirvDir).Should().BeTrue("compiled SPIR-V binaries must be committed alongside the sources");
+
+        var sources = Directory.EnumerateFiles(shaderDir, "*.vert")
+            .Concat(Directory.EnumerateFiles(shaderDir, "*.frag"))
+            .OrderBy(static f => f, StringComparer.Ordinal)
+            .ToArray();
+
+        sources.Should().NotBeEmpty("the Vulkan backend needs vertex and fragment shaders");
+
+        foreach (var source in sources)
+        {
+            var text = File.ReadAllText(source);
+            text.Should().Contain("#version 450", $"'{Path.GetFileName(source)}' must target Vulkan GLSL");
+            text.Should().Contain("layout (set = 0", $"'{Path.GetFileName(source)}' must use explicit descriptor bindings");
+            text.Should().Contain("layout (set = 0, binding =", $"'{Path.GetFileName(source)}' must bind every uniform through a descriptor set");
+
+            var binary = Path.Combine(spirvDir, Path.GetFileName(source) + ".spv");
+            File.Exists(binary).Should().BeTrue($"'{Path.GetFileName(source)}' must be precompiled, not compiled during gameplay");
+
+            var words = ReadSpirVWords(binary);
+            words.Should().NotBeEmpty();
+            words[0].Should().Be(0x07230203u, $"'{Path.GetFileName(binary)}' must start with the SPIR-V magic number");
+            words[1] >> 16.Should().Be(1, "the committed modules are SPIR-V 1.0");
+            words.Length.Should().BeGreaterThan(32, "a real shader module is more than an empty shell");
+        }
+    }
+
+    [Fact]
+    public void RenderingProject_EmbedsThePrecompiledShaderBinaries()
+    {
+        var root = FindRepositoryRoot();
+        var csproj = Path.Combine(root, "src", "OverHorizon.Rendering", "OverHorizon.Rendering.csproj");
+        var text = File.ReadAllText(csproj);
+
+        text.Should().Contain("Shaders/SpirV/*.spv", "the precompiled shaders must be embedded as resources");
+        text.Should().Contain("Silk.NET.Vulkan", "the rendering project must reference the raw Vulkan binding");
+        text.Should().NotContain("Silk.NET.Shaderc", "shaders must never be compiled inside the game");
+
+        var assembly = typeof(OverHorizon.Rendering.Meshing.ParallelChunkMesher).Assembly;
+        foreach (var name in new[] { "chunk.vert.spv", "chunk.frag.spv", "overlay.vert.spv", "ui.frag.spv" })
+        {
+            var resource = assembly.GetManifestResourceStream("OverHorizon.Rendering.Shaders." + name);
+            resource.Should().NotBeNull($"SPIR-V module '{name}' must be embedded in the rendering assembly");
+            resource!.Length.Should().BeGreaterThan(128);
+        }
+    }
+
+    private static uint[] ReadSpirVWords(string path)
+    {
+        var bytes = File.ReadAllBytes(path);
+        var words = new uint[bytes.Length / 4];
+        for (var i = 0; i < words.Length; i++)
+        {
+            words[i] = BitConverter.ToUInt32(bytes, i * 4);
+        }
+
+        return words;
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "OverHorizon.sln")))
+            {
+                return dir.FullName;
+            }
+
+            dir = dir.Parent;
+        }
+
+        throw new InvalidOperationException("Could not locate OverHorizon.sln above test base directory.");
+    }
+
     private static string ReadSourceFile(string relativePath)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

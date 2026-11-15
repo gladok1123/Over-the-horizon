@@ -23,23 +23,15 @@
   </ItemGroup>
 
   <!--
-    Shaders are compiled to SPIR-V ahead of time (never during gameplay) by the build-time compiler tool,
-    and the finished binaries are embedded as manifest resources the Vulkan backend simply maps into memory.
+    Shaders are compiled to SPIR-V ahead of time and shipped as finished binaries: the game only ever maps
+    these modules into GPU memory, so no GLSL front end and no shader compiler runs during gameplay.
+    build/OverHorizon.ShaderCompiler regenerates them from the GLSL sources on demand.
   -->
-  <PropertyGroup>
-    <VulkanShaderInputDir>$(MSBuildThisFileDirectory)Shaders/</VulkanShaderInputDir>
-    <VulkanShaderOutputDir>$(MSBuildThisFileDirectory)Shaders/Generated/</VulkanShaderOutputDir>
-    <VulkanShaderCompilerProject>$(MSBuildThisFileDirectory)../../build/OverHorizon.ShaderCompiler/OverHorizon.ShaderCompiler.csproj</VulkanShaderCompilerProject>
-  </PropertyGroup>
-
-  <Target Name="CompileVulkanShaders" BeforeTargets="BeforeBuild">
-    <Exec Command="dotnet run --project &quot;$(VulkanShaderCompilerProject)&quot; --configuration $(Configuration) -- &quot;$(VulkanShaderInputDir)&quot; &quot;$(VulkanShaderOutputDir)&quot;" />
-    <ItemGroup>
-      <EmbeddedResource Include="$(VulkanShaderOutputDir)*.spv">
-        <LogicalName>OverHorizon.Rendering.Shaders.%(Filename)%(Extension)</LogicalName>
-      </EmbeddedResource>
-    </ItemGroup>
-  </Target>
+  <ItemGroup>
+    <EmbeddedResource Include="Shaders/SpirV/*.spv">
+      <LogicalName>OverHorizon.Rendering.Shaders.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../OverHorizon.Core/OverHorizon.Core.csproj" />
