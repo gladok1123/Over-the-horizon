@@ -193,8 +193,8 @@ public sealed unsafe partial class VulkanRenderSubsystem
 
         var rect = overlay.InventoryPlayerPreviewRect;
 
-        // Rect is in pixel space with the origin at the top-left, which is exactly Vulkan's framebuffer space;
-        // the negative viewport height mirrors it the same way the full-screen viewport does.
+        // The preview rectangle is already in top-left pixel space, which is Vulkan's framebuffer space; the
+        // negative viewport height mirrors it the same way the full-screen viewport does.
         var vx = MathF.Round(rect.X);
         var vy = MathF.Round(rect.Y);
         var vw = Math.Max(8.0f, MathF.Round(rect.Z));

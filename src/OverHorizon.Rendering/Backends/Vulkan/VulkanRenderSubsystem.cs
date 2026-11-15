@@ -294,7 +294,6 @@ public sealed unsafe partial class VulkanRenderSubsystem : IWindowRenderSubsyste
 
     private void UploadMeshToDevice(SectionMeshData mesh)
     {
-        var device = _device!;
         var slot = VulkanSectionSlot.Create(_meshArena!, _uploads!, mesh);
 
         var chunkPos = new ChunkPos(mesh.SectionPosition.X, mesh.SectionPosition.Z);

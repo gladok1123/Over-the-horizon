@@ -95,19 +95,21 @@ internal sealed unsafe class VulkanUploadQueue : IDisposable
         _recording = false;
         _offset = 0;
 
-        VulkanResult.Ensure(_vk.EndCommandBuffer(_commandBuffer), "vkEndCommandBuffer");
+        var commandBuffer = _commandBuffer;
+        _commandBuffer = default;
+
+        VulkanResult.Ensure(_vk.EndCommandBuffer(commandBuffer), "vkEndCommandBuffer");
 
         var submitInfo = new SubmitInfo
         {
             SType = StructureType.SubmitInfo,
             CommandBufferCount = 1,
-            PCommandBuffers = &_commandBuffer,
+            PCommandBuffers = &commandBuffer,
         };
 
         VulkanResult.Ensure(_vk.QueueSubmit(_queue, 1, in submitInfo, default), "vkQueueSubmit");
         VulkanResult.Ensure(_vk.QueueWaitIdle(_queue), "vkQueueWaitIdle");
-        _vk.FreeCommandBuffers(_device, _commandPool, 1, &_commandBuffer);
-        _commandBuffer = default;
+        _vk.FreeCommandBuffers(_device, _commandPool, 1, &commandBuffer);
     }
 
     /// <inheritdoc />
