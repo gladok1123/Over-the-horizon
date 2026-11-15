@@ -18,12 +18,12 @@ internal readonly struct ListSlice<T> : IReadOnlyList<T>
     /// </summary>
     /// <param name="source">Underlying list to window.</param>
     /// <param name="start">Inclusive start index inside <paramref name="source"/>.</param>
-    /// <param name="count">Number of visible elements.</param>
+    /// <param name="count">Number of visible elements, clamped to the remaining elements of <paramref name="source"/>.</param>
     public ListSlice(IReadOnlyList<T> source, int start, int count)
     {
         _source = source;
         _start = start;
-        Count = Math.Max(0, count);
+        Count = Math.Clamp(count, 0, Math.Max(0, source.Count - start));
     }
 
     /// <inheritdoc />

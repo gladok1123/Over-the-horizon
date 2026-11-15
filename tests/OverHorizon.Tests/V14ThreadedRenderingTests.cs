@@ -237,7 +237,7 @@ public sealed class V14ThreadedRenderingTests
     {
         var threading = ReadSourceFile("src/OverHorizon.Rendering/Backends/SilkOpenGlOverlayRenderer.Threading.cs");
 
-        threading.Should().Contain("ParallelAppend(", "entity batches are sliced across workers");
+        threading.Should().Contain("ParallelAppend<", "entity batches are sliced across workers");
         threading.Should().Contain("AppendWorldCloudsParallel(", "the cloud deck is tessellated per band of rows");
         threading.Should().Contain("sink.Bucket(worker)", "every worker writes into its own bucket");
         threading.Should().Contain("sink.DrainTo(", "buckets are merged back in deterministic worker order");
