@@ -12,6 +12,7 @@ namespace OverHorizon.Rendering.Backends;
 /// </summary>
 public sealed partial class SilkOpenGlRenderSubsystem
 {
+    /// <inheritdoc />
     public unsafe RenderFrameMetrics RenderFrame(FirstPersonCamera camera, float skyBrightness = 1.0f, FrameOverlayState? overlay = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

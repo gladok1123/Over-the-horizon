@@ -104,14 +104,6 @@ internal static class UiSurvivalHudBuilder
     }
 
     /// <summary>
-    /// Rebuilds the vanilla Nether Portal screen effect: the animated purple portal texture sweeps across the
-    /// whole viewport while a vignette closes in, both driven by the player's portal dwell progress.
-    /// </summary>
-    /// <param name="v">Destination screen-space vertex list.</param>
-    /// <param name="width">Viewport width in pixels.</param>
-    /// <param name="height">Viewport height in pixels.</param>
-    /// <param name="state">Per-frame overlay state.</param>
-    /// <summary>
     /// Rebuilds the vanilla Nether Portal screen effect: an animated purple portal texture sweeps across the
     /// whole viewport while a vignette closes in, both driven by the player's portal dwell progress.
     /// </summary>

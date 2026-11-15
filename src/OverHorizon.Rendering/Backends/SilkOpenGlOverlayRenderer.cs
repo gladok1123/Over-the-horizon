@@ -114,7 +114,7 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
     /// <param name="entityAtlasTexture">Bound entity atlas texture handle.</param>
     /// <param name="atlasData">Staged atlas lookup for textured quads.</param>
     /// <param name="fogColor">Fog colour shared with the terrain pass.</param>
-    /// <param name="chunkFogDistance">Chunk fog distance in blocks.</param>
+    /// <param name="chunkFogDist">Chunk fog distance in blocks.</param>
     /// <returns>Number of draw calls issued.</returns>
     public unsafe int RenderWorldOverlays(
         FirstPersonCamera camera,
