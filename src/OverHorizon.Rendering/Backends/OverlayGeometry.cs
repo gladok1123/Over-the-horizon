@@ -148,6 +148,7 @@ internal sealed class OverlayGeometry
     /// <summary>
     /// Tessellates the first-person viewmodel for the frame.
     /// </summary>
+    /// <param name="camera">Active first-person camera.</param>
     /// <param name="state">Per-frame overlay state.</param>
     /// <param name="atlasData">Staged atlas lookup for textured quads.</param>
     public void BuildScreenPass(FirstPersonCamera camera, FrameOverlayState state, TextureAtlasData? atlasData)

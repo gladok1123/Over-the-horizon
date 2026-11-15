@@ -8,7 +8,7 @@ namespace OverHorizon.Rendering.Backends;
 /// enabling <c>O(1)</c> chunk eviction and single-test column-level distance and frustum culling.
 /// </summary>
 /// <typeparam name="TSection">Backend-specific uploaded section type.</typeparam>
-internal sealed class ChunkColumnSlots<TSection>
+internal sealed class ChunkColumnSlots<TSection> : IDisposable
     where TSection : class, IResidentSection, IDisposable
 {
     /// <summary>Lowest section Y coordinate that can be stored.</summary>

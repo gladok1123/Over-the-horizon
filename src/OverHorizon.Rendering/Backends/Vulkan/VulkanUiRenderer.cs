@@ -25,8 +25,8 @@ internal sealed unsafe class VulkanUiRenderer : IDisposable
     private readonly List<TexturedUiVertex> _vertices = new(12288);
     private readonly VulkanVertexStream _stream;
 
-    private VulkanImage _fontAtlas;
-    private VulkanImage _guiAtlas;
+    private readonly VulkanImage _fontAtlas;
+    private readonly VulkanImage _guiAtlas;
     private ulong _peakBytes = InitialCapacity;
     private bool _disposed;
 

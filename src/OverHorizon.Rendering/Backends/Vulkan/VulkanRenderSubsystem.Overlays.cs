@@ -241,7 +241,7 @@ public sealed unsafe partial class VulkanRenderSubsystem
             return 0;
         }
 
-        if (!stream.TryWrite(CollectionsMarshal.AsSpan(vertices), out var offset))
+        if (!stream.TryWrite<OverlayVertex>(CollectionsMarshal.AsSpan(vertices), out var offset))
         {
             return 0;
         }

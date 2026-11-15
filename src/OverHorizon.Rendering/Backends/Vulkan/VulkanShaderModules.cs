@@ -34,7 +34,7 @@ internal sealed unsafe class VulkanShaderModules : IDisposable
     }
 
     /// <summary>Gets the names of every shader module that must be present.</summary>
-    public static IReadOnlyList<string> Names => ModuleNames.Names;
+    public static IReadOnlyList<string> Names => ModuleNames.All;
 
     /// <summary>
     /// Gets the shader module for one precompiled SPIR-V binary.
@@ -102,7 +102,7 @@ internal sealed unsafe class VulkanShaderModules : IDisposable
 
     private static class ModuleNames
     {
-        public static readonly string[] Names =
+        public static readonly string[] All =
         [
             "chunk.vert.spv",
             "chunk.frag.spv",
