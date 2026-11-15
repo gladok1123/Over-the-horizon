@@ -3,7 +3,7 @@ using OverHorizon.Core.Math;
 namespace OverHorizon.Rendering.Backends;
 
 /// <summary>
-/// The backend-agnostic shape of an uploaded 16x16x16 chunk section. Both the OpenGL and the Vulkan backends
+/// The shape of an uploaded 16x16x16 chunk section, shared by the Vulkan backend and the headless simulator.
 /// implement it, which is what lets the multi-threaded frustum culling stage stay completely free of graphics
 /// API calls and be shared by every backend.
 /// </summary>

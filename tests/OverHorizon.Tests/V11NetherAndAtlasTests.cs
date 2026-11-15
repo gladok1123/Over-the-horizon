@@ -31,7 +31,8 @@ public sealed class V11NetherAndAtlasTests
         var shift = ProceduralAtlasGenerator.TilesPerRowShift.ToString(CultureInfo.InvariantCulture);
         var dimension = ProceduralAtlasGenerator.AtlasDimension.ToString(CultureInfo.InvariantCulture);
 
-        var shader = SilkOpenGlShaderSources.ChunkFragmentShader;
+        var root = FindRepositoryRoot();
+        var shader = File.ReadAllText(Path.Combine(root, "src", "OverHorizon.Rendering", "Shaders", "chunk.frag"));
         shader.Should().Contain($"tileIdx & {mask}", "the shader must mask tile columns with the live tiles-per-row");
         shader.Should().Contain($"tileIdx >> {shift}", "the shader must shift tile rows with the live tiles-per-row shift");
         shader.Should().Contain($"/ {dimension}.0", "the shader must normalize atlas UVs by the live atlas dimension");
@@ -47,5 +48,21 @@ public sealed class V11NetherAndAtlasTests
         atlas.Height.Should().Be(ProceduralAtlasGenerator.AtlasDimension);
         atlas.TilesPerRow.Should().Be(ProceduralAtlasGenerator.TilesPerRow);
         atlas.RgbaPixels.Length.Should().Be(ProceduralAtlasGenerator.AtlasDimension * ProceduralAtlasGenerator.AtlasDimension * 4);
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "OverHorizon.sln")))
+            {
+                return dir.FullName;
+            }
+
+            dir = dir.Parent;
+        }
+
+        throw new InvalidOperationException("Could not locate the repository root (OverHorizon.sln).");
     }
 }

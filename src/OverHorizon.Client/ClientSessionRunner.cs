@@ -302,7 +302,7 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
         return lastMetrics;
     }
 
-    /// <summary>Runs the interactive Silk.NET OpenGL window loop or headless fallback.</summary>
+    /// <summary>Runs the interactive Vulkan window loop or headless fallback.</summary>
     public async ValueTask RunAsync(CancellationToken cancellationToken = default)
     {
         if (_options.Headless || _renderer is not IWindowRenderSubsystem silkRenderer)

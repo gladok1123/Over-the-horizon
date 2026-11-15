@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace OverHorizon.Rendering.Backends;
 
 /// <summary>
-/// 36-byte position + RGBA + optional atlas UV vertex used by <see cref="SilkOpenGlOverlayRenderer"/>
+/// 36-byte position + RGBA + optional atlas UV vertex used by the overlay renderer
 /// for 3D player/mob avatars, block highlights, and textured 3D held blocks &amp; pixel-extruded items.
 /// </summary>
 /// <param name="Position">Camera-relative or clip-space 3D vertex coordinate.</param>

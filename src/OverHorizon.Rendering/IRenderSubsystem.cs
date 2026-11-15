@@ -7,7 +7,7 @@ using OverHorizon.Rendering.Textures;
 namespace OverHorizon.Rendering;
 
 /// <summary>
-/// Client-side voxel world rendering subsystem contract supporting both Silk.NET OpenGL 3.3 and headless simulation backends.
+/// Client-side voxel world rendering subsystem contract implemented by the Vulkan 1.1 and headless simulation backends.
 /// </summary>
 public interface IRenderSubsystem : IDisposable
 {

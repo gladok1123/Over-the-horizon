@@ -149,7 +149,7 @@ public sealed class CSharpEditionUiAndPaletteTests
         };
         UiGeometryBuilder.BuildFrameQuads(vertices, camera, 1280, 720, baseState);
         var baseHudCount = vertices.Count;
-        // Hotbar sprite quads encode negative UVs (<= -1.0) so SilkOpenGlUiRenderer samples uItemAtlas!
+        // Hotbar sprite quads encode negative UVs (<= -1.0) so the UI renderer samples uItemAtlas!
         vertices.Should().Contain(static v => v.Uv.X <= -1.0f);
 
         var survivalUnderwater = baseState with

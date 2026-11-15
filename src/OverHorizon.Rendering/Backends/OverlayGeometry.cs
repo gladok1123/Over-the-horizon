@@ -10,8 +10,8 @@ namespace OverHorizon.Rendering.Backends;
 /// <summary>
 /// Backend-agnostic per-frame overlay geometry: the sky dome, clouds, void floor, selection wireframe, mobs,
 /// drops, particles, the held viewmodel and the inventory player preview. Everything is tessellated into plain
-/// <see cref="OverlayVertex"/> lists (entity batches and the cloud deck across the worker pool), so the OpenGL
-/// and Vulkan renderers upload byte-identical geometry.
+/// <see cref="OverlayVertex"/> lists (entity batches and the cloud deck across the worker pool), so the Vulkan
+/// renderer uploads exactly the geometry the headless simulation accounts for.
 /// </summary>
 internal sealed class OverlayGeometry
 {

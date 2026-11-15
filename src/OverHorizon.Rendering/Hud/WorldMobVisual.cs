@@ -3,7 +3,7 @@ using OverHorizon.Core.Math;
 namespace OverHorizon.Rendering.Hud;
 
 /// <summary>
-/// Per-frame 3D world mob visual state passed from gameplay simulation to <c>SilkOpenGlOverlayRenderer</c>.
+/// Per-frame 3D world mob visual state passed from gameplay simulation to the overlay renderer.
 /// </summary>
 public readonly record struct WorldMobVisual(
     Vec3d FeetPosition,

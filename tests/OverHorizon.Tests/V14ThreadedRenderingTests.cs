@@ -3,6 +3,7 @@ using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
 using OverHorizon.Rendering;
 using OverHorizon.Rendering.Backends;
+using OverHorizon.Rendering.Backends.Vulkan;
 using OverHorizon.Rendering.Meshing;
 using OverHorizon.Rendering.Textures;
 using OverHorizon.Rendering.Threading;
@@ -109,11 +110,11 @@ public sealed class V14ThreadedRenderingTests
     [Fact]
     public void SectionCullScratch_MergesPerWorkerBucketsDeterministically()
     {
-        var scratch = new SectionCullScratch<GpuSectionBuffer>(3);
+        var scratch = new SectionCullScratch<VulkanSectionSlot>(3);
 
-        scratch.OpaqueBucket(0).Add(new CulledSectionDraw<GpuSectionBuffer>(null!, default, 0.0f));
-        scratch.OpaqueBucket(1).Add(new CulledSectionDraw<GpuSectionBuffer>(null!, default, 0.0f));
-        scratch.TranslucentBucket(2).Add(new CulledSectionDraw<GpuSectionBuffer>(null!, default, 12.0f));
+        scratch.OpaqueBucket(0).Add(new CulledSectionDraw<VulkanSectionSlot>(null!, default, 0.0f));
+        scratch.OpaqueBucket(1).Add(new CulledSectionDraw<VulkanSectionSlot>(null!, default, 0.0f));
+        scratch.TranslucentBucket(2).Add(new CulledSectionDraw<VulkanSectionSlot>(null!, default, 12.0f));
 
         scratch.AddCounts(0, visible: 4, culled: 1);
         scratch.AddCounts(2, visible: 3, culled: 9);
@@ -204,7 +205,7 @@ public sealed class V14ThreadedRenderingTests
         var drawIndex = drawer.LastIndexOf("ComputeCameraRelativeOffset(", StringComparison.Ordinal);
         cullIndex.Should().BeGreaterThan(-1);
         parallelIndex.Should().BeGreaterThan(cullIndex, "the fan-out lives inside the culling stage");
-        drawIndex.Should().BeGreaterThan(parallelIndex, "OpenGL draws stay in the single-threaded replay stage");
+        drawIndex.Should().BeGreaterThan(parallelIndex, "GPU draws stay in the single-threaded replay stage");
 
         // No graphics call may sneak into the culling body: it runs on worker threads with no current context.
         var cullBody = drawer[parallelIndex..drawIndex];
@@ -214,13 +215,13 @@ public sealed class V14ThreadedRenderingTests
     [Fact]
     public void RenderFrame_CullsBeforeItDrawsAndKeepsTheV13PassOrder()
     {
-        var frame = ReadSourceFile("src/OverHorizon.Rendering/Backends/SilkOpenGlRenderSubsystem.Frame.cs");
+        var frame = ReadSourceFile("src/OverHorizon.Rendering/Backends/Vulkan/VulkanRenderSubsystem.Frame.cs");
 
         var cullIndex = frame.IndexOf("CullVisibleSections(", StringComparison.Ordinal);
         var opaqueIndex = frame.IndexOf("DrawOpaqueList(", StringComparison.Ordinal);
-        var worldIndex = frame.IndexOf("RenderWorldOverlays(", StringComparison.Ordinal);
-        var translucentIndex = frame.IndexOf("DrawTranslucentPass(", StringComparison.Ordinal);
-        var screenIndex = frame.IndexOf("RenderScreenOverlays(", StringComparison.Ordinal);
+        var worldIndex = frame.IndexOf("DrawWorldOverlays(", StringComparison.Ordinal);
+        var translucentIndex = frame.IndexOf("DrawTranslucentList(", StringComparison.Ordinal);
+        var screenIndex = frame.IndexOf("DrawScreenOverlays(", StringComparison.Ordinal);
 
         cullIndex.Should().BeGreaterThan(-1, "the frame must cull before it draws");
         cullIndex.Should().BeLessThan(opaqueIndex);
@@ -244,8 +245,8 @@ public sealed class V14ThreadedRenderingTests
         threading.Should().Contain("sink.DrainTo(", "buckets are merged back in deterministic worker order");
         threading.Should().NotContain("gl.", "tessellation must stay free of graphics API state");
 
-        var subsystem = ReadSourceFile("src/OverHorizon.Rendering/Backends/SilkOpenGlRenderSubsystem.cs");
-        subsystem.Should().Contain("new SilkOpenGlOverlayRenderer(gl, _options.MaxRenderThreads)", "the overlay stages honour the configured thread cap");
+        var subsystem = ReadSourceFile("src/OverHorizon.Rendering/Backends/Vulkan/VulkanRenderSubsystem.cs");
+        subsystem.Should().Contain("new OverlayGeometry(_options.MaxRenderThreads)", "the overlay stages honour the configured thread cap");
     }
 
     [Fact]

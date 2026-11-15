@@ -1,7 +1,7 @@
 namespace OverHorizon.Rendering.Hud;
 
 /// <summary>
-/// Active client screen state rendered by <c>SilkOpenGlUiRenderer</c>.
+/// Active client screen state rendered by the 2D HUD renderer.
 /// </summary>
 public enum UiOverlayMode : byte
 {

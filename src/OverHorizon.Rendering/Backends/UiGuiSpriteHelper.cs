@@ -31,7 +31,7 @@ internal static class UiGuiSpriteHelper
         var u1 = (sheetOriginX + srcX + srcW - 0.05f) / GuiTextureAtlasGenerator.AtlasWidth;
         var v1 = (sheetOriginY + srcY + srcH - 0.05f) / GuiTextureAtlasGenerator.AtlasHeight;
 
-        // Encoding (-uv - 3.0) routes SilkOpenGlUiRenderer to sample uGuiAtlas!
+        // Encoding (-uv - 3.0) routes the UI renderer to sample uGuiAtlas!
         var uv0 = new Vector2(-(u0 + 3.0f), -(v0 + 3.0f));
         var uv1 = new Vector2(-(u1 + 3.0f), -(v0 + 3.0f));
         var uv2 = new Vector2(-(u1 + 3.0f), -(v1 + 3.0f));

@@ -7,7 +7,7 @@ namespace OverHorizon.Rendering.Backends;
 /// <summary>
 /// Backend-agnostic celestial sky dome (Sun, Moon, uniformly distributed night stars), 3D volumetric cloud deck
 /// and deep-obsidian void abyss tessellation. It only appends <see cref="OverlayVertex"/> triangles, so both the
-/// OpenGL and the Vulkan overlay renderers build exactly the same geometry from it.
+/// Vulkan overlay renderer builds its celestial dome, cloud deck and void floor from it.
 /// </summary>
 internal static class OverlaySkyTessellator
 {

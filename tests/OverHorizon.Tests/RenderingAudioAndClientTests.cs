@@ -13,6 +13,7 @@ using OverHorizon.Core.Registry;
 using OverHorizon.Networking;
 using OverHorizon.Rendering;
 using OverHorizon.Rendering.Backends;
+using OverHorizon.Rendering.Backends.Vulkan;
 using OverHorizon.Rendering.Camera;
 using OverHorizon.Rendering.Hud;
 using OverHorizon.Rendering.Meshing;
@@ -251,7 +252,7 @@ public sealed class RenderingAudioAndClientTests
         IRenderSubsystem[] backends =
         [
             new HeadlessRenderSubsystem(),
-            new SilkOpenGlRenderSubsystem(new RenderingOptions(), NullLogger<SilkOpenGlRenderSubsystem>.Instance),
+            new VulkanRenderSubsystem(new RenderingOptions(), NullLogger<VulkanRenderSubsystem>.Instance),
         ];
 
         foreach (var backend in backends)

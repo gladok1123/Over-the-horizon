@@ -7,7 +7,7 @@ using OverHorizon.Rendering;
 namespace OverHorizon.Client;
 
 /// <summary>
-/// Entry point for the interactive Silk.NET OpenGL / headless voxel client executable.
+/// Entry point for the interactive Vulkan / headless voxel client executable.
 /// </summary>
 internal static class Program
 {
