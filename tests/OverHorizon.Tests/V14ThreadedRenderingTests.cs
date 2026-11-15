@@ -1,6 +1,7 @@
 using FluentAssertions;
 using OverHorizon.Core.Math;
 using OverHorizon.Core.Registry;
+using OverHorizon.Rendering;
 using OverHorizon.Rendering.Backends;
 using OverHorizon.Rendering.Meshing;
 using OverHorizon.Rendering.Textures;
@@ -166,7 +167,7 @@ public sealed class V14ThreadedRenderingTests
     }
 
     [Fact]
-    public void ChunkMeshing_KeepsABatchDeterministicAcrossRuns()
+    public async Task ChunkMeshing_KeepsABatchDeterministicAcrossRuns()
     {
         var registries = CoreRegistries.CreateDefault();
         var atlas = ProceduralAtlasGenerator.CreateDefault(registries.Blocks);
@@ -180,8 +181,8 @@ public sealed class V14ThreadedRenderingTests
             batch.Add(new ChunkNeighborhood(col.CreateSnapshot()));
         }
 
-        var first = ParallelChunkMesher.MeshColumnsParallelAsync(batch, registries.Blocks, atlas).AsTask().GetAwaiter().GetResult();
-        var second = ParallelChunkMesher.MeshColumnsParallelAsync(batch, registries.Blocks, atlas).AsTask().GetAwaiter().GetResult();
+        var first = await ParallelChunkMesher.MeshColumnsParallelAsync(batch, registries.Blocks, atlas);
+        var second = await ParallelChunkMesher.MeshColumnsParallelAsync(batch, registries.Blocks, atlas);
 
         first.Should().NotBeEmpty();
         second.Select(m => m.SectionPosition).Should().Equal(first.Select(m => m.SectionPosition), "output stays sorted by SectionPosition");
