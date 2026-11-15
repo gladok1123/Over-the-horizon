@@ -44,7 +44,7 @@ public sealed class DependencyInjectionTests
     {
         using var host = ClientBootstrap.BuildHost([]);
 
-        host.Services.GetRequiredService<IRenderSubsystem>().BackendName.Should().Be("Silk.NET OpenGL 3.3");
+        host.Services.GetRequiredService<IRenderSubsystem>().BackendName.Should().Be("Vulkan 1.1");
         host.Services.GetRequiredService<IAudioSubsystem>().IsInitialized.Should().BeFalse();
         host.Services.GetRequiredService<IWorldSubsystem>().Should().NotBeNull();
         host.Services.GetRequiredService<IPhysicsSubsystem>().Should().NotBeNull();
