@@ -263,8 +263,8 @@ internal sealed class OverlayGeometry
                 worldTimeTicks,
                 driftOffset,
                 skyBrightness,
-                start - CloudGridRadius,
-                end - CloudGridRadius);
+                start - OverlaySkyTessellator.CloudGridRadius,
+                end - OverlaySkyTessellator.CloudGridRadius);
         });
 
         sink.DrainTo(Clouds);

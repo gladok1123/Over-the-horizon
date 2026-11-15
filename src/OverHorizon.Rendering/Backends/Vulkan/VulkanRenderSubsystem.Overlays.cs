@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using OverHorizon.Rendering.Camera;
 using OverHorizon.Rendering.Hud;
 using Silk.NET.Vulkan;
@@ -147,7 +148,7 @@ public sealed unsafe partial class VulkanRenderSubsystem
         }
 
         var drawCalls = 0;
-        _overlayGeometry.BuildScreenPass(overlay, _stagedAtlas);
+        _overlayGeometry.BuildScreenPass(camera, overlay, _stagedAtlas);
 
         if (_overlayGeometry.ViewModel.Count > 0)
         {

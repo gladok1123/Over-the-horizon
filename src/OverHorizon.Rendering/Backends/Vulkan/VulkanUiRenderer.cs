@@ -83,7 +83,7 @@ internal sealed unsafe class VulkanUiRenderer : IDisposable
 
         _stream.Reset();
         _stream.EnsureCapacity(Math.Max(_peakBytes, InitialCapacity));
-        if (!_stream.TryWrite(CollectionsMarshal.AsSpan(_vertices), out var offset))
+        if (!_stream.TryWrite<TexturedUiVertex>(CollectionsMarshal.AsSpan(_vertices), out var offset))
         {
             return 0;
         }

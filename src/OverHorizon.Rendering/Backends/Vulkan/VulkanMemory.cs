@@ -129,7 +129,7 @@ internal static class VulkanMemory
     /// <param name="oldLayout">Layout the image is currently in.</param>
     /// <param name="newLayout">Layout the image must end up in.</param>
     /// <param name="aspectFlags">Image aspects covered by the transition.</param>
-    public static void TransitionLayout(
+    public static unsafe void TransitionLayout(
         Vk vk,
         Device device,
         CommandPool commandPool,

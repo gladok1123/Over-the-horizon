@@ -20,7 +20,7 @@ internal sealed unsafe partial class VulkanDevice : IDisposable
             ?? throw new NotSupportedException("The windowing platform does not provide a Vulkan surface.");
 
         var requiredExtensions = provider.GetRequiredExtensions(out var requiredCount);
-        var extensionNames = stackalloc byte*[requiredCount + 1];
+        var extensionNames = stackalloc byte*[(int)requiredCount + 1];
         for (var i = 0u; i < requiredCount; i++)
         {
             extensionNames[i] = requiredExtensions[i];
