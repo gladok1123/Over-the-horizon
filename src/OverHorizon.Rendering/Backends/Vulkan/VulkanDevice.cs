@@ -18,8 +18,8 @@ internal sealed unsafe partial class VulkanDevice : IDisposable
     public const int FramesInFlight = 2;
 
     private readonly Vk _vk = Vk.GetApi();
-    private KhrSurface _khrSurface;
-    private KhrSwapchain _khrSwapchain;
+    private KhrSurface _khrSurface = null!;
+    private KhrSwapchain _khrSwapchain = null!;
 
     private Instance _instance;
     private PhysicalDevice _physicalDevice;

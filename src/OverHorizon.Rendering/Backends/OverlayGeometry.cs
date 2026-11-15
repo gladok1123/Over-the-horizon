@@ -236,13 +236,13 @@ internal sealed class OverlayGeometry
     private void AppendWorldCloudsParallel(Vec3d cameraPos, long worldTimeTicks, float driftOffset, float skyBrightness)
     {
         var workers = RenderParallelism.ResolveWorkerCount(
-            CloudGridExtent,
+            OverlaySkyTessellator.CloudGridExtent,
             CloudMinRowsPerWorker,
             _maxRenderThreads);
 
         if (workers <= 1)
         {
-            OverlaySkyTessellator.AppendWorldClouds(_cloudVertices, cameraPos, worldTimeTicks, driftOffset, skyBrightness);
+            OverlaySkyTessellator.AppendWorldClouds(Clouds, cameraPos, worldTimeTicks, driftOffset, skyBrightness);
             return;
         }
 
@@ -251,7 +251,7 @@ internal sealed class OverlayGeometry
         sink.Reset();
         Parallel.For(0, capped, worker =>
         {
-            var (start, end) = RenderParallelism.RangeFor(CloudGridExtent, capped, worker);
+            var (start, end) = RenderParallelism.RangeFor(OverlaySkyTessellator.CloudGridExtent, capped, worker);
             if (end <= start)
             {
                 return;
@@ -267,7 +267,7 @@ internal sealed class OverlayGeometry
                 end - CloudGridRadius);
         });
 
-        sink.DrainTo(_cloudVertices);
+        sink.DrainTo(Clouds);
     }
 
     private static void AppendBlockDestroyCracks(List<OverlayVertex> dst, Vec3d cameraPos, in BoundingBox box, float miningProgress)

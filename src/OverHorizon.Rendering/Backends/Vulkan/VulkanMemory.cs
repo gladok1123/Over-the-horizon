@@ -22,7 +22,7 @@ internal static class VulkanMemory
         vk.GetPhysicalDeviceMemoryProperties(physicalDevice, out var memoryProperties);
         for (var i = 0u; i < memoryProperties.MemoryTypeCount; i++)
         {
-            var type = memoryProperties.MemoryTypes[i];
+            var type = memoryProperties.MemoryTypes[(int)i];
             if ((typeFilter & (1u << (int)i)) != 0 && (type.PropertyFlags & properties) == properties)
             {
                 return i;
@@ -103,7 +103,7 @@ internal static class VulkanMemory
     /// <param name="source">Staging buffer.</param>
     /// <param name="destination">Device-local buffer.</param>
     /// <param name="size">Number of bytes to copy.</param>
-    public static void CopyBuffer(
+    public static unsafe void CopyBuffer(
         Vk vk,
         Device device,
         CommandPool commandPool,

@@ -188,7 +188,7 @@ internal static class OverlaySkyTessellator
         }
     }
 
-    private static void AppendVoidAbyssFloor(List<OverlayVertex> dst, Vec3d cameraPos)
+    internal static void AppendVoidAbyssFloor(List<OverlayVertex> dst, Vec3d cameraPos)
     {
         var voidY = (float)((EngineConstants.WorldMinY - 1.5) - cameraPos.Y);
         var deepVoidY = (float)((EngineConstants.WorldMinY - 36.0) - cameraPos.Y);
