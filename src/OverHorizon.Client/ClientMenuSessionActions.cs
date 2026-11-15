@@ -34,7 +34,7 @@ internal sealed class ClientMenuSessionActions : IDisposable
 
     public void DispatchPendingActions(
         ClientInputBinder inputBinder,
-        SilkOpenGlRenderSubsystem silkRenderer,
+        IWindowRenderSubsystem silkRenderer,
         Action<string> sendChat,
         Func<SavedWorldMetadata, CancellationToken, Task> loadSavedWorldAsync,
         Func<CancellationToken, Task> saveAndReturnToTitleAsync,

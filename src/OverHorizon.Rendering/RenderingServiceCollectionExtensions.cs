@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using OverHorizon.Rendering.Backends;
+using OverHorizon.Rendering.Backends.Vulkan;
 
 namespace OverHorizon.Rendering;
 
@@ -31,13 +32,17 @@ public static class RenderingServiceCollectionExtensions
             services.TryAddSingleton(static _ => new RenderingOptions());
         }
 
-        services.AddSingleton<IRenderSubsystem>(static sp =>
+        services.AddSingleton<IWindowRenderSubsystem>(static sp =>
         {
             var opts = sp.GetRequiredService<RenderingOptions>();
             return opts.Headless
                 ? new HeadlessRenderSubsystem()
-                : new SilkOpenGlRenderSubsystem(opts, sp.GetRequiredService<ILogger<SilkOpenGlRenderSubsystem>>());
+                : new VulkanRenderSubsystem(opts, sp.GetRequiredService<ILogger<VulkanRenderSubsystem>>());
         });
+
+        // Windowed consumers (menu, session runner) need the richer contract; everything else only needs
+        // IRenderSubsystem, so both registrations resolve to the same singleton instance.
+        services.AddSingleton<IRenderSubsystem>(static sp => sp.GetRequiredService<IWindowRenderSubsystem>());
 
         return services;
     }

@@ -1,8 +1,10 @@
+using System.Numerics;
 using OverHorizon.Core.Math;
 using OverHorizon.Rendering.Camera;
 using OverHorizon.Rendering.Hud;
 using OverHorizon.Rendering.Meshing;
 using OverHorizon.Rendering.Textures;
+using Silk.NET.Input;
 
 namespace OverHorizon.Rendering.Backends;
 
@@ -10,7 +12,7 @@ namespace OverHorizon.Rendering.Backends;
 /// Zero-GPU rendering backend that tracks uploaded section meshes and executes exact CPU frustum culling
 /// and draw-call accounting for automated tests, benchmarks, and headless client verification.
 /// </summary>
-public sealed class HeadlessRenderSubsystem : IRenderSubsystem
+public sealed class HeadlessRenderSubsystem : IWindowRenderSubsystem
 {
     private readonly Dictionary<SectionPos, SectionMeshData> _sections = [];
     private TextureAtlasData? _atlas;
@@ -119,6 +121,33 @@ public sealed class HeadlessRenderSubsystem : IRenderSubsystem
         LastFrameMetrics = new RenderFrameMetrics(visible, culled, drawCalls, triangles, _frameCount);
         return LastFrameMetrics;
     }
+
+    /// <inheritdoc />
+    public IInputContext? InputContext => null;
+
+    /// <inheritdoc />
+    public Vector2 WindowPixelSize => new(1280.0f, 720.0f);
+
+    /// <inheritdoc />
+    public string WindowTitle { get; set; } = "Over-the-Horizon (headless)";
+
+    /// <inheritdoc />
+    public void RequestClose()
+    {
+    }
+
+    /// <inheritdoc />
+    public void UploadEntityAtlas(TextureAtlasData entityAtlas)
+    {
+    }
+
+    /// <inheritdoc />
+    public void RunWindowLoop(
+        Action<double> onUpdate,
+        Action<double> onRender,
+        Action<int, int>? onResize = null,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("The headless render subsystem owns no OS window.");
 
     /// <inheritdoc />
     public void Dispose()

@@ -53,7 +53,7 @@ internal sealed class ClientAsyncMeshQueue : IAsyncDisposable
         }
     }
 
-    public void DispatchAndUpload(ClientWorldCache worldCache, SilkOpenGlRenderSubsystem silkRenderer, ChunkPos? playerChunk = null)
+    public void DispatchAndUpload(ClientWorldCache worldCache, IWindowRenderSubsystem silkRenderer, ChunkPos? playerChunk = null)
     {
         if (Volatile.Read(ref _inFlightBatches) < 4)
         {

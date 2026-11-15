@@ -282,7 +282,7 @@ public sealed partial class ClientSessionRunner
         return true;
     }
 
-    private void UpdateInteractiveFrame(SilkOpenGlRenderSubsystem silkRenderer, double dt, CancellationToken sessionToken)
+    private void UpdateInteractiveFrame(IWindowRenderSubsystem silkRenderer, double dt, CancellationToken sessionToken)
     {
         while (_mainThreadQueue.TryDequeue(out var mainWork)) mainWork();
 

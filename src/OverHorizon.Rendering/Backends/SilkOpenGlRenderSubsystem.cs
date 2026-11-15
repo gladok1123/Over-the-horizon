@@ -19,7 +19,7 @@ namespace OverHorizon.Rendering.Backends;
 /// <c>O(1)</c> residency, column-level spherical distance + frustum culling, dynamic Day/Sunset/Night sky &amp; held-torch lighting,
 /// and two-pass opaque + translucent drawing.
 /// </summary>
-public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
+public sealed partial class SilkOpenGlRenderSubsystem : IWindowRenderSubsystem
 {
     private readonly RenderingOptions _options;
     private readonly ILogger<SilkOpenGlRenderSubsystem> _logger;
@@ -91,15 +91,15 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
     /// <inheritdoc />
     public RenderFrameMetrics LastFrameMetrics { get; private set; }
 
-    /// <summary>Gets the active Silk.NET keyboard &amp; mouse input context when the window is open.</summary>
+    /// <inheritdoc />
     public IInputContext? InputContext => _inputContext;
 
-    /// <summary>Gets the current window framebuffer dimensions in pixels.</summary>
+    /// <inheritdoc />
     public Vector2 WindowPixelSize => _window is { } w
         ? new Vector2(w.Size.X, w.Size.Y)
         : new Vector2(_options.WindowWidth, _options.WindowHeight);
 
-    /// <summary>Gets or sets the OS window title.</summary>
+    /// <inheritdoc />
     public string WindowTitle
     {
         get => _window?.Title ?? _options.WindowTitle;
@@ -112,7 +112,7 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
         }
     }
 
-    /// <summary>Requests graceful window closure at the end of the current frame.</summary>
+    /// <inheritdoc />
     public void RequestClose() => _window?.Close();
 
     /// <inheritdoc />
@@ -129,7 +129,7 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
         }
     }
 
-    /// <summary>Uploads or replaces the <c>512x256</c> entity skin sheet (<c>steve.png</c> + 8 mobs).</summary>
+    /// <inheritdoc />
     public void UploadEntityAtlas(TextureAtlasData entityAtlas)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -207,7 +207,7 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
         }
     }
 
-    /// <summary>Creates the OpenGL 3.3 Core window and runs the interactive update/render loop until closed.</summary>
+    /// <inheritdoc />
     public void RunWindowLoop(
         Action<double> onUpdate,
         Action<double> onRender,

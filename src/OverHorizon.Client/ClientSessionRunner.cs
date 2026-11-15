@@ -104,7 +104,7 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
 
         _atlas = ProceduralAtlasGenerator.CreateDefault(blocks, options.ExternalAssetsPath);
         _renderer.UploadAtlas(_atlas);
-        if (_renderer is SilkOpenGlRenderSubsystem silk)
+        if (_renderer is IWindowRenderSubsystem silk)
         {
             silk.UploadEntityAtlas(EntityTextureAtlasGenerator.CreateDefault(options.ExternalAssetsPath));
         }
@@ -117,7 +117,7 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
         _menu = new ClientMenuController(options, initialMode, registries.Items, BuiltInRecipes.CreateFrozen(registries.Items), _player);
         _menuActions = new ClientMenuSessionActions(_menu, _chatHistory, _logger);
         _inputBinder = new ClientInputBinder(
-            _player, _menu, _audio, _logger, () => _latestDebugText, () => _renderer is SilkOpenGlRenderSubsystem s ? s.WindowPixelSize : new Vector2(1280, 720));
+            _player, _menu, _audio, _logger, () => _latestDebugText, () => _renderer is IWindowRenderSubsystem s ? s.WindowPixelSize : new Vector2(1280, 720));
         _remotePlayers = new ClientRemotePlayerTracker(_logger);
         _worldBridge = new ClientWorldSyncAndMobBridge(_blocks, registries.Items, _panoramaWorld, _worldCache, _renderer, _audio, _mobManager, _atlas);
         _survivalCombat = new ClientSurvivalCombatController(blocks, registries.Items, _audio);
@@ -305,7 +305,7 @@ public sealed partial class ClientSessionRunner : IAsyncDisposable
     /// <summary>Runs the interactive Silk.NET OpenGL window loop or headless fallback.</summary>
     public async ValueTask RunAsync(CancellationToken cancellationToken = default)
     {
-        if (_options.Headless || _renderer is not SilkOpenGlRenderSubsystem silkRenderer)
+        if (_options.Headless || _renderer is not IWindowRenderSubsystem silkRenderer)
         {
             var frames = _options.MaxFrames ?? 1;
             _ = await RunHeadlessFramesAsync(frames, cancellationToken: cancellationToken).ConfigureAwait(false);

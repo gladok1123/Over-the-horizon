@@ -5,6 +5,7 @@ using OverHorizon.Rendering.Camera;
 using OverHorizon.Rendering.Meshing;
 using OverHorizon.Rendering.Textures;
 using OverHorizon.Rendering.Threading;
+using Silk.NET.Core.Contexts;
 using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.Vulkan;
@@ -21,7 +22,7 @@ namespace OverHorizon.Rendering.Backends.Vulkan;
 /// streams, and it drives the same multi-threaded culling and tessellation stages the OpenGL backend uses —
 /// shaders are precompiled to SPIR-V at build time, so nothing is ever compiled while the game is running.
 /// </summary>
-public sealed unsafe partial class VulkanRenderSubsystem : IRenderSubsystem
+public sealed unsafe partial class VulkanRenderSubsystem : IWindowRenderSubsystem
 {
     private readonly RenderingOptions _options;
     private readonly ILogger<VulkanRenderSubsystem> _logger;
@@ -79,15 +80,15 @@ public sealed unsafe partial class VulkanRenderSubsystem : IRenderSubsystem
     /// <inheritdoc />
     public RenderFrameMetrics LastFrameMetrics { get; private set; }
 
-    /// <summary>Gets the active Silk.NET keyboard &amp; mouse input context when the window is open.</summary>
+    /// <inheritdoc />
     public IInputContext? InputContext => _inputContext;
 
-    /// <summary>Gets the current window framebuffer dimensions in pixels.</summary>
+    /// <inheritdoc />
     public Vector2 WindowPixelSize => _window is { } w
         ? new Vector2(w.Size.X, w.Size.Y)
         : new Vector2(_options.WindowWidth, _options.WindowHeight);
 
-    /// <summary>Gets or sets the OS window title.</summary>
+    /// <inheritdoc />
     public string WindowTitle
     {
         get => _window?.Title ?? _options.WindowTitle;
@@ -100,7 +101,7 @@ public sealed unsafe partial class VulkanRenderSubsystem : IRenderSubsystem
         }
     }
 
-    /// <summary>Requests graceful window closure at the end of the current frame.</summary>
+    /// <inheritdoc />
     public void RequestClose() => _window?.Close();
 
     /// <inheritdoc />
@@ -116,8 +117,7 @@ public sealed unsafe partial class VulkanRenderSubsystem : IRenderSubsystem
         }
     }
 
-    /// <summary>Uploads or replaces the <c>512x256</c> entity skin sheet (<c>steve.png</c> + 8 mobs).</summary>
-    /// <param name="entityAtlas">Entity atlas pixels.</param>
+    /// <inheritdoc />
     public void UploadEntityAtlas(TextureAtlasData entityAtlas)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -198,11 +198,7 @@ public sealed unsafe partial class VulkanRenderSubsystem : IRenderSubsystem
         }
     }
 
-    /// <summary>Creates the Vulkan window and runs the interactive update/render loop until closed.</summary>
-    /// <param name="onUpdate">Per-frame simulation callback.</param>
-    /// <param name="onRender">Per-frame render callback.</param>
-    /// <param name="onResize">Optional framebuffer resize callback.</param>
-    /// <param name="cancellationToken">Cancels the loop by closing the window.</param>
+    /// <inheritdoc />
     public void RunWindowLoop(
         Action<double> onUpdate,
         Action<double> onRender,
