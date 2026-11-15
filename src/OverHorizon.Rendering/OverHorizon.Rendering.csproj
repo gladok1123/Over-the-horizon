@@ -16,9 +16,30 @@
     <PackageReference Include="Silk.NET.Input" />
     <PackageReference Include="Silk.NET.Maths" />
     <PackageReference Include="Silk.NET.OpenGL" />
+    <PackageReference Include="Silk.NET.Vulkan" />
+    <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
     <PackageReference Include="Silk.NET.Windowing" />
     <PackageReference Include="Silk.NET.Windowing.Glfw" />
   </ItemGroup>
+
+  <!--
+    Shaders are compiled to SPIR-V ahead of time (never during gameplay) by the build-time compiler tool,
+    and the finished binaries are embedded as manifest resources the Vulkan backend simply maps into memory.
+  -->
+  <PropertyGroup>
+    <VulkanShaderInputDir>$(MSBuildThisFileDirectory)Shaders/</VulkanShaderInputDir>
+    <VulkanShaderOutputDir>$(MSBuildThisFileDirectory)Shaders/Generated/</VulkanShaderOutputDir>
+    <VulkanShaderCompilerProject>$(MSBuildThisFileDirectory)../../build/OverHorizon.ShaderCompiler/OverHorizon.ShaderCompiler.csproj</VulkanShaderCompilerProject>
+  </PropertyGroup>
+
+  <Target Name="CompileVulkanShaders" BeforeTargets="BeforeBuild">
+    <Exec Command="dotnet run --project &quot;$(VulkanShaderCompilerProject)&quot; --configuration $(Configuration) -- &quot;$(VulkanShaderInputDir)&quot; &quot;$(VulkanShaderOutputDir)&quot;" />
+    <ItemGroup>
+      <EmbeddedResource Include="$(VulkanShaderOutputDir)*.spv">
+        <LogicalName>OverHorizon.Rendering.Shaders.%(Filename)%(Extension)</LogicalName>
+      </EmbeddedResource>
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <ProjectReference Include="../OverHorizon.Core/OverHorizon.Core.csproj" />
