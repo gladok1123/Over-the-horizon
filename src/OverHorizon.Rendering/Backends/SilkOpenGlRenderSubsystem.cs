@@ -226,7 +226,6 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
         }
     }
 
-    /// <inheritdoc />
     private void RemoveStagedSection(SectionPos sectionPos)
     {
         var chunkPos = new ChunkPos(sectionPos.X, sectionPos.Z);
