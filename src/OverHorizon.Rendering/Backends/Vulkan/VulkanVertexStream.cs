@@ -1,4 +1,5 @@
 using Silk.NET.Vulkan;
+using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace OverHorizon.Rendering.Backends.Vulkan;
 
@@ -85,7 +86,7 @@ internal sealed unsafe class VulkanVertexStream : IDisposable
 
         fixed (T* source = vertices)
         {
-            Buffer.MemoryCopy(source, _mapped + _offset, byteCount, byteCount);
+            System.Buffer.MemoryCopy(source, _mapped + _offset, byteCount, byteCount);
         }
 
         offset = _offset;

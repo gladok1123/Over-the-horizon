@@ -1,4 +1,5 @@
 using Silk.NET.Vulkan;
+using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace OverHorizon.Rendering.Backends.Vulkan;
 

@@ -249,7 +249,7 @@ internal sealed unsafe class VulkanPipelines : IDisposable
         PipelineLayout layout,
         ShaderModule vertex,
         ShaderModule fragment,
-        VulkanVertexFormats.VertexFormat vertexFormat,
+        VulkanVertexFormat vertexFormat,
         bool depthTest,
         bool depthWrite,
         bool blend,

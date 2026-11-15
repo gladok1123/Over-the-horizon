@@ -36,63 +36,7 @@ internal sealed partial class SilkOpenGlOverlayRenderer
         Vector3 fogColor,
         float chunkFogDist)
     {
-        _cloudVertices.Clear();
-        _worldTriangleVertices.Clear();
-        _worldLineVertices.Clear();
-
-        // The Nether is roofed with Bedrock, so it never shows the Overworld cloud deck.
-        if (!state.IsUnderwater && !state.IsNetherDimension && camera.Position.Y > OverHorizon.Core.EngineConstants.WorldMinY - 2.0)
-        {
-            AppendWorldCloudsParallel(camera.Position, state.WorldTimeTicks, state.CloudDriftOffset, state.CameraSkyLightNormalized);
-        }
-
-        if (camera.Position.Y < 24.0)
-        {
-            AppendVoidAbyssFloor(_worldTriangleVertices, camera.Position);
-        }
-
-        if (state.TargetedBlock is { } target)
-        {
-            var box = state.TargetedSelectionBox ?? BoundingBox.FromBlock(target);
-            AppendSelectionWireframe(_worldLineVertices, camera.Position, in box);
-
-            if (state.MiningProgress is > 0.01f and < 1.0f)
-            {
-                AppendBlockDestroyCracks(_worldTriangleVertices, camera.Position, in box, state.MiningProgress);
-            }
-        }
-
-        var cameraPos = camera.Position;
-        var worldTris = _worldTriangleVertices;
-
-        ParallelAppend(state.RemotePlayers, EntityMinItemsPerWorker, (dst, slice) =>
-            WorldMob3DMesher.AppendRemotePlayers(dst, cameraPos, slice));
-
-        if (state.IsThirdPersonCamera && state.LocalThirdPersonPlayer is { } localThirdPerson)
-        {
-            WorldMob3DMesher.AppendSingleRemotePlayer(worldTris, cameraPos, localThirdPerson);
-        }
-
-        ParallelAppend(state.WorldMobs, EntityMinItemsPerWorker, (dst, slice) =>
-            WorldMob3DMesher.AppendWorldMobs(dst, cameraPos, slice, atlasData));
-
-        ParallelAppend(state.Minecarts, EntityMinItemsPerWorker, (dst, slice) =>
-            WorldMob3DMesher.AppendMinecarts(dst, cameraPos, slice));
-
-        ParallelAppend(state.Arrows, EntityMinItemsPerWorker, (dst, slice) =>
-            WorldMob3DMesher.AppendArrows(dst, cameraPos, slice));
-
-        ParallelAppend(state.PrimedTnts, EntityMinItemsPerWorker, (dst, slice) =>
-            WorldMob3DMesher.AppendPrimedTnts(dst, cameraPos, slice));
-
-        ParallelAppend(state.FallingBlocks, EntityMinItemsPerWorker, (dst, slice) =>
-            WorldMob3DMesher.AppendFallingBlocks(dst, cameraPos, slice));
-
-        ParallelAppend(state.DroppedItems, EntityMinItemsPerWorker, (dst, slice) =>
-            WorldMob3DMesher.AppendDroppedItems(dst, cameraPos, slice, atlasData));
-
-        ParallelAppend(state.Particles, ParticleMinItemsPerWorker, (dst, slice) =>
-            WorldMob3DMesher.AppendWorldParticles(dst, camera, slice));
+        _geometry.BuildWorldPass(camera, state, atlasData);
 
         var drawCalls = 0;
         _gl.UseProgram(_program);
@@ -161,11 +105,7 @@ internal sealed partial class SilkOpenGlOverlayRenderer
         uint entityAtlasTexture,
         TextureAtlasData? atlasData)
     {
-        _viewModelVertices.Clear();
-        if (!state.IsThirdPersonCamera && state.Mode is UiOverlayMode.InGame or UiOverlayMode.ChatInput)
-        {
-            HeldItem3DMesher.AppendHeldViewmodel(_viewModelVertices, state, atlasData);
-        }
+        _geometry.BuildScreenPass(camera, state, atlasData);
 
         var drawCalls = 0;
         _gl.UseProgram(_program);

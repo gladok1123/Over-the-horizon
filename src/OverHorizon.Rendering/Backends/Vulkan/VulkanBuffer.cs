@@ -1,4 +1,5 @@
 using Silk.NET.Vulkan;
+using Buffer = Silk.NET.Vulkan.Buffer;
 
 namespace OverHorizon.Rendering.Backends.Vulkan;
 
@@ -142,7 +143,7 @@ internal sealed unsafe class VulkanBuffer : IDisposable
 
         fixed (T* source = data)
         {
-            Buffer.MemoryCopy(source, mapped, byteCount, byteCount);
+            System.Buffer.MemoryCopy(source, mapped, byteCount, byteCount);
         }
 
         _vk.UnmapMemory(_device, _memory);

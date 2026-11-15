@@ -236,13 +236,13 @@ public sealed class V14ThreadedRenderingTests
     [Fact]
     public void OverlayTessellation_FansOutAcrossWorkersWithoutSharingAList()
     {
-        var threading = ReadSourceFile("src/OverHorizon.Rendering/Backends/SilkOpenGlOverlayRenderer.Threading.cs");
+        var threading = ReadSourceFile("src/OverHorizon.Rendering/Backends/OverlayGeometry.cs");
 
         threading.Should().Contain("ParallelAppend<", "entity batches are sliced across workers");
         threading.Should().Contain("AppendWorldCloudsParallel(", "the cloud deck is tessellated per band of rows");
         threading.Should().Contain("sink.Bucket(worker)", "every worker writes into its own bucket");
         threading.Should().Contain("sink.DrainTo(", "buckets are merged back in deterministic worker order");
-        threading.Should().NotContain("gl.", "tessellation must stay free of OpenGL state");
+        threading.Should().NotContain("gl.", "tessellation must stay free of graphics API state");
 
         var subsystem = ReadSourceFile("src/OverHorizon.Rendering/Backends/SilkOpenGlRenderSubsystem.cs");
         subsystem.Should().Contain("new SilkOpenGlOverlayRenderer(gl, _options.MaxRenderThreads)", "the overlay stages honour the configured thread cap");

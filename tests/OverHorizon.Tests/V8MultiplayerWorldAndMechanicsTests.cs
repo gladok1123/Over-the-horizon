@@ -425,11 +425,11 @@ public sealed class V8MultiplayerWorldAndMechanicsTests
 
         // 4. Uniform Night Stars (distributed up to zenith Y > 170, no equatorial skirt) + 6-Face 3D Volumetric Clouds
         var skyVerts = new List<OverlayVertex>();
-        SilkOpenGlOverlayRenderer.AppendCelestialBodies(skyVerts, WorldTimeCycle.MidnightTicks, 70.0);
+        OverlaySkyTessellator.AppendCelestialBodies(skyVerts, WorldTimeCycle.MidnightTicks, 70.0);
         skyVerts.Should().Contain(v => v.Position.Y > 170.0f, "SplitMix32 spherical stars cover high zenith overhead");
 
         var cloudVerts = new List<OverlayVertex>();
-        SilkOpenGlOverlayRenderer.AppendWorldClouds(cloudVerts, new Vec3d(0, 70, 0), WorldTimeCycle.NoonTicks, 12.0f);
+        OverlaySkyTessellator.AppendWorldClouds(cloudVerts, new Vec3d(0, 70, 0), WorldTimeCycle.NoonTicks, 12.0f);
         cloudVerts.Count.Should().BeGreaterThan(600, "3D volumetric clouds emit top, bottom, and all 4 side faces");
 
         // 5. Remote Player Head Pitch: because pivot is at the neck base (Y=1.50), looking DOWN (-45) tilts the forehead forward (-Z),

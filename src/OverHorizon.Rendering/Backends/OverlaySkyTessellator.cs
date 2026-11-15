@@ -5,10 +5,11 @@ using OverHorizon.Core.Math;
 namespace OverHorizon.Rendering.Backends;
 
 /// <summary>
-/// Celestial sky dome (Sun, Moon, uniformly distributed night Stars), 6-face 3D volumetric Clouds,
-/// and deep-obsidian Void abyss geometry builders for <see cref="SilkOpenGlOverlayRenderer"/>.
+/// Backend-agnostic celestial sky dome (Sun, Moon, uniformly distributed night stars), 3D volumetric cloud deck
+/// and deep-obsidian void abyss tessellation. It only appends <see cref="OverlayVertex"/> triangles, so both the
+/// OpenGL and the Vulkan overlay renderers build exactly the same geometry from it.
 /// </summary>
-internal sealed partial class SilkOpenGlOverlayRenderer
+internal static class OverlaySkyTessellator
 {
     /// <summary>Half-extent of the cloud grid in cells: the deck spans <c>2 * CloudGridRadius + 1</c> rows.</summary>
     internal const int CloudGridRadius = 13;

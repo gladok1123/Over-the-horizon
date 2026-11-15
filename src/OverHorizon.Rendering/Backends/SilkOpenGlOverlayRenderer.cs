@@ -1,6 +1,5 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using OverHorizon.Core.Math;
 using OverHorizon.Rendering.Camera;
 using OverHorizon.Rendering.Hud;
 using OverHorizon.Rendering.Textures;
@@ -26,16 +25,8 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
     private readonly int _locFogColor;
     private readonly uint _vao;
     private readonly uint _vbo;
-    private readonly List<OverlayVertex> _skyVertices = new(768);
-    private readonly List<OverlayVertex> _cloudVertices = new(512);
-    private readonly List<OverlayVertex> _worldTriangleVertices = new(12288);
-    private readonly List<OverlayVertex> _worldLineVertices = new(128);
-    private readonly List<OverlayVertex> _viewModelVertices = new(4096);
-    private readonly List<OverlayVertex> _invPreviewVertices = new(1024);
+    private readonly OverlayGeometry _geometry;
     private readonly SilkOpenGlUiRenderer _uiRenderer;
-    private readonly ParallelVertexSink _worldSink = new(RenderParallelism.AutoWorkerCount, 1024);
-    private readonly ParallelVertexSink _cloudSink = new(RenderParallelism.AutoWorkerCount, 768);
-    private readonly int _maxRenderThreads;
     private bool _disposed;
 
     /// <summary>
@@ -49,7 +40,7 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
     public unsafe SilkOpenGlOverlayRenderer(GL gl, int maxRenderThreads = 0)
     {
         _gl = gl;
-        _maxRenderThreads = maxRenderThreads;
+        _geometry = new OverlayGeometry(maxRenderThreads);
         _program = CreateOverlayShaderProgram(gl);
         _locTransform = gl.GetUniformLocation(_program, "uTransform");
         _locAtlas = gl.GetUniformLocation(_program, "uAtlas");
@@ -78,16 +69,10 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
     /// <summary>Draws Sun, Moon, and Stars behind all terrain with DepthTest &amp; DepthMask disabled so FarPlane never clips them.</summary>
     public unsafe int RenderSkyDome(FirstPersonCamera camera, FrameOverlayState state)
     {
-        if (state.IsUnderwater || state.IsNetherDimension) return 0;
-        if (camera.Position.Y < OverHorizon.Core.EngineConstants.WorldMinY + 1.0 ||
-            (camera.Position.Y < 44.0 && state.CameraSkyLightNormalized < 0.05f))
+        if (!_geometry.BuildSkyDome(camera, state))
         {
             return 0;
         }
-
-        _skyVertices.Clear();
-        AppendCelestialBodies(_skyVertices, state.WorldTimeTicks, camera.Position.Y);
-        if (_skyVertices.Count == 0) return 0;
 
         _gl.UseProgram(_program);
         SetFogUniforms(100000.0f, 200000.0f, Vector3.One);
@@ -106,7 +91,7 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
             1024.0f);
         var skyMvp = camera.ComputeRelativeViewMatrix() * skyProj;
         _gl.UniformMatrix4(_locTransform, 1, false, (float*)&skyMvp);
-        UploadAndDraw(_skyVertices, PrimitiveType.Triangles);
+        UploadAndDraw(_geometry.Sky, PrimitiveType.Triangles);
 
         _gl.Disable(EnableCap.Blend);
         _gl.DepthMask(true);
@@ -144,19 +129,7 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
         var vw = Math.Max(8, (int)MathF.Round(rect.Z));
         var vh = Math.Max(8, (int)MathF.Round(rect.W));
 
-        var boxCenterX = rect.X + (rect.Z * 0.5f);
-        var boxEyeY = rect.Y + (rect.W * 0.34f);
-        var dx = state.CursorScreenPos.X - boxCenterX;
-        var dy = state.CursorScreenPos.Y - boxEyeY;
-        var bodyYaw = MathF.Atan(dx / 65.0f) * 0.55f;
-        var headYaw = MathF.Atan(dx / 50.0f) * 0.68f;
-        var headPitch = MathF.Atan(dy / 55.0f) * 0.55f;
-
-        _invPreviewVertices.Clear();
-        var root = Matrix4x4.CreateRotationY(bodyYaw) *
-                   Matrix4x4.CreateRotationX(headPitch * 0.18f) *
-                   Matrix4x4.CreateTranslation(0.0f, -0.96f, 0.0f);
-        WorldMob3DMesher.AppendSteveModel(_invPreviewVertices, root, headYaw - bodyYaw, headPitch, 0.0f, Vector4.One, state.LocalPlayerArmor);
+        _geometry.BuildInventoryPreview(state);
 
         _gl.Viewport(vx, vy, (uint)vw, (uint)vh);
         _gl.Enable(EnableCap.DepthTest);
@@ -179,50 +152,12 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
         var proj = Matrix4x4.CreatePerspectiveFieldOfView(42.0f * (MathF.PI / 180.0f), aspect, 0.2f, 10.0f);
         var mvp = view * proj;
         _gl.UniformMatrix4(_locTransform, 1, false, (float*)&mvp);
-        UploadAndDraw(_invPreviewVertices, PrimitiveType.Triangles);
+        UploadAndDraw(_geometry.InventoryPreview, PrimitiveType.Triangles);
 
         _gl.BindVertexArray(0);
         _gl.Enable(EnableCap.CullFace);
         _gl.Viewport(0, 0, (uint)MathF.Round(screenW), (uint)MathF.Round(screenH));
         return 1;
-    }
-
-    private static void AppendBlockDestroyCracks(List<OverlayVertex> dst, Vec3d cameraPos, in BoundingBox box, float miningProgress)
-    {
-        var stage = Math.Clamp((int)(miningProgress * 10.0f), 0, 9);
-        var tile = ProceduralAtlasGenerator.FirstDestroyStageTile + stage;
-        const float eps = 0.0045f;
-        var min = new Vector3((float)(box.MinX - cameraPos.X) - eps, (float)(box.MinY - cameraPos.Y) - eps, (float)(box.MinZ - cameraPos.Z) - eps);
-        var max = new Vector3((float)(box.MaxX - cameraPos.X) + eps, (float)(box.MaxY - cameraPos.Y) + eps, (float)(box.MaxZ - cameraPos.Z) + eps);
-        var tint = new Vector4(0.18f, 0.18f, 0.18f, 0.82f);
-
-        HeldItem3DMesher.EmitBlockCubeFaceTinted(dst, new Vector3(min.X, max.Y, min.Z), new Vector3(min.X, max.Y, max.Z), new Vector3(max.X, max.Y, max.Z), new Vector3(max.X, max.Y, min.Z), Matrix4x4.Identity, tile, tint);
-        HeldItem3DMesher.EmitBlockCubeFaceTinted(dst, new Vector3(min.X, min.Y, min.Z), new Vector3(max.X, min.Y, min.Z), new Vector3(max.X, min.Y, max.Z), new Vector3(min.X, min.Y, max.Z), Matrix4x4.Identity, tile, tint);
-        HeldItem3DMesher.EmitBlockCubeFaceTinted(dst, new Vector3(min.X, min.Y, max.Z), new Vector3(max.X, min.Y, max.Z), new Vector3(max.X, max.Y, max.Z), new Vector3(min.X, max.Y, max.Z), Matrix4x4.Identity, tile, tint);
-        HeldItem3DMesher.EmitBlockCubeFaceTinted(dst, new Vector3(max.X, min.Y, min.Z), new Vector3(min.X, min.Y, min.Z), new Vector3(min.X, max.Y, min.Z), new Vector3(max.X, max.Y, min.Z), Matrix4x4.Identity, tile, tint);
-        HeldItem3DMesher.EmitBlockCubeFaceTinted(dst, new Vector3(min.X, min.Y, min.Z), new Vector3(min.X, min.Y, max.Z), new Vector3(min.X, max.Y, max.Z), new Vector3(min.X, max.Y, min.Z), Matrix4x4.Identity, tile, tint);
-        HeldItem3DMesher.EmitBlockCubeFaceTinted(dst, new Vector3(max.X, min.Y, max.Z), new Vector3(max.X, min.Y, min.Z), new Vector3(max.X, max.Y, min.Z), new Vector3(max.X, max.Y, max.Z), Matrix4x4.Identity, tile, tint);
-    }
-
-    private static void AppendSelectionWireframe(List<OverlayVertex> dst, Vec3d cameraPos, in BoundingBox box)
-    {
-        const float eps = 0.003f;
-        var min = new Vector3((float)(box.MinX - cameraPos.X) - eps, (float)(box.MinY - cameraPos.Y) - eps, (float)(box.MinZ - cameraPos.Z) - eps);
-        var max = new Vector3((float)(box.MaxX - cameraPos.X) + eps, (float)(box.MaxY - cameraPos.Y) + eps, (float)(box.MaxZ - cameraPos.Z) + eps);
-        var col = new Vector4(0.04f, 0.04f, 0.06f, 0.88f);
-
-        Span<Vector3> c =
-        [
-            new(min.X, min.Y, min.Z), new(max.X, min.Y, min.Z), new(max.X, min.Y, max.Z), new(min.X, min.Y, max.Z),
-            new(min.X, max.Y, min.Z), new(max.X, max.Y, min.Z), new(max.X, max.Y, max.Z), new(min.X, max.Y, max.Z),
-        ];
-
-        ReadOnlySpan<(int A, int B)> edges = [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4), (0, 4), (1, 5), (2, 6), (3, 7)];
-        foreach (var (a, b) in edges)
-        {
-            dst.Add(new OverlayVertex(c[a], col));
-            dst.Add(new OverlayVertex(c[b], col));
-        }
     }
 
     private unsafe void UploadAndDraw(List<OverlayVertex> vertices, PrimitiveType primitiveType)
