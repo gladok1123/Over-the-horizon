@@ -84,6 +84,30 @@ internal sealed unsafe class VulkanPipelines : IDisposable
             blend: true,
             cullBackFaces: false);
 
+        OverlayLines = CreatePipeline(
+            renderPass,
+            OverlayLayout,
+            overlayVertex,
+            overlayFragment,
+            VulkanVertexFormats.Overlay(),
+            depthTest: true,
+            depthWrite: true,
+            blend: true,
+            cullBackFaces: false,
+            topology: PrimitiveTopology.LineList);
+
+        // The celestial dome sits behind everything: depth testing is off so the far plane can never clip it.
+        OverlayNoDepth = CreatePipeline(
+            renderPass,
+            OverlayLayout,
+            overlayVertex,
+            overlayFragment,
+            VulkanVertexFormats.Overlay(),
+            depthTest: false,
+            depthWrite: false,
+            blend: true,
+            cullBackFaces: false);
+
         OverlayNoDepthWrite = CreatePipeline(
             renderPass,
             OverlayLayout,
@@ -134,6 +158,12 @@ internal sealed unsafe class VulkanPipelines : IDisposable
     /// <summary>Gets the blended world overlay pipeline that writes depth (mobs, drops, particles).</summary>
     public Pipeline Overlay { get; }
 
+    /// <summary>Gets the blended overlay pipeline for selection wireframes (line-list topology).</summary>
+    public Pipeline OverlayLines { get; }
+
+    /// <summary>Gets the blended overlay pipeline for the celestial dome (no depth test, no depth write).</summary>
+    public Pipeline OverlayNoDepth { get; }
+
     /// <summary>Gets the blended world overlay pipeline that leaves depth alone (clouds, selection wireframe).</summary>
     public Pipeline OverlayNoDepthWrite { get; }
 
@@ -152,6 +182,8 @@ internal sealed unsafe class VulkanPipelines : IDisposable
         _vk.DestroyPipeline(_device, ChunkOpaque, null);
         _vk.DestroyPipeline(_device, ChunkTranslucent, null);
         _vk.DestroyPipeline(_device, Overlay, null);
+        _vk.DestroyPipeline(_device, OverlayLines, null);
+        _vk.DestroyPipeline(_device, OverlayNoDepth, null);
         _vk.DestroyPipeline(_device, OverlayNoDepthWrite, null);
         _vk.DestroyPipeline(_device, Ui, null);
         _vk.DestroyPipelineLayout(_device, ChunkLayout, null);
@@ -253,7 +285,8 @@ internal sealed unsafe class VulkanPipelines : IDisposable
         bool depthTest,
         bool depthWrite,
         bool blend,
-        bool cullBackFaces)
+        bool cullBackFaces,
+        PrimitiveTopology topology = PrimitiveTopology.TriangleList)
     {
         var entryPoint = "main"u8;
         fixed (byte* entryPointPtr = entryPoint)
@@ -290,7 +323,7 @@ internal sealed unsafe class VulkanPipelines : IDisposable
                 var inputAssembly = new PipelineInputAssemblyStateCreateInfo
                 {
                     SType = StructureType.PipelineInputAssemblyStateCreateInfo,
-                    Topology = PrimitiveTopology.TriangleList,
+                    Topology = topology,
                     PrimitiveRestartEnable = false,
                 };
 

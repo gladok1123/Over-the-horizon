@@ -12,7 +12,7 @@ namespace OverHorizon.Rendering.Backends.Vulkan;
 /// families, logical device, command pool, surface format, render pass, swapchain and sync objects
 /// (split out to respect the 500-line architecture budget).
 /// </summary>
-internal sealed unsafe class VulkanDevice : IDisposable
+internal sealed unsafe partial class VulkanDevice : IDisposable
 {
     private void CreateInstance(IVkSurfaceSource surfaceSource)
     {

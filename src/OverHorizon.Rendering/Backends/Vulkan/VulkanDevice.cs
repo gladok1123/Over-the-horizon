@@ -12,7 +12,7 @@ namespace OverHorizon.Rendering.Backends.Vulkan;
 /// graphics and presentation queues, the swapchain with its image views, the single colour-plus-depth render
 /// pass, one framebuffer per swapchain image, and the per-frame command buffers and sync primitives.
 /// </summary>
-internal sealed unsafe class VulkanDevice : IDisposable
+internal sealed unsafe partial class VulkanDevice : IDisposable
 {
     /// <summary>Number of frames that may be in flight at once (double buffering).</summary>
     public const int FramesInFlight = 2;
