@@ -103,7 +103,20 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
         return 1;
     }
 
-    public unsafe int RenderOverlays(
+    /// <summary>
+    /// Draws every depth-tested world overlay (clouds, void floor, selection, mobs, items, particles) for the
+    /// frame. This runs <b>before</b> the translucent terrain pass so water, ice, and Nether Portals tint
+    /// whatever sits behind them instead of letting clouds and mobs punch through the surface.
+    /// </summary>
+    /// <param name="camera">Active first-person camera.</param>
+    /// <param name="state">Per-frame overlay state.</param>
+    /// <param name="blockAtlasTexture">Bound block atlas texture handle.</param>
+    /// <param name="entityAtlasTexture">Bound entity atlas texture handle.</param>
+    /// <param name="atlasData">Staged atlas lookup for textured quads.</param>
+    /// <param name="fogColor">Fog colour shared with the terrain pass.</param>
+    /// <param name="chunkFogDistance">Chunk fog distance in blocks.</param>
+    /// <returns>Number of draw calls issued.</returns>
+    public unsafe int RenderWorldOverlays(
         FirstPersonCamera camera,
         FrameOverlayState state,
         uint blockAtlasTexture,
@@ -115,9 +128,9 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
         _cloudVertices.Clear();
         _worldTriangleVertices.Clear();
         _worldLineVertices.Clear();
-        _viewModelVertices.Clear();
 
-        if (!state.IsUnderwater && camera.Position.Y > OverHorizon.Core.EngineConstants.WorldMinY - 2.0)
+        // The Nether is roofed with Bedrock, so it never shows the Overworld cloud deck.
+        if (!state.IsUnderwater && !state.IsNetherDimension && camera.Position.Y > OverHorizon.Core.EngineConstants.WorldMinY - 2.0)
         {
             AppendWorldClouds(_cloudVertices, camera.Position, state.WorldTimeTicks, state.CloudDriftOffset, state.CameraSkyLightNormalized);
         }
@@ -151,11 +164,6 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
         WorldMob3DMesher.AppendFallingBlocks(_worldTriangleVertices, camera.Position, state.FallingBlocks);
         WorldMob3DMesher.AppendDroppedItems(_worldTriangleVertices, camera.Position, state.DroppedItems, atlasData);
         WorldMob3DMesher.AppendWorldParticles(_worldTriangleVertices, camera, state.Particles);
-
-        if (!state.IsThirdPersonCamera && state.Mode is UiOverlayMode.InGame or UiOverlayMode.ChatInput)
-        {
-            HeldItem3DMesher.AppendHeldViewmodel(_viewModelVertices, state, atlasData);
-        }
 
         var drawCalls = 0;
         _gl.UseProgram(_program);
@@ -200,7 +208,51 @@ internal sealed partial class SilkOpenGlOverlayRenderer : IDisposable
             drawCalls++;
         }
 
-        SetFogUniforms(100000.0f, 200000.0f, fogColor);
+        _gl.Disable(EnableCap.Blend);
+        _gl.Enable(EnableCap.CullFace);
+        _gl.BindVertexArray(0);
+        return drawCalls;
+    }
+
+    /// <summary>
+    /// Draws the first-person viewmodel and every 2D screen-space overlay for the frame. This runs
+    /// <b>after</b> the translucent terrain pass, so the hand and the HUD are never washed out by water
+    /// or a Nether Portal drawn in front of the camera.
+    /// </summary>
+    /// <param name="camera">Active first-person camera.</param>
+    /// <param name="state">Per-frame overlay state.</param>
+    /// <param name="blockAtlasTexture">Bound block atlas texture handle.</param>
+    /// <param name="entityAtlasTexture">Bound entity atlas texture handle.</param>
+    /// <param name="atlasData">Staged atlas lookup for textured quads.</param>
+    /// <returns>Number of draw calls issued.</returns>
+    public unsafe int RenderScreenOverlays(
+        FirstPersonCamera camera,
+        FrameOverlayState state,
+        uint blockAtlasTexture,
+        uint entityAtlasTexture,
+        TextureAtlasData? atlasData)
+    {
+        _viewModelVertices.Clear();
+        if (!state.IsThirdPersonCamera && state.Mode is UiOverlayMode.InGame or UiOverlayMode.ChatInput)
+        {
+            HeldItem3DMesher.AppendHeldViewmodel(_viewModelVertices, state, atlasData);
+        }
+
+        var drawCalls = 0;
+        _gl.UseProgram(_program);
+        _gl.Uniform1(_locAtlas, 0);
+        _gl.Uniform1(_locEntityAtlas, 2);
+        _gl.ActiveTexture(TextureUnit.Texture0);
+        _gl.BindTexture(TextureTarget.Texture2D, blockAtlasTexture);
+        _gl.ActiveTexture(TextureUnit.Texture2);
+        _gl.BindTexture(TextureTarget.Texture2D, entityAtlasTexture);
+        _gl.BindVertexArray(_vao);
+        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _vbo);
+
+        _gl.Disable(EnableCap.CullFace);
+        _gl.Enable(EnableCap.Blend);
+        _gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
+        SetFogUniforms(100000.0f, 200000.0f, Vector3.One);
 
         if (_viewModelVertices.Count > 0)
         {

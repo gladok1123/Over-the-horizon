@@ -22,6 +22,10 @@ internal sealed class ClientPlayerVitalsAndAudio
     private double _voidTickTimer;
     private double _swimSoundTimer;
     private double _underwaterAmbienceTimer;
+    private double _netherDroneTimer;
+    private double _netherMoodTimer;
+    private double _netherMusicTimer;
+    private uint _netherRng = 0x2545F491U;
     private int _stepPitchCounter;
 
     public void ResetTimers()
@@ -33,6 +37,78 @@ internal sealed class ClientPlayerVitalsAndAudio
         _voidTickTimer = 0.0;
         _swimSoundTimer = 0.0;
         _underwaterAmbienceTimer = 0.0;
+        _netherDroneTimer = 1.5;
+        _netherMoodTimer = 12.0;
+        _netherMusicTimer = 70.0;
+    }
+
+    /// <summary>
+    /// Runs the Nether ambience scheduler: a continuous cavern drone plus sparse hellish one-shots
+    /// (groans, Soul Sand whispers, Ghast moans, Blaze crackles) and occasional Nether music.
+    /// </summary>
+    /// <param name="player">Local player controller supplying the dimension, ear position and volume.</param>
+    /// <param name="audio">Positional audio subsystem.</param>
+    /// <param name="dt">Frame delta in seconds.</param>
+    public void StepNetherAmbience(ClientPlayerController player, IAudioSubsystem audio, double dt)
+    {
+        if (player.Dimension != DimensionId.Nether)
+        {
+            _netherDroneTimer = 1.5;
+            _netherMoodTimer = 12.0;
+            _netherMusicTimer = 70.0;
+            return;
+        }
+
+        var volume = player.MasterVolume;
+        var ear = player.Camera.Position;
+
+        _netherDroneTimer -= dt;
+        if (_netherDroneTimer <= 0.0)
+        {
+            _netherDroneTimer = 13.5;
+            audio.PlayPositional(SoundCue.NetherAmbience, ear, gain: 0.24f * volume, pitch: 1.0f);
+        }
+
+        _netherMoodTimer -= dt;
+        if (_netherMoodTimer <= 0.0)
+        {
+            _netherMoodTimer = 17.0 + (NextNetherRandom() % 24);
+            var cue = (NextNetherRandom() % 5U) switch
+            {
+                0 => SoundCue.NetherMood,
+                1 => SoundCue.NetherGroan,
+                2 => SoundCue.NetherWhisper,
+                3 => SoundCue.BlazeBreathe,
+                _ => SoundCue.GhastMoan,
+            };
+
+            var at = OffsetAround(ear, 9.0, 26.0);
+            var pitch = 0.86f + ((NextNetherRandom() % 40U) * 0.006f);
+            audio.PlayPositional(cue, at, gain: 0.30f * volume, pitch: pitch);
+        }
+
+        _netherMusicTimer -= dt;
+        if (_netherMusicTimer <= 0.0)
+        {
+            _netherMusicTimer = 210.0 + (NextNetherRandom() % 240);
+            audio.PlayPositional(SoundCue.NetherMusic, ear, gain: 0.16f * volume, pitch: 1.0f);
+        }
+    }
+
+    private Vec3d OffsetAround(Vec3d origin, double minRadius, double maxRadius)
+    {
+        var angle = (NextNetherRandom() % 360U) * (System.Math.PI / 180.0);
+        var radius = minRadius + ((NextNetherRandom() % 1000U) / 1000.0 * (maxRadius - minRadius));
+        var lift = ((NextNetherRandom() % 100U) / 100.0 * 14.0) - 4.0;
+        return origin + new Vec3d(System.Math.Cos(angle) * radius, lift, System.Math.Sin(angle) * radius);
+    }
+
+    private uint NextNetherRandom()
+    {
+        _netherRng ^= _netherRng << 13;
+        _netherRng ^= _netherRng >> 17;
+        _netherRng ^= _netherRng << 5;
+        return _netherRng;
     }
 
     public bool UpdateUnderwaterState(

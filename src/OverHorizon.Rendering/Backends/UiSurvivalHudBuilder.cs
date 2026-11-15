@@ -92,10 +92,97 @@ internal static class UiSurvivalHudBuilder
             UiGeometryBuilder.DrawCenteredText(v, "Sleeping until dawn...", width * 0.5f, height * 0.44f, 2.1f, new Vector4(0.92f, 0.94f, 1.0f, sleepA), shadow: true);
         }
 
+        if (state.PortalOverlayStrength > 0.004f)
+        {
+            BuildPortalSwirlOverlay(v, width, height, state);
+        }
+
         if (state.IsSpectatorMode && state.Mode == UiOverlayMode.InGame)
         {
             UiGeometryBuilder.DrawCenteredText(v, "SPECTATOR MODE (Noclip Flight)", width * 0.5f, 14.0f, 1.45f, new Vector4(0.75f, 0.88f, 1.0f, 0.86f), shadow: true);
         }
+    }
+
+    /// <summary>
+    /// Rebuilds the vanilla Nether Portal screen effect: the animated purple portal texture sweeps across the
+    /// whole viewport while a vignette closes in, both driven by the player's portal dwell progress.
+    /// </summary>
+    /// <param name="v">Destination screen-space vertex list.</param>
+    /// <param name="width">Viewport width in pixels.</param>
+    /// <param name="height">Viewport height in pixels.</param>
+    /// <param name="state">Per-frame overlay state.</param>
+    /// <summary>
+    /// Rebuilds the vanilla Nether Portal screen effect: an animated purple portal texture sweeps across the
+    /// whole viewport while a vignette closes in, both driven by the player's portal dwell progress.
+    /// </summary>
+    /// <param name="v">Destination screen-space vertex list.</param>
+    /// <param name="width">Viewport width in pixels.</param>
+    /// <param name="height">Viewport height in pixels.</param>
+    /// <param name="state">Per-frame overlay state.</param>
+    private static void BuildPortalSwirlOverlay(List<TexturedUiVertex> v, float width, float height, FrameOverlayState state)
+    {
+        const int BladeCount = 7;
+
+        var s = Math.Clamp(state.PortalOverlayStrength, 0.0f, 1.0f);
+        var cx = width * 0.5f;
+        var cy = height * 0.5f;
+        var cover = MathF.Sqrt((cx * cx) + (cy * cy)) * 1.10f;
+        var spin = state.PortalSwirlPhase * 1.45f;
+
+        for (var blade = 0; blade < BladeCount; blade++)
+        {
+            var alpha = (0.030f + (0.105f * s)) * ((blade & 1) == 0 ? 1.0f : 0.70f);
+            var length = cover * (0.55f + (0.42f * ((blade % 3) / 2.0f)));
+            var angle = spin + ((blade / (float)BladeCount) * MathF.Tau);
+            DrawRotatedRect(v, cx, cy, length, cover * 0.30f, angle, new Vector4(0.54f, 0.15f, 0.88f, alpha));
+        }
+
+        DrawRect(v, 0, 0, width, height, new Vector4(0.24f, 0.02f, 0.44f, 0.06f + (0.34f * s * s)));
+
+        var bandH = height * (0.30f - (0.23f * s));
+        var bandW = width * (0.30f - (0.23f * s));
+        var vignette = new Vector4(0.02f, 0.0f, 0.05f, 0.18f + (0.42f * s));
+        DrawRect(v, 0, 0, width, bandH, vignette);
+        DrawRect(v, 0, height - bandH, width, bandH, vignette);
+        DrawRect(v, 0, bandH, bandW, height - (bandH * 2.0f), vignette);
+        DrawRect(v, width - bandW, bandH, bandW, height - (bandH * 2.0f), vignette);
+    }
+
+    /// <summary>
+    /// Emits an arbitrarily rotated screen-space rectangle, used by the Nether Portal swirl blades.
+    /// </summary>
+    /// <param name="v">Destination screen-space vertex list.</param>
+    /// <param name="centerX">Rectangle centre X in pixels.</param>
+    /// <param name="centerY">Rectangle centre Y in pixels.</param>
+    /// <param name="halfLong">Half length along the blade axis in pixels.</param>
+    /// <param name="halfWide">Half width across the blade axis in pixels.</param>
+    /// <param name="angle">Rotation in radians.</param>
+    /// <param name="color">Blade tint including alpha.</param>
+    private static void DrawRotatedRect(
+        List<TexturedUiVertex> v,
+        float centerX,
+        float centerY,
+        float halfLong,
+        float halfWide,
+        float angle,
+        Vector4 color)
+    {
+        var cos = MathF.Cos(angle) * halfLong;
+        var sin = MathF.Sin(angle) * halfLong;
+        var wideCos = MathF.Cos(angle + (MathF.PI * 0.5f)) * halfWide;
+        var wideSin = MathF.Sin(angle + (MathF.PI * 0.5f)) * halfWide;
+
+        var p0 = new Vector2(centerX - cos - wideCos, centerY - sin - wideSin);
+        var p1 = new Vector2(centerX + cos - wideCos, centerY + sin - wideSin);
+        var p2 = new Vector2(centerX + cos + wideCos, centerY + sin + wideSin);
+        var p3 = new Vector2(centerX - cos + wideCos, centerY - sin + wideSin);
+
+        v.Add(new TexturedUiVertex(p0, WhiteUv, color));
+        v.Add(new TexturedUiVertex(p1, WhiteUv, color));
+        v.Add(new TexturedUiVertex(p2, WhiteUv, color));
+        v.Add(new TexturedUiVertex(p0, WhiteUv, color));
+        v.Add(new TexturedUiVertex(p2, WhiteUv, color));
+        v.Add(new TexturedUiVertex(p3, WhiteUv, color));
     }
 
     public static void BuildStatusEffectBadges(List<TexturedUiVertex> v, float width, FrameOverlayState state)

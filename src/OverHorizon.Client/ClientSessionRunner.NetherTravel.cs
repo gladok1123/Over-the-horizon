@@ -26,14 +26,14 @@ public sealed partial class ClientSessionRunner
     {
         if (_pendingPortalTravel is null)
         {
-            if (!_player.TryConsumePortalTravel(out var target, out var scaledBlock))
+            if (!_player.TryConsumePortalTravel(out var target, out var departureFeet))
             {
                 return false;
             }
 
             _menu.StatusMessage = "Travelling through the portal...";
             _pendingPortalTravel = Task.Run(
-                async () => await PreparePortalArrivalAsync(target, scaledBlock, cancellationToken).ConfigureAwait(false),
+                async () => await PreparePortalArrivalAsync(target, _player.Dimension, departureFeet, cancellationToken).ConfigureAwait(false),
                 cancellationToken);
             return true;
         }
@@ -62,12 +62,14 @@ public sealed partial class ClientSessionRunner
 
     private async Task<PortalArrival> PreparePortalArrivalAsync(
         DimensionId target,
-        BlockPos desired,
+        DimensionId from,
+        BlockPos departureFeet,
         CancellationToken cancellationToken)
     {
         var world = _worldBridge.ActiveRawWorld;
         var chunks = world.GetChunks(target);
-        var center = new ChunkPos(desired.X >> 4, desired.Z >> 4);
+        var scaled = NetherPortalRules.ScaleTravel(departureFeet, from, target);
+        var center = new ChunkPos(scaled.X >> 4, scaled.Z >> 4);
         chunks.UpsertTicket(new ChunkTicket(LocalTicketOwnerId, ChunkTicketType.Player, center, 2, target));
 
         for (var i = 0; i < 8; i++)
@@ -79,7 +81,7 @@ public sealed partial class ClientSessionRunner
             }
         }
 
-        return new PortalArrival(target, desired);
+        return new PortalArrival(target, from, departureFeet);
     }
 
     private void ApplyPortalArrival(IRenderSubsystem renderer, PortalArrival arrival)
@@ -89,29 +91,25 @@ public sealed partial class ClientSessionRunner
         var previous = _player.Dimension;
         var chunks = world.GetChunks(target);
 
-        var landing = NetherPortalRules.ResolveArrivalSite(
+        // Single-player uses the exact same arrival pipeline as the dedicated server, so 1 Nether step is
+        // always 8 Overworld steps in both directions and the return portal is framed identically.
+        var site = NetherPortalRules.CreateArrivalSite(
             _blocks,
             pos => world.GetBlockState(pos, target),
             (pos, state) => world.SetBlockState(pos, state, 0, target),
             pos => chunks.TryGetSnapshot(pos, out _),
-            arrival.Desired,
-            target);
-
-        NetherPortalRules.BuildFramedPortal(
-            _blocks,
-            (pos, state) => world.SetBlockState(pos, state, 0, target),
-            new BlockPos(landing.X + 2, landing.Y, landing.Z),
-            "z");
+            arrival.DepartureFeet,
+            arrival.From);
 
         _player.SetDimension(target);
         _worldBridge.SetActiveLocalWorld(world, _worldBridge.TimeCycle.TotalTicks, target);
         _worldCache.ClearAll(renderer);
         _audio.PlayPositional(
             SoundCue.PortalTravel,
-            new Vec3d(landing.X + 0.5, landing.Y + 0.5, landing.Z + 0.5),
+            new Vec3d(site.Landing.X + 0.5, site.Landing.Y + 0.5, site.Landing.Z + 0.5),
             gain: 0.85f * _player.MasterVolume);
         _player.ApplyAuthoritativePose(
-            new Vec3d(landing.X + 0.5, landing.Y, landing.Z + 0.5),
+            site.SpawnPosition,
             _player.Camera.YawDegrees,
             _player.Camera.PitchDegrees,
             updateSpawn: false);
@@ -123,5 +121,5 @@ public sealed partial class ClientSessionRunner
         }
     }
 
-    private readonly record struct PortalArrival(DimensionId Dimension, BlockPos Desired);
+    private readonly record struct PortalArrival(DimensionId Dimension, DimensionId From, BlockPos DepartureFeet);
 }

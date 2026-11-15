@@ -22,6 +22,9 @@ public static class NetherPortalRules
     /// <summary>Largest legal interior height of a portal opening (<c>21</c>).</summary>
     public const int MaxPortalHeight = 21;
 
+    /// <summary>Axis of the framed portal built at every arrival site (<c>"z"</c>: the plane spans X).</summary>
+    public const string ArrivalPortalAxis = "z";
+
     /// <summary>
     /// Determines whether <paramref name="state"/> is a lit Nether Portal block.
     /// </summary>
@@ -61,7 +64,8 @@ public static class NetherPortalRules
 
     /// <summary>
     /// Builds a fully framed <c>2x3</c> lit portal (Obsidian ring included) at <paramref name="bottomCenter"/>,
-    /// carving out the surrounding 3-block-tall air pocket so the traveller can always stand inside.
+    /// together with a two-block-deep Obsidian landing pad and open walkway on both faces so the gateway can
+    /// actually be walked into instead of being sealed inside a solid cube of frame blocks.
     /// </summary>
     /// <param name="blocks">Frozen block registry.</param>
     /// <param name="setBlock">World block writer.</param>
@@ -87,23 +91,42 @@ public static class NetherPortalRules
             bottomCenter.Y + 2,
             bottomCenter.Z + (spanZ ? 1 : 0));
 
+        var span = spanZ ? max.Z - min.Z : max.X - min.X;
+
+        // The Obsidian frame is the rectangle border that lives INSIDE the portal plane. Filling the whole
+        // 3x5x3 cube (the old behaviour) sealed the gateway behind frame blocks and made arrival portals
+        // impossible to walk back into.
         for (var y = min.Y - 1; y <= max.Y + 1; y++)
         {
-            for (var x = min.X - 1; x <= max.X + 1; x++)
+            for (var h = -1; h <= span + 1; h++)
             {
-                for (var z = min.Z - 1; z <= max.Z + 1; z++)
-                {
-                    var isFrame = y < min.Y || y > max.Y || x < min.X || x > max.X || z < min.Z || z > max.Z;
-                    setBlock(new BlockPos(x, y, z), isFrame ? obsidian : portal);
-                }
+                var insideOpening = y >= min.Y && y <= max.Y && h >= 0 && h <= span;
+                var px = spanZ ? min.X : min.X + h;
+                var pz = spanZ ? min.Z + h : min.Z;
+                setBlock(new BlockPos(px, y, pz), insideOpening ? portal : obsidian);
             }
         }
 
-        // Clear the two blocks directly in front of and behind the opening so the traveller is never buried.
+        // Landing pads: a solid floor plus three blocks of headroom on both faces of the plane.
         var nx = spanZ ? 1 : 0;
         var nz = spanZ ? 0 : 1;
-        ClearAir(setBlock, air, new BlockPos(min.X - nx, min.Y, min.Z - nz));
-        ClearAir(setBlock, air, new BlockPos(max.X + nx, min.Y, max.Z + nz));
+        for (var side = -1; side <= 1; side += 2)
+        {
+            for (var step = 1; step <= 2; step++)
+            {
+                for (var h = 0; h <= span; h++)
+                {
+                    var px = (spanZ ? min.X : min.X + h) + (nx * side * step);
+                    var pz = (spanZ ? min.Z + h : min.Z) + (nz * side * step);
+
+                    setBlock(new BlockPos(px, min.Y - 1, pz), obsidian);
+                    for (var dy = 0; dy <= 2; dy++)
+                    {
+                        setBlock(new BlockPos(px, min.Y + dy, pz), air);
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -118,6 +141,43 @@ public static class NetherPortalRules
 
         var value = string.Equals(axis, "z", StringComparison.Ordinal) ? "z" : "x";
         return blocks.WithProperty(blocks.GetDefaultState(BuiltInBlocks.NetherPortal), "axis", value);
+    }
+
+    /// <summary>
+    /// Runs the complete arrival pipeline shared by single-player and the authoritative server: scales the
+    /// traveller's feet coordinates into the opposite dimension (1 Nether step = <see cref="DimensionRules.NetherCoordinateScale"/>
+    /// Overworld steps), resolves a safe landing, frames the return portal, and returns the spawn pose that
+    /// leaves the traveller standing beside - never inside - the new gateway.
+    /// </summary>
+    /// <param name="blocks">Frozen block registry.</param>
+    /// <param name="getBlock">World block reader.</param>
+    /// <param name="setBlock">World block writer.</param>
+    /// <param name="isColumnLoaded">Predicate reporting whether a destination chunk is resident.</param>
+    /// <param name="sourceFeet">Feet-level block coordinate the traveller departed from.</param>
+    /// <param name="from">Dimension the traveller departed from.</param>
+    /// <returns>The resolved arrival site for the opposite dimension.</returns>
+    public static PortalArrivalSite CreateArrivalSite(
+        IBlockRegistry blocks,
+        Func<BlockPos, BlockState> getBlock,
+        Action<BlockPos, BlockState> setBlock,
+        Func<ChunkPos, bool> isColumnLoaded,
+        BlockPos sourceFeet,
+        DimensionId from)
+    {
+        ArgumentNullException.ThrowIfNull(blocks);
+        ArgumentNullException.ThrowIfNull(getBlock);
+        ArgumentNullException.ThrowIfNull(setBlock);
+        ArgumentNullException.ThrowIfNull(isColumnLoaded);
+
+        var target = DimensionRules.Opposite(from);
+        var desired = ScaleTravel(sourceFeet, from, target);
+        var landing = ResolveArrivalSite(blocks, getBlock, setBlock, isColumnLoaded, desired, target);
+
+        BuildFramedPortal(blocks, setBlock, landing, ArrivalPortalAxis);
+
+        // Stand the traveller clear of the new frame: the plane spans X, so step back along +Z.
+        var spawn = new Vec3d(landing.X + 0.5, landing.Y, landing.Z + 2.5);
+        return new PortalArrivalSite(target, desired, landing, spawn);
     }
 
     /// <summary>
@@ -206,16 +266,17 @@ public static class NetherPortalRules
             }
         }
 
-        return CarvePlatform(blocks, setBlock, desired, dimension);
+        return CarvePlatform(blocks, getBlock, setBlock, desired, dimension);
     }
 
     private static BlockPos CarvePlatform(
         IBlockRegistry blocks,
+        Func<BlockPos, BlockState> getBlock,
         Action<BlockPos, BlockState> setBlock,
         BlockPos desired,
         DimensionId dimension)
     {
-        var floorY = dimension == DimensionId.Nether ? 72 : desired.Y;
+        var floorY = ResolveFallbackFloorY(blocks, getBlock, desired, dimension);
         var platformY = floorY - 1;
         var floorState = dimension == DimensionId.Nether
             ? blocks.GetDefaultState(BuiltInBlocks.Netherrack)
@@ -234,6 +295,37 @@ public static class NetherPortalRules
         }
 
         return new BlockPos(desired.X, floorY, desired.Z);
+    }
+
+    /// <summary>
+    /// Resolves the Y a carved fallback platform is built at. The Nether keeps the platform inside the buildable
+    /// band above the lava sea; the Overworld lands the traveller on the first solid ground below the scaled
+    /// altitude instead of on a floating slab at the Nether's Y.
+    /// </summary>
+    /// <param name="blocks">Frozen block registry.</param>
+    /// <param name="getBlock">World block reader.</param>
+    /// <param name="desired">Preferred arrival coordinate.</param>
+    /// <param name="dimension">Destination dimension.</param>
+    /// <returns>World Y of the platform surface.</returns>
+    private static int ResolveFallbackFloorY(
+        IBlockRegistry blocks,
+        Func<BlockPos, BlockState> getBlock,
+        BlockPos desired,
+        DimensionId dimension)
+    {
+        var lowBound = dimension == DimensionId.Nether ? DimensionRules.NetherLavaSeaY + 6 : EngineConstants.WorldMinY + 4;
+        var highBound = dimension == DimensionId.Nether ? DimensionRules.NetherCeilingY - 12 : EngineConstants.WorldMaxY - 8;
+
+        for (var y = System.Math.Min(desired.Y + 8, highBound); y > lowBound; y--)
+        {
+            var below = getBlock(new BlockPos(desired.X, y, desired.Z));
+            if (!below.IsAir && !blocks.GetStateMetadata(below).IsFluid)
+            {
+                return y + 1;
+            }
+        }
+
+        return System.Math.Clamp(desired.Y, lowBound, highBound);
     }
 
     private static bool TryActivateFrameAlongAxis(
@@ -348,12 +440,6 @@ public static class NetherPortalRules
 
         info = new PortalFrameInfo(At(minX, bottom, minZ), At(maxX, top, maxZ), axis);
         return true;
-    }
-
-    private static void ClearAir(Action<BlockPos, BlockState> setBlock, BlockState air, BlockPos pos)
-    {
-        setBlock(pos, air);
-        setBlock(new BlockPos(pos.X, pos.Y + 1, pos.Z), air);
     }
 
     private static bool IsOpen(IBlockRegistry blocks, BlockState state) =>

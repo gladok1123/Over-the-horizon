@@ -131,6 +131,14 @@ public static class ProceduralSoundBank
         (SoundCue.PortalAmbient, "sounds/portal/portal.ogg"),
         (SoundCue.PortalTravel, "sounds/portal/travel.ogg"),
         (SoundCue.PortalTrigger, "sounds/portal/trigger.ogg"),
+        (SoundCue.NetherAmbience, "sounds/ambient/nether/nether_wastes/ambience.ogg"),
+        (SoundCue.NetherMood, "sounds/ambient/nether/nether_wastes/mood1.ogg"),
+        (SoundCue.NetherWhisper, "sounds/ambient/nether/soulsand_valley/whisper1.ogg"),
+        (SoundCue.NetherGroan, "sounds/ambient/nether/nether_wastes/dark1.ogg"),
+        (SoundCue.NetherMusic, "sounds/music/game/nether/nether1.ogg"),
+        (SoundCue.GhastMoan, "sounds/mob/ghast/moan1.ogg"),
+        (SoundCue.GhastScream, "sounds/mob/ghast/scream1.ogg"),
+        (SoundCue.BlazeBreathe, "sounds/mob/blaze/breathe1.ogg"),
     ];
 
     /// <summary>
@@ -269,6 +277,9 @@ public static class ProceduralSoundBank
             SoundCue.FallSmall or SoundCue.FallBig or SoundCue.LandSoft or SoundCue.ShieldBlock => (SoundCue.PlayerHit, 0.88),
             SoundCue.WaterSwim or SoundCue.UnderwaterExit or SoundCue.UnderwaterAmbience or SoundCue.PotionDrink => (SoundCue.WaterSplash, 0.94),
             SoundCue.PortalAmbient or SoundCue.PortalTravel or SoundCue.PortalTrigger => (SoundCue.FireIgnite, 0.72),
+            SoundCue.NetherAmbience or SoundCue.NetherMood or SoundCue.NetherWhisper or SoundCue.NetherGroan => (SoundCue.UnderwaterAmbience, 0.78),
+            SoundCue.NetherMusic => (SoundCue.UnderwaterAmbience, 1.0),
+            SoundCue.GhastMoan or SoundCue.GhastScream or SoundCue.BlazeBreathe => (SoundCue.FireCrackle, 0.86),
             _ => (AirFallbackMarker(cue), 1.0),
         };
 
@@ -315,6 +326,14 @@ public static class ProceduralSoundBank
             SoundCue.PortalAmbient => (1.90, 96.0, 0.62, 6.0),
             SoundCue.PortalTravel => (0.48, 210.0, 0.74, 380.0),
             SoundCue.PortalTrigger => (0.62, 150.0, 0.70, -60.0),
+            SoundCue.NetherAmbience => (1.60, 78.0, 0.55, 5.0),
+            SoundCue.NetherMood => (1.20, 132.0, 0.44, -18.0),
+            SoundCue.NetherWhisper => (0.95, 210.0, 0.88, -40.0),
+            SoundCue.NetherGroan => (1.35, 62.0, 0.62, -8.0),
+            SoundCue.NetherMusic => (2.40, 96.0, 0.30, 4.0),
+            SoundCue.GhastMoan => (0.85, 240.0, 0.34, -55.0),
+            SoundCue.GhastScream => (0.70, 620.0, 0.46, 260.0),
+            SoundCue.BlazeBreathe => (0.55, 380.0, 0.80, 60.0),
 
             SoundCue.ShieldBlock => (0.18, 250.0, 0.48, -90.0),
             SoundCue.WoodBreak => (0.16, 220.0, 0.50, -65.0),

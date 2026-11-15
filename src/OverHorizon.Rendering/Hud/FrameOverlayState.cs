@@ -96,4 +96,6 @@ public sealed record FrameOverlayState(
     bool IsSpectatorMode = false,
     RemotePlayerAvatar? LocalThirdPersonPlayer = null,
     bool IsThirdPersonCamera = false,
-    bool IsNetherDimension = false);
+    bool IsNetherDimension = false,
+    float PortalOverlayStrength = 0.0f,
+    float PortalSwirlPhase = 0.0f);

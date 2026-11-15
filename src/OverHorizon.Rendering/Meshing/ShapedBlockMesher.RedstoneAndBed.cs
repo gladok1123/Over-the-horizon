@@ -185,8 +185,9 @@ internal static partial class ShapedBlockMesher
         string axis,
         float packedLight)
     {
-        // A Nether Portal is a single shimmering plane spanning its frame opening.
-        if (string.Equals(axis, "z", StringComparison.Ordinal))
+        // A Nether Portal is a single shimmering plane spanning its frame opening. The axis property names
+        // the axis the plane is PERPENDICULAR to: "x" is a wall facing X (so it spans Z), and "z" spans X.
+        if (string.Equals(axis, "x", StringComparison.Ordinal))
         {
             EmitDoubleSidedQuad(verts, indices, new Vector3(o.X + 0.5f, o.Y, o.Z), new Vector3(o.X + 0.5f, o.Y, o.Z + 1), new Vector3(o.X + 0.5f, o.Y + 1, o.Z + 1), new Vector3(o.X + 0.5f, o.Y + 1, o.Z), tile, 1.0f, packedLight);
             return;

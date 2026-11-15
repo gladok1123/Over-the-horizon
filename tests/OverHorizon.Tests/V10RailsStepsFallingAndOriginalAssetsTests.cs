@@ -168,7 +168,7 @@ public sealed class V10RailsStepsFallingAndOriginalAssetsTests
     [Fact]
     public void LandingAndFallSounds_UseOriginalDamageOggClipsInsteadOfFootsteps()
     {
-        Enum.GetValues<SoundCue>().Should().HaveCount(101, "98 v0.10 cues plus the three v0.12 Nether Portal cues");
+        Enum.GetValues<SoundCue>().Should().HaveCount(110, "98 v0.10 cues plus the three v0.12 Nether Portal cues and the eight v0.13 Nether ambience cues");
 
         var bank = ProceduralSoundBank.CreateDefaultBank();
         bank.Should().ContainKey(SoundCue.LandSoft);

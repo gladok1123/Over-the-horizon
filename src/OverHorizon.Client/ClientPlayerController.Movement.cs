@@ -95,21 +95,21 @@ public sealed partial class ClientPlayerController
 
     /// <summary>Consumes a pending Nether Portal travel request raised by the dwell timer.</summary>
     /// <param name="target">Destination dimension.</param>
-    /// <param name="scaledFeetBlock">Scaled destination feet block coordinate.</param>
+    /// <param name="departureFeetBlock">Feet block coordinate the traveller departed from (unscaled).</param>
     /// <returns><see langword="true"/> when a travel request was pending.</returns>
-    public bool TryConsumePortalTravel(out DimensionId target, out BlockPos scaledFeetBlock)
+    public bool TryConsumePortalTravel(out DimensionId target, out BlockPos departureFeetBlock)
     {
         if (!_portalTravelArmed)
         {
             target = DimensionId.Overworld;
-            scaledFeetBlock = default;
+            departureFeetBlock = default;
             return false;
         }
 
         _portalTravelArmed = false;
         PortalDwellSeconds = 0.0;
         target = _portalTravelTarget;
-        scaledFeetBlock = _portalTravelBlock;
+        departureFeetBlock = _portalTravelBlock;
         return true;
     }
 
@@ -201,6 +201,7 @@ public sealed partial class ClientPlayerController
         }
 
         StepPortalDwell(world, blocks, audio, clampedDt);
+        _vitals.StepNetherAmbience(this, audio, clampedDt);
 
         if (RidingMinecartId >= 0)
         {
@@ -408,7 +409,10 @@ public sealed partial class ClientPlayerController
 
         _portalTravelArmed = true;
         _portalTravelTarget = DimensionRules.Opposite(Dimension);
-        _portalTravelBlock = NetherPortalRules.ScaleTravel(feet, Dimension, _portalTravelTarget);
+
+        // Hand the departure feet block to the arrival pipeline: the 1:8 (or 8:1) scaling happens once,
+        // inside NetherPortalRules.CreateArrivalSite, exactly as it does on the authoritative server.
+        _portalTravelBlock = feet;
     }
 
     /// <summary>

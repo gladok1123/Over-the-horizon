@@ -74,21 +74,15 @@ public sealed partial class ServerPlaySessionBridge
             _ = await targetChunks.ProcessTicketsAsync(8, cancellationToken).ConfigureAwait(false);
         }
 
-        var landing = NetherPortalRules.ResolveArrivalSite(
+        var site = NetherPortalRules.CreateArrivalSite(
             _registries.Blocks,
             p => _world.GetBlockState(p, target),
             (p, s) => _world.SetBlockState(p, s, WorldTime.TotalTicks, target),
             p => targetChunks.TryGetSnapshot(p, out _),
-            desired,
-            target);
+            feetBlock,
+            dimension);
 
-        NetherPortalRules.BuildFramedPortal(
-            _registries.Blocks,
-            (p, s) => _world.SetBlockState(p, s, WorldTime.TotalTicks, target),
-            landing,
-            "z");
-
-        var arrival = new Vec3d(landing.X + 0.5, landing.Y, landing.Z + 2.5);
+        var arrival = site.SpawnPosition;
         _world.GetChunks(dimension).RemoveTicket(state.EntityId);
         state.Dimension = target;
         state.LastPosition = arrival;

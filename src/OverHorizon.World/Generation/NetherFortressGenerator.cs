@@ -31,6 +31,7 @@ public sealed partial class NetherFortressGenerator
     private readonly BlockState _spawner;
     private readonly BlockState _chest;
     private readonly BlockState _lava;
+    private readonly BlockState _bedrock;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="NetherFortressGenerator"/> class.
@@ -49,6 +50,7 @@ public sealed partial class NetherFortressGenerator
         _spawner = blocks.GetDefaultState(BuiltInBlocks.MonsterSpawner);
         _chest = blocks.GetDefaultState(BuiltInBlocks.Chest);
         _lava = blocks.GetDefaultState(BuiltInBlocks.Lava);
+        _bedrock = blocks.GetDefaultState(BuiltInBlocks.Bedrock);
     }
 
     /// <summary>
@@ -68,7 +70,10 @@ public sealed partial class NetherFortressGenerator
 
         hubX = (rx * RegionSizeBlocks) + (int)(hx % (ulong)span) + FortressRadius;
         hubZ = (rz * RegionSizeBlocks) + (int)(hz % (ulong)span) + FortressRadius;
-        baseY = DimensionRules.NetherLavaSeaY + 24 + ((int)(hy % 5UL) * 4);
+
+        // Hang the keep inside the Nether's great cavern so it is freely visible from the lava sea
+        // instead of being buried in solid netherrack: 44, 49, 54, or 59.
+        baseY = NetherGenerator.ShoreRockTopY + 5 + ((int)(hy % 4UL) * 5);
     }
 
     /// <summary>
@@ -105,8 +110,65 @@ public sealed partial class NetherFortressGenerator
         }
     }
 
+    /// <summary>
+    /// Hollows out the ellipsoidal cavern a fortress hangs inside so the brick silhouette is never entombed
+    /// by generated netherrack. Bedrock and the lava sea are left strictly alone.
+    /// </summary>
+    /// <param name="chunk">Target chunk column.</param>
+    /// <param name="cMinX">Chunk minimum world X.</param>
+    /// <param name="cMinZ">Chunk minimum world Z.</param>
+    /// <param name="hubX">World X of the keep centre.</param>
+    /// <param name="hubZ">World Z of the keep centre.</param>
+    /// <param name="baseY">World Y of the ground floor block layer.</param>
+    private void CarveFortressCavern(ChunkColumn chunk, int cMinX, int cMinZ, int hubX, int hubZ, int baseY)
+    {
+        const double radiusSq = 58.0 * 58.0;
+
+        var bottom = Math.Max(baseY - 12, DimensionRules.NetherLavaSeaY + 1);
+        var top = Math.Min(baseY + 20, MaxBuildY);
+        var midY = (bottom + top) * 0.5;
+        var halfHeight = ((top - bottom) * 0.5) + 1.0;
+
+        for (var lz = 0; lz < 16; lz++)
+        {
+            var wz = cMinZ + lz;
+            var dz = wz - hubZ;
+            for (var lx = 0; lx < 16; lx++)
+            {
+                var wx = cMinX + lx;
+                var dx = wx - hubX;
+                var horizontalSq = (dx * dx) + (dz * dz);
+                if (horizontalSq > radiusSq)
+                {
+                    continue;
+                }
+
+                var squeeze = 1.0 - (horizontalSq / radiusSq);
+                for (var wy = bottom; wy <= top; wy++)
+                {
+                    var dy = wy - midY;
+                    if (((dy * dy) / (halfHeight * halfHeight)) > squeeze)
+                    {
+                        continue;
+                    }
+
+                    var current = Get(chunk, cMinX, cMinZ, wx, wy, wz);
+                    if (current == _air || current == _lava || current == _bedrock)
+                    {
+                        continue;
+                    }
+
+                    Set(chunk, cMinX, cMinZ, wx, wy, wz, _air);
+                }
+            }
+        }
+    }
+
     private void PopulateFortress(ChunkColumn chunk, int cMinX, int cMinZ, int hubX, int hubZ, int baseY)
     {
+        // 0. Open the cavern the fortress hangs in - without this the brickwork stays buried in netherrack.
+        CarveFortressCavern(chunk, cMinX, cMinZ, hubX, hubZ, baseY);
+
         // 1. Lava-spanning parapet bridges first - the enclosed wings and keep are stamped over them afterwards.
         BuildBridgeAlongX(chunk, cMinX, cMinZ, hubX - 56, hubX + 56, hubZ, hubX, baseY);
         BuildBridgeAlongZ(chunk, cMinX, cMinZ, hubZ - 56, hubZ + 56, hubX, hubZ, baseY);
@@ -148,6 +210,14 @@ public sealed partial class NetherFortressGenerator
                 Set(chunk, cMinX, cMinZ, wx, baseY + 4, cz + dz, _air);
             }
 
+            // Glowstone braziers on both parapets: the lit runway is what makes the keep findable
+            // from across a lava lake in the unlit Nether.
+            if (((wx - hubX) % 12) == 0)
+            {
+                Set(chunk, cMinX, cMinZ, wx, baseY + 2, cz - 2, _glowstone);
+                Set(chunk, cMinX, cMinZ, wx, baseY + 2, cz + 2, _glowstone);
+            }
+
             if (((wx - hubX) % 5) != 0)
             {
                 continue;
@@ -178,6 +248,12 @@ public sealed partial class NetherFortressGenerator
                 Set(chunk, cMinX, cMinZ, cx + dx, baseY + 2, wz, _air);
                 Set(chunk, cMinX, cMinZ, cx + dx, baseY + 3, wz, _air);
                 Set(chunk, cMinX, cMinZ, cx + dx, baseY + 4, wz, _air);
+            }
+
+            if (((wz - hubZ) % 12) == 0)
+            {
+                Set(chunk, cMinX, cMinZ, cx - 2, baseY + 2, wz, _glowstone);
+                Set(chunk, cMinX, cMinZ, cx + 2, baseY + 2, wz, _glowstone);
             }
 
             if (((wz - hubZ) % 5) != 0)

@@ -295,6 +295,8 @@ internal sealed partial class ClientMenuController
             IsThirdPersonCamera = localThirdPersonAvatar.HasValue,
             LocalThirdPersonPlayer = localThirdPersonAvatar,
             IsNetherDimension = player.Dimension == DimensionId.Nether,
+            PortalOverlayStrength = player.PortalDwellNormalized,
+            PortalSwirlPhase = (float)player.PortalDwellSeconds,
         };
     }
 

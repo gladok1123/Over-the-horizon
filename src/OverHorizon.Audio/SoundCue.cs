@@ -307,4 +307,28 @@ public enum SoundCue : byte
 
     /// <summary>Portal ignition whoosh played when an Obsidian frame is lit (<c>sounds/portal/trigger.ogg</c>).</summary>
     PortalTrigger = 101,
+
+    /// <summary>Base Nether Wastes cavern drone looped while the player is in the Nether (<c>ambient/nether/nether_wastes/ambience.ogg</c>).</summary>
+    NetherAmbience = 102,
+
+    /// <summary>Distant mournful Nether Wastes mood (<c>ambient/nether/nether_wastes/mood1.ogg</c>).</summary>
+    NetherMood = 103,
+
+    /// <summary>Soul Sand Valley ghost whisper (<c>ambient/nether/soulsand_valley/whisper1.ogg</c>).</summary>
+    NetherWhisper = 104,
+
+    /// <summary>Low subterranean groan echoing through the wastes (<c>ambient/nether/nether_wastes/dark1.ogg</c>).</summary>
+    NetherGroan = 105,
+
+    /// <summary>Sparse Nether music disc (<c>music/game/nether/nether1.ogg</c>).</summary>
+    NetherMusic = 106,
+
+    /// <summary>Ghast idle moan drifting out of the dark (<c>mob/ghast/moan1.ogg</c>).</summary>
+    GhastMoan = 107,
+
+    /// <summary>Ghast charging scream (<c>mob/ghast/scream1.ogg</c>).</summary>
+    GhastScream = 108,
+
+    /// <summary>Blaze crackling breath (<c>mob/blaze/breathe1.ogg</c>).</summary>
+    BlazeBreathe = 109,
 }
