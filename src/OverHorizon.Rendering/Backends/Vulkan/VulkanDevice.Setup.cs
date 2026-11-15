@@ -231,10 +231,12 @@ internal sealed unsafe partial class VulkanDevice : IDisposable
         // plain UNORM default framebuffer, so the swapchain must stay UNORM too: an sRGB format would apply a
         // linear->sRGB encode on write and wash the whole scene out.
         _swapchainFormat = formats[0].Format;
-        _swapchainFormat = formats.Select(static candidate => candidate.Format)
+        var preferredFormat = formats.Select(static candidate => candidate.Format)
             .FirstOrDefault(
                 static format => format is Format.B8G8R8A8Unorm or Format.R8G8B8A8Unorm,
                 _swapchainFormat);
+
+        _swapchainFormat = preferredFormat;
 
         var extent = capabilities.CurrentExtent;
         if (extent.Width == uint.MaxValue || extent.Width == 0)
