@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>OverHorizon.Benchmarks</RootNamespace>
+    <AssemblyName>OverHorizon.Benchmarks</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591;CA1852;CA1001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/OverHorizon.Core/OverHorizon.Core.csproj" />
+    <ProjectReference Include="../../src/OverHorizon.Shared/OverHorizon.Shared.csproj" />
+    <ProjectReference Include="../../src/OverHorizon.World/OverHorizon.World.csproj" />
+    <ProjectReference Include="../../src/OverHorizon.Physics/OverHorizon.Physics.csproj" />
+    <ProjectReference Include="../../src/OverHorizon.Gameplay/OverHorizon.Gameplay.csproj" />
+    <ProjectReference Include="../../src/OverHorizon.Networking/OverHorizon.Networking.csproj" />
+    <ProjectReference Include="../../src/OverHorizon.Modding/OverHorizon.Modding.csproj" />
+    <ProjectReference Include="../../src/OverHorizon.Rendering/OverHorizon.Rendering.csproj" />
+    <ProjectReference Include="../../src/OverHorizon.Audio/OverHorizon.Audio.csproj" />
+  </ItemGroup>
+</Project>

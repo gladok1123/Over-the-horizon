@@ -1,0 +1,484 @@
+using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading.Channels;
+using OverHorizon.Core;
+using OverHorizon.Core.Blocks;
+using OverHorizon.Core.Math;
+using OverHorizon.Core.Registry;
+using OverHorizon.Shared.Hashing;
+using OverHorizon.World.Generation;
+using OverHorizon.World.Lighting;
+using OverHorizon.World.Serialization;
+using OverHorizon.World.Storage;
+
+namespace OverHorizon.World.ChunkManagement;
+
+/// <summary>
+/// Horizon-style lock-free chunk manager with concentric-ring distance-prioritized parallel worldgen
+/// (scaling cleanly up to 64-chunk view distances without full-grid allocations),
+/// double-buffered <see cref="ChunkSnapshot"/>s, and <see cref="Channel{T}"/>-backed async persistence.
+/// </summary>
+public sealed partial class ChunkManager : IChunkManager, IAsyncDisposable, IDisposable
+{
+    private readonly CoreRegistries _registries;
+    private readonly IWorldGenerator _generator;
+    private readonly IChunkStorage _storage;
+
+    private readonly ConcurrentDictionary<long, ChunkTicket> _tickets = new();
+    private readonly ConcurrentDictionary<long, ChunkColumn> _loadedChunks = new();
+    private readonly ConcurrentDictionary<long, ChunkSnapshot> _publishedSnapshots = new();
+    private readonly Channel<ChunkColumn> _saveQueue;
+    private readonly CancellationTokenSource _backgroundCts = new();
+    private readonly Task _saveWorkerTask;
+    private int _disposed;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ChunkManager"/> class.
+    /// </summary>
+    /// <param name="registries">Frozen domain registries.</param>
+    /// <param name="generator">Thread-safe chunk generator.</param>
+    /// <param name="storage">Async chunk storage backend.</param>
+    /// <param name="dimension">Dimension this manager streams, generates, and persists.</param>
+    public ChunkManager(
+        CoreRegistries registries,
+        IWorldGenerator generator,
+        IChunkStorage storage,
+        DimensionId dimension = DimensionId.Overworld)
+    {
+        ArgumentNullException.ThrowIfNull(registries);
+        ArgumentNullException.ThrowIfNull(generator);
+        ArgumentNullException.ThrowIfNull(storage);
+
+        Dimension = dimension;
+        _registries = registries;
+        _generator = generator;
+        _storage = storage;
+
+        _saveQueue = Channel.CreateBounded<ChunkColumn>(new BoundedChannelOptions(2048)
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.Wait,
+        });
+
+        _saveWorkerTask = RunSaveWorkerAsync(_backgroundCts.Token);
+    }
+
+    /// <inheritdoc />
+    public int LoadedChunkCount => _loadedChunks.Count;
+
+    /// <summary>Gets the dimension this manager streams, generates, and persists.</summary>
+    public DimensionId Dimension { get; }
+
+    /// <inheritdoc />
+    public void UpsertTicket(ChunkTicket ticket)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (ticket.Radius < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ticket), "Ticket radius must be non-negative.");
+        }
+
+        _tickets[ticket.OwnerId] = ticket;
+    }
+
+    /// <inheritdoc />
+    public bool RemoveTicket(long ownerId)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        return _tickets.TryRemove(ownerId, out _);
+    }
+
+    /// <inheritdoc />
+    public bool TryGetSnapshot(ChunkPos position, [MaybeNullWhen(false)] out ChunkSnapshot snapshot) =>
+        _publishedSnapshots.TryGetValue(position.PackInt64(), out snapshot);
+
+    /// <inheritdoc />
+    public bool SetBlockState(BlockPos worldPos, BlockState newState, long tickNumber = 0)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (worldPos.Y < EngineConstants.WorldMinY || worldPos.Y >= EngineConstants.WorldMaxY)
+        {
+            return false;
+        }
+
+        var chunkPos = worldPos.ToChunkPos();
+        var key = chunkPos.PackInt64();
+        if (!_loadedChunks.TryGetValue(key, out var column))
+        {
+            return false;
+        }
+
+        var lx = worldPos.SectionLocalX;
+        var lz = worldPos.SectionLocalZ;
+        var oldStopY = column.GetHeight(HeightmapType.LightBlocking, lx, lz);
+        var previous = column.SetBlockState(lx, worldPos.Y, lz, newState, _registries.Blocks);
+        if (previous != newState)
+        {
+            column.LastModifiedTick = tickNumber;
+            var oldMeta = _registries.Blocks.GetStateMetadata(previous);
+            var newMeta = _registries.Blocks.GetStateMetadata(newState);
+            if (oldMeta.IsOpaque != newMeta.IsOpaque || oldMeta.Block.LightEmission != newMeta.Block.LightEmission)
+            {
+                var newStopY = column.GetHeight(HeightmapType.LightBlocking, lx, lz);
+                var minBandY = Math.Max(EngineConstants.WorldMinY, Math.Min(worldPos.Y, Math.Min(oldStopY, newStopY)) - 16);
+                var maxBandY = Math.Min(EngineConstants.WorldMaxY - 1, Math.Max(worldPos.Y, Math.Max(oldStopY, newStopY)) + 16);
+                RefreshColumnAndBorderNeighbors(chunkPos, column, minBandY, maxBandY);
+            }
+            else
+            {
+                // Fast-path for Redstone wire/lever/repeater/door/trapdoor state transitions that do not alter opacity or light emission!
+                _publishedSnapshots[key] = column.CreateSnapshot();
+            }
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc />
+    public int SetBlockStatesBatch(ReadOnlySpan<(BlockPos Position, BlockState State)> changes, long tickNumber = 0)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (changes.IsEmpty)
+        {
+            return 0;
+        }
+
+        var touched = new Dictionary<long, (ChunkPos Pos, ChunkColumn Column, int MinY, int MaxY, bool LightingChanged)>(8);
+        var changedCount = 0;
+
+        for (var i = 0; i < changes.Length; i++)
+        {
+            var (worldPos, newState) = changes[i];
+            if (worldPos.Y < EngineConstants.WorldMinY || worldPos.Y >= EngineConstants.WorldMaxY)
+            {
+                continue;
+            }
+
+            var chunkPos = worldPos.ToChunkPos();
+            var key = chunkPos.PackInt64();
+            if (!_loadedChunks.TryGetValue(key, out var column))
+            {
+                continue;
+            }
+
+            var lx = worldPos.SectionLocalX;
+            var lz = worldPos.SectionLocalZ;
+            var oldStopY = column.GetHeight(HeightmapType.LightBlocking, lx, lz);
+            var previous = column.SetBlockState(lx, worldPos.Y, lz, newState, _registries.Blocks);
+            if (previous == newState)
+            {
+                continue;
+            }
+
+            changedCount++;
+            var oldMeta = _registries.Blocks.GetStateMetadata(previous);
+            var newMeta = _registries.Blocks.GetStateMetadata(newState);
+            var lightDelta = oldMeta.IsOpaque != newMeta.IsOpaque || oldMeta.Block.LightEmission != newMeta.Block.LightEmission;
+            var newStopY = column.GetHeight(HeightmapType.LightBlocking, lx, lz);
+            var lowY = Math.Max(EngineConstants.WorldMinY, Math.Min(worldPos.Y, Math.Min(oldStopY, newStopY)) - 16);
+            var highY = Math.Min(EngineConstants.WorldMaxY - 1, Math.Max(worldPos.Y, Math.Max(oldStopY, newStopY)) + 16);
+            column.LastModifiedTick = tickNumber;
+
+            if (touched.TryGetValue(key, out var existing))
+            {
+                touched[key] = (chunkPos, column, Math.Min(existing.MinY, lowY), Math.Max(existing.MaxY, highY), existing.LightingChanged || lightDelta);
+            }
+            else
+            {
+                touched[key] = (chunkPos, column, lowY, highY, lightDelta);
+            }
+        }
+
+        foreach (var (key, entry) in touched)
+        {
+            if (entry.LightingChanged)
+            {
+                RefreshColumnAndBorderNeighbors(entry.Pos, entry.Column, entry.MinY, entry.MaxY);
+            }
+            else
+            {
+                _publishedSnapshots[key] = entry.Column.CreateSnapshot();
+            }
+        }
+
+        return changedCount;
+    }
+
+    /// <inheritdoc />
+    public async ValueTask<int> ProcessTicketsAsync(int maxChunksToLoad, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (maxChunksToLoad <= 0)
+        {
+            return 0;
+        }
+
+        var activeTickets = _tickets.Values.ToArray();
+
+        // 1. Unload chunks no longer covered by any active ticket (zero 16,641-entry HashMap allocation!).
+        foreach (var (packedKey, _) in _loadedChunks)
+        {
+            var pos = ChunkPos.UnpackInt64(packedKey);
+            if (!IsCoveredByAnyTicket(pos, activeTickets) && _loadedChunks.TryRemove(packedKey, out var removed))
+            {
+                _ = _publishedSnapshots.TryRemove(packedKey, out _);
+                if (removed.IsDirty)
+                {
+                    await _saveQueue.Writer.WriteAsync(removed, cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+
+        // 2. Concentric Chebyshev ring expansion (stops as soon as maxChunksToLoad missing chunks are found!).
+        var batchPositions = SelectClosestMissingChunks(activeTickets, maxChunksToLoad);
+        if (batchPositions.Length == 0)
+        {
+            return 0;
+        }
+
+        var results = new ChunkColumn[batchPositions.Length];
+        await Parallel.ForAsync(
+            0,
+            batchPositions.Length,
+            cancellationToken,
+            async (index, ct) =>
+            {
+                var pos = batchPositions[index];
+                var loaded = await _storage.LoadChunkAsync(pos, ct).ConfigureAwait(false);
+                if (loaded is null)
+                {
+                    loaded = new ChunkColumn(pos);
+                    _generator.GenerateChunk(loaded);
+                }
+
+                results[index] = loaded;
+            }).ConfigureAwait(false);
+
+        // Deterministic commit ordered by ChunkPos, including cross-chunk border light propagation!
+        Array.Sort(results, static (a, b) => a.Position.CompareTo(b.Position));
+        for (var i = 0; i < results.Length; i++)
+        {
+            var chunk = results[i];
+            var key = chunk.Position.PackInt64();
+            _loadedChunks[key] = chunk;
+            _publishedSnapshots[key] = chunk.CreateSnapshot();
+        }
+
+        for (var i = 0; i < results.Length; i++)
+        {
+            var cp = results[i].Position;
+            _ = _loadedChunks.TryGetValue(new ChunkPos(cp.X, cp.Z - 1).PackInt64(), out var n);
+            _ = _loadedChunks.TryGetValue(new ChunkPos(cp.X, cp.Z + 1).PackInt64(), out var s);
+            _ = _loadedChunks.TryGetValue(new ChunkPos(cp.X - 1, cp.Z).PackInt64(), out var w);
+            _ = _loadedChunks.TryGetValue(new ChunkPos(cp.X + 1, cp.Z).PackInt64(), out var e);
+            if (LightingEngine.PropagateCrossChunkLight(results[i], n, s, w, e, _registries.Blocks))
+            {
+                _publishedSnapshots[cp.PackInt64()] = results[i].CreateSnapshot();
+            }
+        }
+
+        return results.Length;
+    }
+
+    /// <inheritdoc />
+    public async ValueTask<int> SaveDirtyChunksAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var saved = 0;
+        foreach (var (_, chunk) in _loadedChunks)
+        {
+            if (chunk.IsDirty)
+            {
+                await _storage.SaveChunkAsync(chunk, cancellationToken).ConfigureAwait(false);
+                saved++;
+            }
+        }
+
+        return saved;
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        _saveQueue.Writer.TryComplete();
+        await _saveWorkerTask.ConfigureAwait(false);
+        await _backgroundCts.CancelAsync().ConfigureAwait(false);
+        _backgroundCts.Dispose();
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        _saveQueue.Writer.TryComplete();
+        _backgroundCts.Cancel();
+        _backgroundCts.Dispose();
+    }
+
+    private static bool IsCoveredByAnyTicket(ChunkPos pos, ReadOnlySpan<ChunkTicket> tickets)
+    {
+        for (var i = 0; i < tickets.Length; i++)
+        {
+            if (tickets[i].Center.ChessboardDistance(pos) <= tickets[i].Radius)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private ChunkPos[] SelectClosestMissingChunks(ReadOnlySpan<ChunkTicket> tickets, int maxCount)
+    {
+        if (tickets.IsEmpty || maxCount <= 0)
+        {
+            return [];
+        }
+
+        var maxRadius = 0;
+        for (var i = 0; i < tickets.Length; i++)
+        {
+            if (tickets[i].Radius > maxRadius)
+            {
+                maxRadius = tickets[i].Radius;
+            }
+        }
+
+        var selected = new List<ChunkPos>(maxCount);
+        var seen = new HashSet<long>(maxCount * 2);
+        var ringScratch = new List<ChunkPos>(64);
+
+        for (var ring = 0; ring <= maxRadius && selected.Count < maxCount; ring++)
+        {
+            ringScratch.Clear();
+            for (var t = 0; t < tickets.Length; t++)
+            {
+                var ticket = tickets[t];
+                if (ring > ticket.Radius)
+                {
+                    continue;
+                }
+
+                if (ring == 0)
+                {
+                    TryAddRingCandidate(ticket.Center, ring, tickets, seen, ringScratch);
+                    continue;
+                }
+
+                for (var dx = -ring; dx <= ring; dx++)
+                {
+                    TryAddRingCandidate(new ChunkPos(ticket.Center.X + dx, ticket.Center.Z - ring), ring, tickets, seen, ringScratch);
+                    TryAddRingCandidate(new ChunkPos(ticket.Center.X + dx, ticket.Center.Z + ring), ring, tickets, seen, ringScratch);
+                }
+
+                for (var dz = -ring + 1; dz <= ring - 1; dz++)
+                {
+                    TryAddRingCandidate(new ChunkPos(ticket.Center.X - ring, ticket.Center.Z + dz), ring, tickets, seen, ringScratch);
+                    TryAddRingCandidate(new ChunkPos(ticket.Center.X + ring, ticket.Center.Z + dz), ring, tickets, seen, ringScratch);
+                }
+            }
+
+            if (ringScratch.Count == 0)
+            {
+                continue;
+            }
+
+            ringScratch.Sort();
+            for (var i = 0; i < ringScratch.Count && selected.Count < maxCount; i++)
+            {
+                selected.Add(ringScratch[i]);
+            }
+        }
+
+        return selected.ToArray();
+    }
+
+    private void TryAddRingCandidate(
+        ChunkPos pos,
+        int currentRing,
+        ReadOnlySpan<ChunkTicket> tickets,
+        HashSet<long> seen,
+        List<ChunkPos> ringScratch)
+    {
+        var key = pos.PackInt64();
+        if (_loadedChunks.ContainsKey(key) || seen.Contains(key))
+        {
+            return;
+        }
+
+        // Ensure minimum Chebyshev distance across all tickets equals currentRing
+        for (var i = 0; i < tickets.Length; i++)
+        {
+            if (tickets[i].Center.ChessboardDistance(pos) < currentRing && tickets[i].Center.ChessboardDistance(pos) <= tickets[i].Radius)
+            {
+                return;
+            }
+        }
+
+        _ = seen.Add(key);
+        ringScratch.Add(pos);
+    }
+
+    private void RefreshColumnAndBorderNeighbors(ChunkPos centerPos, ChunkColumn center, int minBandY, int maxBandY)
+    {
+        _ = _loadedChunks.TryGetValue(new ChunkPos(centerPos.X, centerPos.Z - 1).PackInt64(), out var north);
+        _ = _loadedChunks.TryGetValue(new ChunkPos(centerPos.X, centerPos.Z + 1).PackInt64(), out var south);
+        _ = _loadedChunks.TryGetValue(new ChunkPos(centerPos.X - 1, centerPos.Z).PackInt64(), out var west);
+        _ = _loadedChunks.TryGetValue(new ChunkPos(centerPos.X + 1, centerPos.Z).PackInt64(), out var east);
+
+        LightingEngine.RefreshChunkLightBand(center, minBandY, maxBandY, _registries.Blocks);
+        _ = LightingEngine.PropagateCrossChunkLightBand(center, north, south, west, east, minBandY, maxBandY, _registries.Blocks);
+        _publishedSnapshots[centerPos.PackInt64()] = center.CreateSnapshot();
+
+        PropagateIntoNeighbor(north, centerPos.X, centerPos.Z - 1, minBandY, maxBandY);
+        PropagateIntoNeighbor(south, centerPos.X, centerPos.Z + 1, minBandY, maxBandY);
+        PropagateIntoNeighbor(west, centerPos.X - 1, centerPos.Z, minBandY, maxBandY);
+        PropagateIntoNeighbor(east, centerPos.X + 1, centerPos.Z, minBandY, maxBandY);
+    }
+
+    private void PropagateIntoNeighbor(ChunkColumn? neighbor, int nx, int nz, int minBandY, int maxBandY)
+    {
+        if (neighbor is null)
+        {
+            return;
+        }
+
+        _ = _loadedChunks.TryGetValue(new ChunkPos(nx, nz - 1).PackInt64(), out var nn);
+        _ = _loadedChunks.TryGetValue(new ChunkPos(nx, nz + 1).PackInt64(), out var ns);
+        _ = _loadedChunks.TryGetValue(new ChunkPos(nx - 1, nz).PackInt64(), out var nw);
+        _ = _loadedChunks.TryGetValue(new ChunkPos(nx + 1, nz).PackInt64(), out var ne);
+
+        LightingEngine.RefreshChunkLightBand(neighbor, minBandY, maxBandY, _registries.Blocks);
+        _ = LightingEngine.PropagateCrossChunkLightBand(neighbor, nn, ns, nw, ne, minBandY, maxBandY, _registries.Blocks);
+        _publishedSnapshots[new ChunkPos(nx, nz).PackInt64()] = neighbor.CreateSnapshot();
+    }
+
+    private async Task RunSaveWorkerAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var dirtyChunk in _saveQueue.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+            {
+                await _storage.SaveChunkAsync(dirtyChunk, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Graceful background shutdown.
+        }
+    }
+}

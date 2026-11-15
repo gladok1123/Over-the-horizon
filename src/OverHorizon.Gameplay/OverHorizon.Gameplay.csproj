@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>OverHorizon.Gameplay</RootNamespace>
+    <AssemblyName>OverHorizon.Gameplay</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Arch" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OverHorizon.Core/OverHorizon.Core.csproj" />
+    <ProjectReference Include="../OverHorizon.Shared/OverHorizon.Shared.csproj" />
+    <ProjectReference Include="../OverHorizon.World/OverHorizon.World.csproj" />
+    <ProjectReference Include="../OverHorizon.Physics/OverHorizon.Physics.csproj" />
+  </ItemGroup>
+</Project>

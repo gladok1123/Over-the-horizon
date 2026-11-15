@@ -1,0 +1,4 @@
+Embedded real recorded audio clips in this directory are CC0 1.0 Universal (Public Domain)
+recordings sourced from Kenney.nl (Impact Sounds, RPG Audio, Interface Sounds) and the
+CC0-verified OpenGameArt RPG Sound Pack via https://github.com/Mcamento8/open-game-sfx-index.
+License: https://creativecommons.org/publicdomain/zero/1.0/

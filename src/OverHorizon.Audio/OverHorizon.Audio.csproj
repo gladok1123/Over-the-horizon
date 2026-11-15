@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>OverHorizon.Audio</RootNamespace>
+    <AssemblyName>OverHorizon.Audio</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="NVorbis" />
+    <PackageReference Include="Silk.NET.Core" />
+    <PackageReference Include="Silk.NET.OpenAL" />
+    <PackageReference Include="Silk.NET.OpenAL.Soft.Native" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="EmbeddedSfx\*.ogg" LogicalName="OverHorizon.Audio.EmbeddedSfx.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="EmbeddedSfx\*.wav" LogicalName="OverHorizon.Audio.EmbeddedSfx.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OverHorizon.Core/OverHorizon.Core.csproj" />
+    <ProjectReference Include="../OverHorizon.Shared/OverHorizon.Shared.csproj" />
+  </ItemGroup>
+</Project>

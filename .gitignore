@@ -1,0 +1,35 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+TestResults/
+BenchmarkDotNet.Artifacts/
+artifacts/
+
+# IDE
+.vs/
+.idea/
+*.sln.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime World Saves & User-Downloaded Resource Packs
+world/
+saves/
+assets/
+minecraft-assets/
+resourcepacks/
+*.rar
+
+
+
+
+# Fetched 23w13a_or_b vanilla sources (converted to embedded .ogg / baked .png at build time)
+assets/
+tools/
