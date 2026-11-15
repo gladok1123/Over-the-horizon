@@ -418,7 +418,11 @@ public sealed partial class ClientSessionRunner
         if (!_transport.IsConnected) _worldBridge.StepWorldSimulationAndMobs(_player, (float)deltaSeconds);
         _remotePlayers.StepInterpolation(deltaSeconds);
         EnqueueOutboundMovementAndEquipment(deltaSeconds);
-        _ = await _worldCache.RebuildDirtyMeshesAsync(_renderer, maxColumns: _options.Headless ? 2 : 16, ct).ConfigureAwait(false);
+        _ = await _worldCache.RebuildDirtyMeshesAsync(
+            _renderer,
+            maxColumns: _options.Headless ? 2 : 16,
+            maxThreads: _options.MaxRenderThreads,
+            cancellationToken: ct).ConfigureAwait(false);
     }
 
     private async ValueTask StreamLocalWorldStepAsync(int maxChunks, CancellationToken ct)

@@ -13,6 +13,10 @@ namespace OverHorizon.Client;
 /// <param name="StartInWorld">When <see langword="true"/>, skips the Title Screen and spawns directly into Singleplayer.</param>
 /// <param name="ExternalAssetsPath">Optional path to external resource pack directory, <c>.zip</c>, or <c>.jar</c>.</param>
 /// <param name="VerifyNativesOnly">When <see langword="true"/>, verifies GLFW and OpenAL native library loading and exits.</param>
+/// <param name="MaxRenderThreads">
+/// Upper bound on the worker threads the renderer borrows for per-frame CPU jobs (chunk frustum culling,
+/// overlay tessellation, chunk meshing). <c>0</c> lets <c>RenderParallelism</c> pick the count.
+/// </param>
 public sealed record ClientOptions(
     bool HeadlessCheckOnly = false,
     bool Headless = false,
@@ -23,4 +27,5 @@ public sealed record ClientOptions(
     int ViewDistanceChunks = 4,
     bool StartInWorld = false,
     string? ExternalAssetsPath = null,
-    bool VerifyNativesOnly = false);
+    bool VerifyNativesOnly = false,
+    int MaxRenderThreads = 0);

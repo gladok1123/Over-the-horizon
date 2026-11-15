@@ -380,6 +380,7 @@ public sealed partial class ClientWorldCache : IVoxelSelectionReader
     public async ValueTask<int> RebuildDirtyMeshesAsync(
         IRenderSubsystem renderer,
         int maxColumns = 16,
+        int maxThreads = 0,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(renderer);
@@ -394,7 +395,8 @@ public sealed partial class ClientWorldCache : IVoxelSelectionReader
             neighborhoods,
             _blocks,
             _atlas,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+            maxThreads,
+            cancellationToken).ConfigureAwait(false);
 
         foreach (var nb in neighborhoods)
         {

@@ -37,6 +37,7 @@ public static class ClientBootstrap
         ushort serverPort = 25565;
         var username = "Explorer";
         var viewDistance = 4;
+        var renderThreads = 0;
         string? externalAssetsPath = null;
 
         var i = 0;
@@ -112,6 +113,17 @@ public static class ClientBootstrap
                 continue;
             }
 
+            if (string.Equals(token, "--render-threads", StringComparison.Ordinal) && i + 1 < args.Length)
+            {
+                if (int.TryParse(args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var threads) && threads >= 0)
+                {
+                    renderThreads = threads;
+                }
+
+                i += 2;
+                continue;
+            }
+
             if (string.Equals(token, "--view-distance", StringComparison.Ordinal) && i + 1 < args.Length)
             {
                 if (int.TryParse(args[i + 1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var vd) && vd is >= 1 and <= 64)
@@ -147,7 +159,8 @@ public static class ClientBootstrap
             ViewDistanceChunks: viewDistance,
             StartInWorld: startInWorld,
             ExternalAssetsPath: externalAssetsPath,
-            VerifyNativesOnly: verifyNativesOnly);
+            VerifyNativesOnly: verifyNativesOnly,
+            MaxRenderThreads: renderThreads);
     }
 
     /// <summary>
@@ -189,7 +202,10 @@ public static class ClientBootstrap
         var saveDir = resolvedOptions.Headless || resolvedOptions.HeadlessCheckOnly ? null : "./saves/SingleplayerWorld";
 
         services.AddWorldModule(worldSaveDirectory: saveDir);
-        services.AddRenderingModule(new RenderingOptions(Headless: resolvedOptions.Headless));
+        services.AddRenderingModule(
+            new RenderingOptions(
+                Headless: resolvedOptions.Headless,
+                MaxRenderThreads: resolvedOptions.MaxRenderThreads));
         services.AddAudioModule(effectiveAssets);
         services.AddSingleton<ClientSessionRunner>();
 
