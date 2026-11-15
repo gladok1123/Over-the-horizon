@@ -7,29 +7,31 @@ namespace OverHorizon.Rendering.Backends;
 /// own lists (never sharing a list), the counters are kept in separate array slots to avoid write contention,
 /// and the owning renderer merges everything back in deterministic worker order once per frame.
 /// </summary>
-internal sealed class SectionCullScratch
+/// <typeparam name="TSection">Backend-specific uploaded section type.</typeparam>
+internal sealed class SectionCullScratch<TSection>
+    where TSection : class, IResidentSection
 {
-    private readonly List<CulledSectionDraw>[] _opaque;
-    private readonly List<CulledSectionDraw>[] _translucent;
+    private readonly List<CulledSectionDraw<TSection>>[] _opaque;
+    private readonly List<CulledSectionDraw<TSection>>[] _translucent;
     private readonly int[] _visible;
     private readonly int[] _culled;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="SectionCullScratch"/> class.
+    /// Initializes a new instance of the <see cref="SectionCullScratch{TSection}"/> class.
     /// </summary>
     /// <param name="workerCapacity">Maximum number of workers this scratch can serve.</param>
     public SectionCullScratch(int workerCapacity)
     {
         var workers = Math.Clamp(workerCapacity, 1, RenderParallelism.MaxSupportedWorkers);
-        _opaque = new List<CulledSectionDraw>[workers];
-        _translucent = new List<CulledSectionDraw>[workers];
+        _opaque = new List<CulledSectionDraw<TSection>>[workers];
+        _translucent = new List<CulledSectionDraw<TSection>>[workers];
         _visible = new int[workers];
         _culled = new int[workers];
 
         for (var i = 0; i < workers; i++)
         {
-            _opaque[i] = new List<CulledSectionDraw>(256);
-            _translucent[i] = new List<CulledSectionDraw>(64);
+            _opaque[i] = new List<CulledSectionDraw<TSection>>(256);
+            _translucent[i] = new List<CulledSectionDraw<TSection>>(64);
         }
     }
 
@@ -37,10 +39,10 @@ internal sealed class SectionCullScratch
     public int WorkerCount => _opaque.Length;
 
     /// <summary>Merged opaque draw list rebuilt every frame by <see cref="Merge"/>.</summary>
-    public List<CulledSectionDraw> Opaque { get; } = new(1024);
+    public List<CulledSectionDraw<TSection>> Opaque { get; } = new(1024);
 
     /// <summary>Merged translucent draw list rebuilt every frame by <see cref="Merge"/>.</summary>
-    public List<CulledSectionDraw> Translucent { get; } = new(256);
+    public List<CulledSectionDraw<TSection>> Translucent { get; } = new(256);
 
     /// <summary>Gets the total number of sections that passed the frustum test on the last cull.</summary>
     public int VisibleCount { get; private set; }
@@ -53,14 +55,14 @@ internal sealed class SectionCullScratch
     /// </summary>
     /// <param name="workerIndex">Zero-based worker index.</param>
     /// <returns>The list that worker exclusively owns.</returns>
-    public List<CulledSectionDraw> OpaqueBucket(int workerIndex) => _opaque[workerIndex];
+    public List<CulledSectionDraw<TSection>> OpaqueBucket(int workerIndex) => _opaque[workerIndex];
 
     /// <summary>
     /// Gets the per-worker translucent staging list for <paramref name="workerIndex"/>.
     /// </summary>
     /// <param name="workerIndex">Zero-based worker index.</param>
     /// <returns>The list that worker exclusively owns.</returns>
-    public List<CulledSectionDraw> TranslucentBucket(int workerIndex) => _translucent[workerIndex];
+    public List<CulledSectionDraw<TSection>> TranslucentBucket(int workerIndex) => _translucent[workerIndex];
 
     /// <summary>Clears every worker bucket and counter, ready for a new frame.</summary>
     public void BeginFrame()

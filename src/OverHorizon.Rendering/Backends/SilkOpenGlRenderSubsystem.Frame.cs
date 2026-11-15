@@ -84,7 +84,7 @@ public sealed partial class SilkOpenGlRenderSubsystem
             cullColumnCount,
             CullMinColumnsPerWorker,
             _options.MaxRenderThreads);
-        SilkOpenGlChunkPassDrawer.CullVisibleSections(
+        ChunkPassCuller.CullVisibleSections(
             cullColumns,
             cullColumnCount,
             in frustum,

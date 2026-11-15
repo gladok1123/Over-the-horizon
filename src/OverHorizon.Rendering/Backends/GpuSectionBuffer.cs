@@ -6,7 +6,7 @@ namespace OverHorizon.Rendering.Backends;
 /// <summary>
 /// Holds OpenGL VAO/VBO/EBO handles and index counts for one uploaded 16x16x16 chunk section.
 /// </summary>
-internal sealed class GpuSectionBuffer : IDisposable
+internal sealed class GpuSectionBuffer : IResidentSection, IDisposable
 {
     private readonly GL _gl;
     private bool _disposed;

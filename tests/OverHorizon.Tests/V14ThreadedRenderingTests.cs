@@ -109,10 +109,10 @@ public sealed class V14ThreadedRenderingTests
     [Fact]
     public void SectionCullScratch_MergesPerWorkerBucketsDeterministically()
     {
-        var scratch = new SectionCullScratch(3);
+        var scratch = new SectionCullScratch<GpuSectionBuffer>(3);
 
-        scratch.OpaqueBucket(0).Add(new CulledSectionDraw(null!, default, 0.0f));
-        scratch.OpaqueBucket(1).Add(new CulledSectionDraw(null!, default, 0.0f));
+        scratch.OpaqueBucket(0).Add(new CulledSectionDraw<GpuSectionBuffer>(null!, default, 0.0f));
+        scratch.OpaqueBucket(1).Add(new CulledSectionDraw<GpuSectionBuffer>(null!, default, 0.0f));
         scratch.TranslucentBucket(2).Add(new CulledSectionDraw(null!, default, 12.0f));
 
         scratch.AddCounts(0, visible: 4, culled: 1);
@@ -192,23 +192,23 @@ public sealed class V14ThreadedRenderingTests
     [Fact]
     public void ChunkCullingStage_RunsAcrossWorkersAndDrawsOnTheRenderThread()
     {
-        var drawer = ReadSourceFile("src/OverHorizon.Rendering/Backends/SilkOpenGlChunkPassDrawer.cs");
+        var drawer = ReadSourceFile("src/OverHorizon.Rendering/Backends/ChunkPassCuller.cs");
 
-        drawer.Should().Contain("CullVisibleSections(", "culling is a separate, cachable stage");
+        drawer.Should().Contain("CullVisibleSections<", "culling is a separate, backend-agnostic stage");
         drawer.Should().Contain("Parallel.For(", "culling must fan out across the worker pool");
         drawer.Should().Contain("scratch.OpaqueBucket(workerIndex)", "each worker needs its own bucket");
         drawer.Should().Contain("scratch.AddCounts(", "per-worker counters avoid write contention");
 
-        var cullIndex = drawer.IndexOf("CullVisibleSections(", StringComparison.Ordinal);
+        var cullIndex = drawer.IndexOf("CullVisibleSections<", StringComparison.Ordinal);
         var parallelIndex = drawer.IndexOf("Parallel.For(", StringComparison.Ordinal);
-        var drawIndex = drawer.IndexOf("DrawOpaqueList(", StringComparison.Ordinal);
+        var drawIndex = drawer.LastIndexOf("ComputeCameraRelativeOffset(", StringComparison.Ordinal);
         cullIndex.Should().BeGreaterThan(-1);
         parallelIndex.Should().BeGreaterThan(cullIndex, "the fan-out lives inside the culling stage");
         drawIndex.Should().BeGreaterThan(parallelIndex, "OpenGL draws stay in the single-threaded replay stage");
 
-        // No OpenGL call may sneak into the culling body: it runs on worker threads with no current context.
+        // No graphics call may sneak into the culling body: it runs on worker threads with no current context.
         var cullBody = drawer[parallelIndex..drawIndex];
-        cullBody.Should().NotContain("gl.", "worker threads must never touch the GL context");
+        cullBody.Should().NotContain("gl.", "worker threads must never touch a graphics context");
     }
 
     [Fact]
@@ -229,6 +229,7 @@ public sealed class V14ThreadedRenderingTests
         translucentIndex.Should().BeLessThan(screenIndex, "the HUD and viewmodel draw last");
 
         frame.Should().Contain("ResolveWorkerCount(", "the culling stage must honour the shared worker policy");
+        frame.Should().Contain("ChunkPassCuller.CullVisibleSections(", "culling must go through the shared backend-agnostic stage");
         frame.Should().Contain("GetCullColumnSnapshot(", "workers need a flat, stable snapshot of the resident columns");
     }
 

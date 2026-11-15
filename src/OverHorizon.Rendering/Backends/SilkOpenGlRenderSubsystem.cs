@@ -15,7 +15,8 @@ using Silk.NET.Windowing.Glfw;
 namespace OverHorizon.Rendering.Backends;
 
 /// <summary>
-/// Silk.NET OpenGL 3.3 Core Profile voxel chunk renderer with <see cref="ChunkPos"/>-indexed <see cref="GpuChunkColumn"/>
+/// Silk.NET OpenGL 3.3 Core Profile voxel chunk renderer with <see cref="ChunkPos"/>-indexed
+/// <see cref="ChunkColumnSlots{TSection}"/>
 /// <c>O(1)</c> residency, column-level spherical distance + frustum culling, dynamic Day/Sunset/Night sky &amp; held-torch lighting,
 /// and two-pass opaque + translucent drawing.
 /// </summary>
@@ -25,10 +26,10 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
     private readonly RenderingOptions _options;
     private readonly ILogger<SilkOpenGlRenderSubsystem> _logger;
     private readonly Dictionary<ChunkPos, Dictionary<int, SectionMeshData>> _stagedColumns = [];
-    private readonly Dictionary<ChunkPos, GpuChunkColumn> _gpuColumns = [];
-    private readonly SectionCullScratch _cullScratch = new(RenderParallelism.AutoWorkerCount);
+    private readonly Dictionary<ChunkPos, ChunkColumnSlots<GpuSectionBuffer>> _gpuColumns = [];
+    private readonly SectionCullScratch<GpuSectionBuffer> _cullScratch = new(RenderParallelism.AutoWorkerCount);
 
-    private GpuChunkColumn[] _cullColumnArray = [];
+    private ChunkColumnSlots<GpuSectionBuffer>[] _cullColumnArray = [];
     private int _cullColumnCount;
     private bool _cullColumnsDirty = true;
 
@@ -53,7 +54,7 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
         _logger = logger;
     }
 
-    private GpuChunkColumn[] GetCullColumnSnapshot(out int columnCount)
+    private ChunkColumnSlots<GpuSectionBuffer>[] GetCullColumnSnapshot(out int columnCount)
     {
         if (_cullColumnsDirty)
         {
@@ -68,7 +69,7 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
     {
         if (_cullColumnArray.Length < _gpuColumns.Count)
         {
-            _cullColumnArray = new GpuChunkColumn[Math.Max(64, _gpuColumns.Count * 2)];
+            _cullColumnArray = new ChunkColumnSlots<GpuSectionBuffer>[Math.Max(64, _gpuColumns.Count * 2)];
         }
 
         _cullColumnCount = 0;
@@ -319,7 +320,7 @@ public sealed partial class SilkOpenGlRenderSubsystem : IRenderSubsystem
         var chunkPos = new ChunkPos(mesh.SectionPosition.X, mesh.SectionPosition.Z);
         if (!_gpuColumns.TryGetValue(chunkPos, out var col))
         {
-            col = new GpuChunkColumn(chunkPos);
+            col = new ChunkColumnSlots<GpuSectionBuffer>(chunkPos);
             _gpuColumns[chunkPos] = col;
         }
 
