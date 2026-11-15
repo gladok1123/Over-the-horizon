@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.Extensions.Logging;
+using OverHorizon.Rendering;
 using OverHorizon.Rendering.Backends;
 using OverHorizon.Rendering.Hud;
 
