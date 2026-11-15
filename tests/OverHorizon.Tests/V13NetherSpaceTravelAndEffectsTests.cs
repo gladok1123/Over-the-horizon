@@ -249,7 +249,7 @@ public sealed class V13NetherSpaceTravelAndEffectsTests
     [Fact]
     public void RenderFrame_KeepsTheTranslucentPassBetweenTheWorldAndScreenOverlays()
     {
-        var text = ReadSourceFile("src/OverHorizon.Rendering/Backends/SilkOpenGlRenderSubsystem.cs");
+        var text = ReadSourceFile("src/OverHorizon.Rendering/Backends/SilkOpenGlRenderSubsystem.Frame.cs");
         var worldPass = text.IndexOf("RenderWorldOverlays(", StringComparison.Ordinal);
         var transPass = text.IndexOf("DrawTranslucentPass(", StringComparison.Ordinal);
         var screenPass = text.IndexOf("RenderScreenOverlays(", StringComparison.Ordinal);
