@@ -19,7 +19,7 @@ internal static class Program
     /// </summary>
     /// <param name="args">[0] = input shader directory, [1] = output SPIR-V directory.</param>
     /// <returns><c>0</c> on success, <c>2</c> on a usage error.</returns>
-    private static int Main(string[] args)
+    private static unsafe int Main(string[] args)
     {
         if (args.Length < 2)
         {
@@ -45,7 +45,7 @@ internal static class Program
 
         try
         {
-            api.CompileOptionsSetSourceLanguage(options, SourceLanguage.GLSL);
+            api.CompileOptionsSetSourceLanguage(options, SourceLanguage.Glsl);
             api.CompileOptionsSetTargetEnv(options, TargetEnv.Vulkan, (uint)EnvVersion.Vulkan11);
             api.CompileOptionsSetTargetSpirv(options, SpirvVersion.Shaderc13);
             api.CompileOptionsSetOptimizationLevel(options, OptimizationLevel.Performance);
