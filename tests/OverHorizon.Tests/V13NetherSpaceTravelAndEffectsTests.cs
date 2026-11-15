@@ -90,8 +90,8 @@ public sealed class V13NetherSpaceTravelAndEffectsTests
 
         var lx = hubX - chunk.Position.MinBlockX;
         var lz = hubZ - chunk.Position.MinBlockZ;
-        (uint)lx.Should().BeLessThan(16u);
-        (uint)lz.Should().BeLessThan(16u);
+        lx.Should().BeInRange(0, 15);
+        lz.Should().BeInRange(0, 15);
 
         // The keep crown sits in open air, so the fortress is visible instead of entombed in netherrack.
         var openAbove = 0;
