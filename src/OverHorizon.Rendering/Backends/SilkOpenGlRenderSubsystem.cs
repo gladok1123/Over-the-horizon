@@ -1,5 +1,7 @@
+using System.Numerics;
 using Microsoft.Extensions.Logging;
 using OverHorizon.Core.Math;
+using OverHorizon.Rendering.Camera;
 using OverHorizon.Rendering.Meshing;
 using OverHorizon.Rendering.Textures;
 using Silk.NET.Core.Loader;
