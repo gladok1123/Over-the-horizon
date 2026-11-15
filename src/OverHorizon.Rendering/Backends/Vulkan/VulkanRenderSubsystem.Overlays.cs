@@ -191,7 +191,6 @@ public sealed unsafe partial class VulkanRenderSubsystem
             return 0;
         }
 
-        var screenW = overlay.ViewportSize.X > 64.0f ? overlay.ViewportSize.X : 1280.0f;
         var screenH = overlay.ViewportSize.Y > 64.0f ? overlay.ViewportSize.Y : 720.0f;
         var rect = overlay.InventoryPlayerPreviewRect;
 

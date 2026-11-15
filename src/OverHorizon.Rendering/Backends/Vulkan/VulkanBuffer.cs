@@ -139,7 +139,7 @@ internal sealed unsafe class VulkanBuffer : IDisposable
         }
 
         void* mapped;
-        VulkanResult.Ensure(_vk.MapMemory(_device, _memory, 0, byteCount, 0, &mapped), "vkMapMemory");
+        VulkanResult.Ensure(_vk.MapMemory(_device, _memory, 0, byteCount, MemoryMapFlags.None, &mapped), "vkMapMemory");
 
         fixed (T* source = data)
         {
@@ -156,7 +156,7 @@ internal sealed unsafe class VulkanBuffer : IDisposable
     public void* Map()
     {
         void* mapped;
-        VulkanResult.Ensure(_vk.MapMemory(_device, _memory, 0, (nuint)Size, 0, &mapped), "vkMapMemory");
+        VulkanResult.Ensure(_vk.MapMemory(_device, _memory, 0, (nuint)Size, MemoryMapFlags.None, &mapped), "vkMapMemory");
         return mapped;
     }
 

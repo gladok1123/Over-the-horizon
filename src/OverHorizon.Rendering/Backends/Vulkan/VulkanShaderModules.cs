@@ -27,7 +27,7 @@ internal sealed unsafe class VulkanShaderModules : IDisposable
         _vk = vk;
         _device = device;
 
-        foreach (var name in ModuleNames.Names)
+        foreach (var name in ModuleNames.All)
         {
             _modules[name] = CreateModule(name);
         }

@@ -118,7 +118,7 @@ internal sealed unsafe partial class VulkanDevice : IDisposable
         var foundPresent = false;
         for (var i = 0u; i < queueFamilyCount; i++)
         {
-            if ((families[i].QueueFlags & QueueFlags.GraphicsBit) != 0)
+            if (families[i].QueueFlags.HasFlag(QueueFlags.GraphicsBit))
             {
                 graphicsFamily = i;
                 foundGraphics = true;
@@ -401,11 +401,12 @@ internal sealed unsafe partial class VulkanDevice : IDisposable
             _swapchainExtent.Height);
 
         _framebuffers = new Framebuffer[_swapchainImageViews.Length];
+        var framebufferAttachments = stackalloc ImageView[2];
+        framebufferAttachments[1] = _depthImage.View;
         for (var i = 0; i < _swapchainImageViews.Length; i++)
         {
-            var attachments = stackalloc ImageView[2];
+            var attachments = framebufferAttachments;
             attachments[0] = _swapchainImageViews[i];
-            attachments[1] = _depthImage.View;
 
             var framebufferInfo = new FramebufferCreateInfo
             {
