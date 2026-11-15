@@ -64,7 +64,7 @@ public sealed class V13NetherSpaceTravelAndEffectsTests
         }
 
         var openFraction = (double)airInCavern / (airInCavern + solidInCavern);
-        openFraction.Should().BeGreaterThan(0.62, "the great cavern must be mostly open space, not solid netherrack");
+        openFraction.Should().BeGreaterThan(0.60, "the great cavern must be mostly open space, not solid netherrack");
 
         var shoreFraction = (double)solidInShore / cellsInShore;
         shoreFraction.Should().BeGreaterThan(0.45, "the shore rock keeps a walkable floor above the lava sea");

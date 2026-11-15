@@ -135,7 +135,7 @@ public sealed partial class NetherGenerator : IWorldGenerator
         // Noodle tunnels thread every band of the dimension, including the rocky ceiling.
         var a = _caveNoiseA.SampleFractal3D(worldX * 0.021, worldY * 0.033, worldZ * 0.021, octaves: 3);
         var b = _caveNoiseB.SampleFractal3D(worldX * 0.021, worldY * 0.033, worldZ * 0.021, octaves: 3);
-        if (((a * a) + (b * b)) < 0.055)
+        if (((a * a) + (b * b)) < 0.016)
         {
             return true;
         }
@@ -156,17 +156,17 @@ public sealed partial class NetherGenerator : IWorldGenerator
     {
         if (worldY <= LavaSeaY - 6)
         {
-            return 0.45;
+            return 0.36;
         }
 
         if (worldY <= LavaSeaY)
         {
-            return 0.10;
+            return 0.16;
         }
 
         if (worldY <= ShoreRockTopY)
         {
-            return -0.18;
+            return -0.30;
         }
 
         if (worldY <= GreatCavernTopY)
@@ -174,7 +174,7 @@ public sealed partial class NetherGenerator : IWorldGenerator
             return 0.30;
         }
 
-        return worldY <= CeilingRockY ? -0.05 : -0.34;
+        return worldY <= CeilingRockY ? 0.02 : -0.30;
     }
 
     /// <inheritdoc />
