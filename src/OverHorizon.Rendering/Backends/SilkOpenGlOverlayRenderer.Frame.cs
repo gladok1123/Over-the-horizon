@@ -56,11 +56,11 @@ internal sealed partial class SilkOpenGlOverlayRenderer
         var viewProj = camera.BuildCameraRelativeViewProjectionMatrix();
         _gl.UniformMatrix4(_locTransform, 1, false, (float*)&viewProj);
 
-        if (_cloudVertices.Count > 0)
+        if (_geometry.Clouds.Count > 0)
         {
             SetFogUniforms(180.0f, 360.0f, fogColor);
             _gl.DepthMask(false);
-            UploadAndDraw(_cloudVertices, PrimitiveType.Triangles);
+            UploadAndDraw(_geometry.Clouds, PrimitiveType.Triangles);
             _gl.DepthMask(true);
             drawCalls++;
         }
@@ -69,15 +69,15 @@ internal sealed partial class SilkOpenGlOverlayRenderer
         var entFogEnd = state.IsUnderwater ? 11.5f : chunkFogDist * 0.98f;
         SetFogUniforms(entFogStart, entFogEnd, fogColor);
 
-        if (_worldTriangleVertices.Count > 0)
+        if (_geometry.WorldTriangles.Count > 0)
         {
-            UploadAndDraw(_worldTriangleVertices, PrimitiveType.Triangles);
+            UploadAndDraw(_geometry.WorldTriangles, PrimitiveType.Triangles);
             drawCalls++;
         }
 
-        if (_worldLineVertices.Count > 0)
+        if (_geometry.WorldLines.Count > 0)
         {
-            UploadAndDraw(_worldLineVertices, PrimitiveType.Lines);
+            UploadAndDraw(_geometry.WorldLines, PrimitiveType.Lines);
             drawCalls++;
         }
 
@@ -123,12 +123,12 @@ internal sealed partial class SilkOpenGlOverlayRenderer
         _gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
         SetFogUniforms(100000.0f, 200000.0f, Vector3.One);
 
-        if (_viewModelVertices.Count > 0)
+        if (_geometry.ViewModel.Count > 0)
         {
             _gl.Clear(ClearBufferMask.DepthBufferBit);
             var handProj = Matrix4x4.CreatePerspectiveFieldOfView(64.0f * (MathF.PI / 180.0f), camera.AspectRatio, 0.05f, 12.0f);
             _gl.UniformMatrix4(_locTransform, 1, false, (float*)&handProj);
-            UploadAndDraw(_viewModelVertices, PrimitiveType.Triangles);
+            UploadAndDraw(_geometry.ViewModel, PrimitiveType.Triangles);
             drawCalls++;
         }
 
