@@ -246,7 +246,7 @@ public sealed class V14ThreadedRenderingTests
         threading.Should().NotContain("gl.", "tessellation must stay free of graphics API state");
 
         var subsystem = ReadSourceFile("src/OverHorizon.Rendering/Backends/Vulkan/VulkanRenderSubsystem.cs");
-        subsystem.Should().Contain("new OverlayGeometry(_options.MaxRenderThreads)", "the overlay stages honour the configured thread cap");
+        subsystem.Should().Contain("new OverlayGeometry(options.MaxRenderThreads)", "the overlay stages honour the configured thread cap");
     }
 
     [Fact]
