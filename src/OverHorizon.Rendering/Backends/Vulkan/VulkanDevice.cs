@@ -35,7 +35,7 @@ internal sealed unsafe partial class VulkanDevice : IDisposable
     private Format _swapchainFormat = Format.B8G8R8A8Unorm;
     private ColorSpaceKHR _swapchainColorSpace = ColorSpaceKHR.SpaceSrgbNonlinearKhr;
     private Extent2D _swapchainExtent;
-    private Format _depthFormat = Format.D32Sfloat;
+    private Format _depthFormat;
     private bool _vsync;
     private Extent2D _pendingExtent;
 
@@ -332,7 +332,7 @@ internal sealed unsafe partial class VulkanDevice : IDisposable
     /// </summary>
     /// <param name="capabilities">Current surface capabilities.</param>
     /// <returns>The resolved extent; width or height may be 0 while the window is minimised.</returns>
-    private Extent2D ResolveSwapchainExtent(in SurfaceCapabilitiesKHR capabilities)
+    private Extent2D ResolveSwapchainExtent(SurfaceCapabilitiesKHR capabilities)
     {
         var extent = capabilities.CurrentExtent;
         if (extent.Width != uint.MaxValue || extent.Height != uint.MaxValue)
@@ -370,14 +370,10 @@ internal sealed unsafe partial class VulkanDevice : IDisposable
             return;
         }
 
-        var chosen = formats[0];
-        foreach (var candidate in formats)
+        var chosen = Array.Find(formats, candidate => candidate.Format is Format.B8G8R8A8Unorm or Format.R8G8B8A8Unorm);
+        if (chosen.Format == Format.Undefined)
         {
-            if (candidate.Format is Format.B8G8R8A8Unorm or Format.R8G8B8A8Unorm)
-            {
-                chosen = candidate;
-                break;
-            }
+            chosen = formats[0];
         }
 
         _swapchainFormat = chosen.Format;
@@ -438,27 +434,31 @@ internal sealed unsafe partial class VulkanDevice : IDisposable
 
     /// <summary>
     /// Picks the first alpha-composition mode the surface supports, preferring opaque. Drivers advertise
-    /// different subsets (straight/pre-multiplied/inherit are common where opaque is missing), and picking
-    /// an unsupported mode is a validation error that can leave the window fully transparent.
+    /// different subsets (pre-multiplied/post-multiplied/inherit are common where opaque is missing), and
+    /// picking an unsupported mode is a validation error that can leave the window fully transparent.
     /// </summary>
     /// <param name="capabilities">Current surface capabilities.</param>
     /// <returns>The composite alpha mode to request.</returns>
-    private static CompositeAlphaFlagsKHR ChooseCompositeAlpha(in SurfaceCapabilitiesKHR capabilities)
+    private static CompositeAlphaFlagsKHR ChooseCompositeAlpha(SurfaceCapabilitiesKHR capabilities)
     {
-        CompositeAlphaFlagsKHR[] candidates =
-        [
-            CompositeAlphaFlagsKHR.OpaqueBitKhr,
-            CompositeAlphaFlagsKHR.PreMultipliedBitKhr,
-            CompositeAlphaFlagsKHR.StraightBitKhr,
-            CompositeAlphaFlagsKHR.InheritBitKhr,
-        ];
-
-        foreach (var candidate in candidates)
+        if (capabilities.SupportedCompositeAlpha.HasFlag(CompositeAlphaFlagsKHR.OpaqueBitKhr))
         {
-            if (capabilities.SupportedCompositeAlpha.HasFlag(candidate))
-            {
-                return candidate;
-            }
+            return CompositeAlphaFlagsKHR.OpaqueBitKhr;
+        }
+
+        if (capabilities.SupportedCompositeAlpha.HasFlag(CompositeAlphaFlagsKHR.PreMultipliedBitKhr))
+        {
+            return CompositeAlphaFlagsKHR.PreMultipliedBitKhr;
+        }
+
+        if (capabilities.SupportedCompositeAlpha.HasFlag(CompositeAlphaFlagsKHR.PostMultipliedBitKhr))
+        {
+            return CompositeAlphaFlagsKHR.PostMultipliedBitKhr;
+        }
+
+        if (capabilities.SupportedCompositeAlpha.HasFlag(CompositeAlphaFlagsKHR.InheritBitKhr))
+        {
+            return CompositeAlphaFlagsKHR.InheritBitKhr;
         }
 
         // The spec guarantees at least one bit is set; keep the conventional default if a driver lies.
