@@ -147,7 +147,7 @@ jobs:
           set -euo pipefail
           mkdir -p release-zips
           for rid in win-x64 linux-x64 osx-arm64 osx-x64; do
-            pkg_name="OverHorizon-v0.14.0-alpha-${rid}"
+            pkg_name="OverHorizon-v0.14.1-alpha-${rid}"
             stage_dir="stage/${pkg_name}"
             mkdir -p "${stage_dir}/server" "${stage_dir}/tools" "${stage_dir}/saves" "${stage_dir}/resourcepacks"
 
@@ -190,26 +190,46 @@ jobs:
       - name: Upload Playable Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: OverHorizon-v0.14.0-alpha-playable-builds
+          name: OverHorizon-v0.14.1-alpha-playable-builds
           path: release-zips/*.zip
           retention-days: 30
 
-      - name: Publish or Update GitHub Pre-Release v0.14.0-alpha
+      - name: Publish or Update GitHub Pre-Release v0.14.1-alpha
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="v0.14.0-alpha"
-          NOTES=$'### Over-the-Horizon: C# EDITION (`v0.14.0-alpha`) — чистый Vulkan и многопоточный рендер!\n\nГотовые самодостаточные сборки (**установка .NET не требуется — один чистый исполняемый файл в корне без сотен `.dll`!**):\n- **Windows 10/11 (x64)**: `OverHorizon-v0.14.0-alpha-win-x64.zip` -> запускайте сразу `OverHorizon.Client.exe` или `PLAY-GAME.bat`\n- **Linux (x86_64)**: `OverHorizon-v0.14.0-alpha-linux-x64.zip` -> `./OverHorizon.Client` или `./PLAY-GAME.sh`\n- **macOS Apple Silicon (M1-M4)**: `OverHorizon-v0.14.0-alpha-osx-arm64.zip` -> `./OverHorizon.Client` или `./PLAY-GAME.sh`\n- **macOS Intel (x64)**: `OverHorizon-v0.14.0-alpha-osx-x64.zip` -> `./OverHorizon.Client` или `./PLAY-GAME.sh`\n\n#### Ключевые изменения в `v0.14.0-alpha`:\n\n1. **Игра полностью переведена на чистый Vulkan**: бэкенд OpenGL удалён целиком — все `SilkOpenGl*` классы и единственная ссылка на `Silk.NET.OpenGL` убраны из решения. Теперь рендер — это `VulkanDevice` + пять графических конвейеров (чанки непрозрачные/полупрозрачные, оверлеи, оверлеи без записи глубины, интерфейс), собранных из заранее скомпилированного SPIR-V.\n2. **Шейдеры больше никогда не компилируются во время игры**: все шесть модулей (`chunk.vert/frag`, `overlay.vert/frag`, `ui.vert/frag`) скомпилированы в SPIR-V до сборки и лежат в репозитории рядом с исходниками на GLSL, а рантайм только загружает готовые бинарники.\n3. **Многопоточность стала общей для любого бэкенда**: отсечение по пирамиде видимости вынесено из отрисовщика в `ChunkPassCuller`, а тесселяция оверлеев — в `OverlayGeometry`. Оба этапа работают через пул воркеров с собственными буферами (`SectionCullScratch`, `ParallelVertexSink`) и сливают результат в детерминированном порядке; ни один воркер не трогает графический контекст.\n4. **Отрисовка Vulkan записывает кадр в один командный буфер**: куллинг по колонкам чанков, непрозрачный проход, оверлеи мира, полупрозрачный проход с сортировкой сзади вперёд, оружие в руках, HUD и трёхмерный предпросмотр игрока в инвентаре. Динамические вершинные потоки отображены в память один раз и перематываются каждый кадр, поэтому облака, мобы и частицы не переаллоцируют буферы.\n5. **Общая геометрия неба и оверлеев**: купол неба (Солнце, Луна, звёзды), парящий слой облаков и бездна пустоты вынесены в `OverlaySkyTessellator`, а атмосфера кадра — в `FrameAtmosphere`/`SkyAtmosphere`. Тесселяция облаков по-прежнему идёт по полосам строк в несколько потоков.\n6. **Архитектура и тесты**: рендер-подсистема Vulkan разбита на partial-файлы (лимит `500` строк соблюдён), добавлены регрессионные тесты на предварительно скомпилированный SPIR-V, на общий этап куллинга без вызовов графического API и на порядок проходов кадра.\n\nВсе сборки — это результат зелёного CI-прогона: сборка с `TreatWarningsAsErrors`, полный набор юнит- и архитектурных тестов, а также проверка самодостаточного загрузчика (GLFW + OpenAL) в чистой папке.'
+          TAG="v0.14.1-alpha"
+          cat > /tmp/release-notes.md <<'NOTES_EOF'
+          ### Over-the-Horizon: C# EDITION (`v0.14.1-alpha`) — починенный Vulkan-рендер
+
+          Готовые самодостаточные сборки (**установка .NET не требуется — один чистый исполняемый файл в корне без сотен `.dll`!**):
+          - **Windows 10/11 (x64)**: `OverHorizon-v0.14.1-alpha-win-x64.zip` -> запускайте сразу `OverHorizon.Client.exe` или `PLAY-GAME.bat`
+          - **Linux (x86_64)**: `OverHorizon-v0.14.1-alpha-linux-x64.zip` -> `./OverHorizon.Client` или `./PLAY-GAME.sh`
+          - **macOS Apple Silicon (M1-M4)**: `OverHorizon-v0.14.1-alpha-osx-arm64.zip` -> `./OverHorizon.Client` или `./PLAY-GAME.sh`
+          - **macOS Intel (x64)**: `OverHorizon-v0.14.1-alpha-osx-x64.zip` -> `./OverHorizon.Client` или `./PLAY-GAME.sh`
+
+          #### Исправления по сравнению с `v0.14.0-alpha`:
+
+          1. **Туман оверлеев больше не уводит в чёрный**: облака, мобы, предметы и частицы затухают в цвет неба — так же, как в OpenGL-версии. Push-константы overlay-шейдеров расширены до 96 байт (`uFogColor`), оба модуля `overlay.vert/frag` перекомпилированы в SPIR-V.
+          2. **Буферы больше не уничтожаются под ещё рендерящимися кадрами**: новый `VulkanDeferredDisposer` помечает освобождаемые буферы тегом кадра и уничтожает их только после завершения кадров, которые могли их читать. Это убирает вылеты, мерцание и порчу геометрии при стриминге чанков и замене секций.
+          3. **Подгрузка чанков перестала дёргать GPU**: вместо сотен `vkQueueWaitIdle` на каждый меш — один батч-флаш в начале кадра.
+          4. **Ресайз и «нестандартный» swapchain не бросают кадр**: `VK_SUBOPTIMAL_KHR` больше не оставляет непотреблённый сигнальный семафор — кадр дорисовывается, пересоздание swapchain откладывается.
+          5. **HUD и динамические оверлеи не рвутся между кадрами**: общий вершинный поток заменён на поток на каждый кадр в полёте; рост потока посреди кадра сохраняет уже записанную геометрию.
+          6. **VSync снова работает**: при включённом VSync выбирается FIFO (как `swapInterval 1` в OpenGL), при выключенном — Mailbox → Immediate → FIFO.
+          7. **Харденинг swapchain**: глубинный формат выбирается по возможностям GPU (D32 → D32S8 → D24S8 → D16) с корректным aspect, composite alpha берётся из поддерживаемых поверхностью режимов, формат и цветовое пространство фиксируются после первого выбора, свёрнутое окно (0×0) не ломает создание swapchain, graphics и present предпочитаются одной queue-семье.
+
+          Все сборки — результат зелёного CI-прогона: сборка Release с `TreatWarningsAsErrors` на Ubuntu и Windows, полный набор юнит- и архитектурных тестов, а также проверка самодостаточного загрузчика (GLFW + OpenAL) в чистой папке.
+          NOTES_EOF
 
           if gh release view "${TAG}" >/dev/null 2>&1; then
             gh release upload "${TAG}" release-zips/*.zip --clobber
-            gh release edit "${TAG}" --notes "${NOTES}"
+            gh release edit "${TAG}" --notes-file /tmp/release-notes.md
           else
             gh release create "${TAG}" release-zips/*.zip \
               --target "${GITHUB_SHA}" \
               --prerelease \
-              --title "Over-the-Horizon: C# EDITION — v0.14.0-alpha" \
-              --notes "${NOTES}"
+              --title "Over-the-Horizon: C# EDITION — v0.14.1-alpha" \
+              --notes-file /tmp/release-notes.md
           fi
