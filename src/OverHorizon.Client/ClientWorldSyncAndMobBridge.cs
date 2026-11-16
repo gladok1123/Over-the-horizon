@@ -60,6 +60,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
     private readonly List<Vec3d> _shieldBlockPositions = new(4);
     private readonly List<(MobType Type, Vec3d Position, bool Died, float FallDamage)> _mobFallScratch = new(8);
     private readonly List<ItemStack> _arrowDropScratch = new(8);
+    private readonly List<(Vec3d Position, ItemStack Stack)> _arrowMobLootScratch = new(8);
     private readonly List<Vec3d> _arrowHitSoundScratch = new(8);
     private readonly List<(BlockPos Pos, BlockState BrokenState)> _brokenFragileScratch = new(8);
     private readonly List<BlockPos> _extinguishedFireScratch = new(8);

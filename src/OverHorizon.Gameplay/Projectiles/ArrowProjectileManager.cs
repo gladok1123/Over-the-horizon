@@ -99,7 +99,8 @@ public sealed class ArrowProjectileManager
         List<Vec3d> arrowImpactSoundPositions,
         bool isPlayerBlockingShield = false,
         System.Numerics.Vector3 playerLookForward = default,
-        List<Vec3d>? shieldDeflectedPositions = null)
+        List<Vec3d>? shieldDeflectedPositions = null,
+        List<(Vec3d Position, ItemStack Stack)>? mobLootDrops = null)
     {
         ArgumentNullException.ThrowIfNull(collisionWorld);
         ArgumentNullException.ThrowIfNull(getBlock);
@@ -153,11 +154,26 @@ public sealed class ArrowProjectileManager
 
             // 1. Check mob hit (player-fired arrows or friendly-fire arrows after 0.12s)
             if ((arrow.FiredByPlayer || arrow.AgeSeconds > 0.20f) &&
-                mobManager.TryHitMobAlongSegment(start, end, arrow.BaseDamage, arrow.Velocity, items, out _, out var mobDrops))
+                mobManager.TryHitMobAlongSegment(start, end, arrow.BaseDamage, arrow.Velocity, items, out var hitMob, out var mobDrops))
             {
-                for (var d = 0; d < mobDrops.Count; d++)
+                // Death loot belongs on the ground at the kill spot; the caller routes it there when wired.
+                // Falls back to the collected list when no world-drop sink is provided (e.g. tests).
+                if (hitMob is not null && mobLootDrops is not null)
                 {
-                    collectedDropsAndPickups.Add(mobDrops[d]);
+                    for (var d = 0; d < mobDrops.Count; d++)
+                    {
+                        if (!mobDrops[d].IsEmpty)
+                        {
+                            mobLootDrops.Add((hitMob.FeetPosition, mobDrops[d]));
+                        }
+                    }
+                }
+                else
+                {
+                    for (var d = 0; d < mobDrops.Count; d++)
+                    {
+                        collectedDropsAndPickups.Add(mobDrops[d]);
+                    }
                 }
 
                 arrowImpactSoundPositions.Add(end);

@@ -138,6 +138,7 @@ public sealed partial class ServerPlaySessionBridge
         var collectedLoot = new List<ItemStack>();
         var arrowImpacts = new List<Vec3d>();
         var shieldDeflected = new List<Vec3d>();
+        var arrowMobLoot = new List<(Vec3d Position, ItemStack Stack)>();
         var arrowDmg = _arrows.Step(
             dtSeconds,
             _collisionReader,
@@ -150,7 +151,16 @@ public sealed partial class ServerPlaySessionBridge
             arrowImpacts,
             primaryTarget?.IsBlockingShield ?? false,
             primaryTarget?.LookForward ?? Vector3.UnitZ,
-            shieldDeflected);
+            shieldDeflected,
+            arrowMobLoot);
+
+        for (var i = 0; i < arrowMobLoot.Count; i++)
+        {
+            if (!arrowMobLoot[i].Stack.IsEmpty)
+            {
+                _ = _droppedItems.SpawnScatterDrop(arrowMobLoot[i].Position, arrowMobLoot[i].Stack, pickupDelaySeconds: 0.30f);
+            }
+        }
 
         if (primaryTarget is not null)
         {

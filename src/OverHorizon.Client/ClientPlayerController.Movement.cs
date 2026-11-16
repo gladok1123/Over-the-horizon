@@ -335,7 +335,9 @@ public sealed partial class ClientPlayerController
         }
         else if (OnGround)
         {
-            if (!wasOnGround && _fallDistance > 0.65)
+            // 0.05 catches every real touch-down — a one-block jump-up only drops ~0.25 from its apex —
+            // while still ignoring sub-voxel collision jitter.
+            if (!wasOnGround && _fallDistance > 0.05)
             {
                 if (Mode == GameMode.Survival && _fallDistance > 3.35 && preStepVelY < -6.5)
                 {

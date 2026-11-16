@@ -14,6 +14,7 @@ public sealed class ActiveMob
         Type = type;
         FeetPosition = feetPosition;
         YawDegrees = initialYawDegrees;
+        TargetYawDegrees = initialYawDegrees;
         (Width, Height, MaxHealth, AttackDamage) = GetSpeciesStats(type);
         Health = MaxHealth;
     }
@@ -60,6 +61,9 @@ public sealed class ActiveMob
 
     /// <summary>Gets or sets body facing yaw in degrees.</summary>
     public float YawDegrees { get; set; }
+
+    /// <summary>Gets or sets the steering yaw the mob smoothly turns toward every physics tick, in degrees.</summary>
+    public float TargetYawDegrees { get; set; }
 
     /// <summary>Gets or sets accumulated limb-swing phase in radians.</summary>
     public float WalkPhase { get; set; }

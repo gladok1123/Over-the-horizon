@@ -122,8 +122,8 @@ public sealed partial class WorldMobManager
 
         if (!hitMob.IsHostile)
         {
+            // Keep the facing it already had: panic sprints it the way it was looking, never a 180° pivot.
             hitMob.PanicTimer = 4.0f;
-            hitMob.YawDegrees = (float)(Math.Atan2(rayDirection.X, rayDirection.Z) * (180.0 / Math.PI));
         }
 
         var horizLen = MathF.Sqrt((rayDirection.X * rayDirection.X) + (rayDirection.Z * rayDirection.Z));

@@ -31,6 +31,7 @@ internal sealed partial class ClientWorldSyncAndMobBridge
         _shieldBlockPositions.Clear();
         _mobFallScratch.Clear();
         _arrowDropScratch.Clear();
+        _arrowMobLootScratch.Clear();
         _arrowHitSoundScratch.Clear();
         _brokenFragileScratch.Clear();
         _extinguishedFireScratch.Clear();
@@ -179,7 +180,8 @@ internal sealed partial class ClientWorldSyncAndMobBridge
             _arrowHitSoundScratch,
             player.IsBlockingShield,
             player.Camera.HorizontalForward,
-            _shieldBlockPositions);
+            _shieldBlockPositions,
+            _arrowMobLootScratch);
         if (arrowDmgToPlayer > 0.0f) _ = player.ApplyDamage(arrowDmgToPlayer, _audio);
 
         for (var i = 0; i < _shieldBlockPositions.Count; i++)
@@ -204,6 +206,16 @@ internal sealed partial class ClientWorldSyncAndMobBridge
 
             player.Hotbar.RefreshSlotVisuals(player.Mode);
             _audio.PlayPositional(SoundCue.ItemPop, player.Camera.Position, gain: 0.48f * player.MasterVolume);
+        }
+
+        // Mob death loot from arrow kills lands on the ground at the kill spot, exactly like melee death drops.
+        for (var i = 0; i < _arrowMobLootScratch.Count; i++)
+        {
+            var arrowLoot = _arrowMobLootScratch[i];
+            if (!arrowLoot.Stack.IsEmpty)
+            {
+                _ = DroppedItems.SpawnScatterDrop(arrowLoot.Position, arrowLoot.Stack, pickupDelaySeconds: 0.40f);
+            }
         }
 
         // 7. Creeper & TNT Explosion Blasts + Shield Blast Mitigation + Explosion Particles!

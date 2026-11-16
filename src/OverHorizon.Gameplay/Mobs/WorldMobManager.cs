@@ -312,7 +312,7 @@ public sealed partial class WorldMobManager
                 }
             }
 
-            mob.YawDegrees = (float)(Math.Atan2(steerDx, steerDz) * (180.0 / Math.PI));
+            mob.TargetYawDegrees = (float)(Math.Atan2(steerDx, steerDz) * (180.0 / Math.PI));
 
             if (mob.Type == MobType.Creeper)
             {
@@ -364,7 +364,7 @@ public sealed partial class WorldMobManager
                 var playerChest = new Vec3d(playerFeetPos.X, playerFeetPos.Y + 1.35, playerFeetPos.Z);
                 if (hasSight && HasClearLineOfSight(world, shootOrigin, playerChest))
                 {
-                    mob.YawDegrees = (float)(Math.Atan2(dx, dz) * (180.0 / Math.PI));
+                    mob.TargetYawDegrees = (float)(Math.Atan2(dx, dz) * (180.0 / Math.PI));
                     mob.DesiredSpeed = dist > 9.5 ? 2.45f : 0.0f;
                     if (mob.AttackCooldownTimer <= 0.0f && dist >= 1.5)
                     {

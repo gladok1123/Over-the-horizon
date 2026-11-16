@@ -21,11 +21,14 @@ public sealed partial class WorldMobManager
             }
             else
             {
-                mob.YawDegrees = NextRandom() % 360U;
+                mob.TargetYawDegrees = NextRandom() % 360U;
                 mob.DesiredSpeed = walkSpeed;
             }
         }
     }
+
+    /// <summary>Maximum body turn rate in degrees per second so steering changes read as smooth rotation.</summary>
+    private const float TurnRateDegreesPerSecond = 300.0f;
 
     private static void StepMobPhysics(
         IVoxelCollisionReader world,
@@ -33,6 +36,14 @@ public sealed partial class WorldMobManager
         float dt,
         List<(MobType Type, Vec3d Position, bool Died, float FallDamage)>? mobLandingHurtEvents)
     {
+        // Bound the body turn so wander picks, chase aim, and panic fleeing rotate smoothly instead of pivoting.
+        var turnDelta = ((mob.TargetYawDegrees - mob.YawDegrees) % 360.0f + 360.0f) % 360.0f;
+        if (turnDelta > 180.0f)
+        {
+            turnDelta -= 360.0f;
+        }
+
+        mob.YawDegrees += Math.Clamp(turnDelta, -TurnRateDegreesPerSecond * dt, TurnRateDegreesPerSecond * dt);
         var yawRad = mob.YawDegrees * (Math.PI / 180.0);
         var wishVx = Math.Sin(yawRad) * mob.DesiredSpeed;
         var wishVz = Math.Cos(yawRad) * mob.DesiredSpeed;
