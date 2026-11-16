@@ -297,6 +297,29 @@ internal sealed class ClientPlayerVitalsAndAudio
         audio.PlayPositional(cue, player.FeetPosition, gain: 0.48f * player.MasterVolume, pitch: pitchJitter);
     }
 
+    /// <summary>
+    /// Plays the footstep cue of the block under the player's feet after a short drop, so a small hop
+    /// lands as a step on the material instead of the full landing thud.
+    /// </summary>
+    /// <param name="player">Player that just touched the ground.</param>
+    /// <param name="world">Client voxel cache.</param>
+    /// <param name="blocks">Frozen block registry.</param>
+    /// <param name="audio">Positional audio subsystem.</param>
+    /// <returns><see langword="true"/> when a surface block was found and its step cue played; otherwise <see langword="false"/>.</returns>
+    public bool TryPlayLandingStep(ClientPlayerController player, ClientWorldCache world, IBlockRegistry blocks, IAudioSubsystem audio)
+    {
+        var groundKey = SampleStandingSurfaceBlockPath(player.FeetPosition, world, blocks);
+        if (groundKey.Length == 0 || groundKey is "air" or "water" or "fire")
+        {
+            return false;
+        }
+
+        var stepCue = ResolveFootstepCue(groundKey);
+        var landingPitch = 0.93f + (((_stepPitchCounter++ * 37) % 15) * 0.01f);
+        audio.PlayPositional(stepCue, player.FeetPosition, gain: 0.48f * player.MasterVolume, pitch: landingPitch);
+        return true;
+    }
+
     private static string SampleStandingSurfaceBlockPath(Vec3d feet, ClientWorldCache world, IBlockRegistry blocks)
     {
         // 1. Check feet voxel itself first (Rails, Powered Rails, Red Bed slabs, Pressure Plates)!

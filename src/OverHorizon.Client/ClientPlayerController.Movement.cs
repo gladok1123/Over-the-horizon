@@ -344,7 +344,12 @@ public sealed partial class ClientPlayerController
                 }
                 else
                 {
-                    audio.PlayPositional(SoundCue.LandSoft, FeetPosition, gain: 0.46f * MasterVolume, pitch: 0.94f);
+                    // Short drops land as a step on the block itself; only a genuine fall keeps the landing thud.
+                    var steppedOntoBlock = _fallDistance <= 3.35 && _vitals.TryPlayLandingStep(this, world, blocks, audio);
+                    if (!steppedOntoBlock)
+                    {
+                        audio.PlayPositional(SoundCue.LandSoft, FeetPosition, gain: 0.46f * MasterVolume, pitch: 0.94f);
+                    }
                 }
             }
 
