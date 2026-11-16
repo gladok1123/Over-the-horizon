@@ -44,7 +44,8 @@ public sealed unsafe partial class VulkanRenderSubsystem
             1024.0f);
         var skyMvp = camera.ComputeRelativeViewMatrix() * skyProj;
 
-        return DrawOverlayBatch(cmd, pipelines, sets, pipelines.OverlayNoDepth, _overlayGeometry.Sky, skyMvp, 100000.0f, 200000.0f);
+        // The sky never distances far enough to engage the fog curve, so (as in OpenGL) it fades to white.
+        return DrawOverlayBatch(cmd, pipelines, sets, pipelines.OverlayNoDepth, _overlayGeometry.Sky, skyMvp, 100000.0f, 200000.0f, Vector3.One);
     }
 
     /// <summary>
@@ -74,7 +75,6 @@ public sealed unsafe partial class VulkanRenderSubsystem
         }
 
         _overlayGeometry.BuildWorldPass(camera, overlay, _stagedAtlas);
-        _ = fogColor;
 
         var drawCalls = 0;
         var viewProj = camera.BuildCameraRelativeViewProjectionMatrix();
@@ -90,7 +90,8 @@ public sealed unsafe partial class VulkanRenderSubsystem
                 _overlayGeometry.Clouds,
                 viewProj,
                 180.0f,
-                360.0f);
+                360.0f,
+                fogColor);
         }
 
         var entFogStart = overlay.IsUnderwater ? 0.6f : chunkFogDist * 0.62f;
@@ -106,7 +107,8 @@ public sealed unsafe partial class VulkanRenderSubsystem
                 _overlayGeometry.WorldTriangles,
                 viewProj,
                 entFogStart,
-                entFogEnd);
+                entFogEnd,
+                fogColor);
         }
 
         if (_overlayGeometry.WorldLines.Count > 0)
@@ -119,7 +121,8 @@ public sealed unsafe partial class VulkanRenderSubsystem
                 _overlayGeometry.WorldLines,
                 viewProj,
                 entFogStart,
-                entFogEnd);
+                entFogEnd,
+                fogColor);
         }
 
         return drawCalls;
@@ -164,7 +167,8 @@ public sealed unsafe partial class VulkanRenderSubsystem
                 _overlayGeometry.ViewModel,
                 handProj,
                 100000.0f,
-                200000.0f);
+                200000.0f,
+                Vector3.One);
         }
 
         if (_uiRenderer is not null)
@@ -222,7 +226,8 @@ public sealed unsafe partial class VulkanRenderSubsystem
             _overlayGeometry.InventoryPreview,
             view * proj,
             100000.0f,
-            200000.0f);
+            200000.0f,
+            Vector3.One);
 
         SetViewportAndScissor(vk, cmd, device.SwapchainExtent);
         return drawCalls;
@@ -236,13 +241,17 @@ public sealed unsafe partial class VulkanRenderSubsystem
         List<OverlayVertex> vertices,
         Matrix4x4 transform,
         float fogStart,
-        float fogEnd)
+        float fogEnd,
+        Vector3 fogColor)
     {
-        if (vertices.Count == 0 || _overlayStream is not { } stream || _device is null)
+        if (vertices.Count == 0 || _device is not { } device || _overlayStreams.Length == 0)
         {
             return 0;
         }
 
+        // Each frame in flight owns its stream, and BeginFrame has already waited on this slot's fence,
+        // so the stream can safely rewind (and grow) before this frame's first write.
+        var stream = _overlayStreams[device.CurrentFrameIndex];
         if (!stream.TryWrite<OverlayVertex>(CollectionsMarshal.AsSpan(vertices), out var offset))
         {
             return 0;
@@ -252,12 +261,12 @@ public sealed unsafe partial class VulkanRenderSubsystem
             _overlayPeakBytes,
             offset + (ulong)(vertices.Count * Unsafe.SizeOf<OverlayVertex>()));
 
-        var vk = _device.Api;
+        var vk = device.Api;
         vk.CmdBindPipeline(cmd, PipelineBindPoint.Graphics, pipeline);
         var descriptorSet = sets.OverlaySet;
         vk.CmdBindDescriptorSets(cmd, PipelineBindPoint.Graphics, pipelines.OverlayLayout, 0, 1, &descriptorSet, 0, null);
 
-        var push = new VulkanOverlayPushConstants(transform, fogStart, fogEnd);
+        var push = new VulkanOverlayPushConstants(transform, fogStart, fogEnd, fogColor);
         vk.CmdPushConstants(
             cmd,
             pipelines.OverlayLayout,

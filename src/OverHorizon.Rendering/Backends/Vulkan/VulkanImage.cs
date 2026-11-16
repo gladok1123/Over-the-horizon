@@ -148,20 +148,23 @@ internal sealed unsafe class VulkanImage : IDisposable
     }
 
     /// <summary>
-    /// Creates the 32-bit float depth attachment used by the swapchain render pass.
+    /// Creates the device depth attachment used by the swapchain render pass in <paramref name="format"/>
+    /// (chosen from what the GPU actually supports as a depth-stencil attachment).
     /// </summary>
     /// <param name="vk">Vulkan API.</param>
     /// <param name="device">Logical device.</param>
     /// <param name="physicalDevice">Physical device used for memory-type selection.</param>
     /// <param name="width">Attachment width in pixels.</param>
     /// <param name="height">Attachment height in pixels.</param>
+    /// <param name="format">Depth or depth-stencil format the render pass was created with.</param>
     /// <returns>The depth attachment.</returns>
     public static VulkanImage CreateDepthAttachment(
         Vk vk,
         Device device,
         PhysicalDevice physicalDevice,
         uint width,
-        uint height)
+        uint height,
+        Format format)
     {
         var imageInfo = new ImageCreateInfo
         {
@@ -170,7 +173,7 @@ internal sealed unsafe class VulkanImage : IDisposable
             Extent = new Extent3D(width, height, 1),
             MipLevels = 1,
             ArrayLayers = 1,
-            Format = Format.D32Sfloat,
+            Format = format,
             Tiling = ImageTiling.Optimal,
             InitialLayout = ImageLayout.Undefined,
             Usage = ImageUsageFlags.DepthStencilAttachmentBit,
@@ -202,14 +205,25 @@ internal sealed unsafe class VulkanImage : IDisposable
             SType = StructureType.ImageViewCreateInfo,
             Image = image,
             ViewType = ImageViewType.Type2D,
-            Format = Format.D32Sfloat,
-            SubresourceRange = new ImageSubresourceRange(ImageAspectFlags.DepthBit, 0, 1, 0, 1),
+            Format = format,
+            SubresourceRange = new ImageSubresourceRange(DepthAspect(format), 0, 1, 0, 1),
         };
 
         ImageView view;
         VulkanResult.Ensure(vk.CreateImageView(device, in viewInfo, null, out view), "vkCreateImageView");
         return new VulkanImage(vk, device, image, memory, view);
     }
+
+    /// <summary>
+    /// Aspect mask a view of <paramref name="format"/> must be created with: combined depth-stencil
+    /// formats expose both aspects (and the render pass may clear either), plain depth formats only depth.
+    /// </summary>
+    /// <param name="format">Depth or depth-stencil format.</param>
+    /// <returns>The image aspect flags for the view.</returns>
+    private static ImageAspectFlags DepthAspect(Format format) =>
+        format is Format.D32SfloatS8Uint or Format.D24UnormS8Uint or Format.D16UnormS8Uint
+            ? ImageAspectFlags.DepthBit | ImageAspectFlags.StencilBit
+            : ImageAspectFlags.DepthBit;
 
     /// <summary>
     /// Creates a nearest-neighbour sampler with clamp-to-edge addressing, matching the blocky Minecraft look.

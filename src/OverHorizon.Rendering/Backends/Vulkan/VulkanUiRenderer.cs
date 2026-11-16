@@ -23,7 +23,7 @@ internal sealed unsafe class VulkanUiRenderer : IDisposable
     private readonly VulkanDescriptorSets _descriptorSets;
     private readonly Sampler _sampler;
     private readonly List<TexturedUiVertex> _vertices = new(12288);
-    private readonly VulkanVertexStream _stream;
+    private readonly VulkanVertexStream[] _streams;
 
     private readonly VulkanImage _fontAtlas;
     private readonly VulkanImage _guiAtlas;
@@ -35,11 +35,13 @@ internal sealed unsafe class VulkanUiRenderer : IDisposable
     /// <param name="pipelines">Pipeline bundle providing the HUD pipeline and layout.</param>
     /// <param name="descriptorSets">Descriptor set bundle providing the HUD set.</param>
     /// <param name="sampler">Nearest-neighbour atlas sampler.</param>
+    /// <param name="disposer">Optional retirement list deferring replaced stream buffers until it is safe to destroy them.</param>
     public VulkanUiRenderer(
         VulkanDevice device,
         VulkanPipelines pipelines,
         VulkanDescriptorSets descriptorSets,
-        Sampler sampler)
+        Sampler sampler,
+        VulkanDeferredDisposer? disposer = null)
     {
         _device = device;
         _pipelines = pipelines;
@@ -53,7 +55,13 @@ internal sealed unsafe class VulkanUiRenderer : IDisposable
             (uint)GuiTextureAtlasGenerator.AtlasWidth,
             (uint)GuiTextureAtlasGenerator.AtlasHeight);
 
-        _stream = new VulkanVertexStream(device.Api, device.LogicalDevice, device.PhysicalDevice, InitialCapacity);
+        // One stream per frame in flight: the HUD of frame N-1 may still be reading the buffer that
+        // frame N would otherwise rewind underneath it.
+        _streams = new VulkanVertexStream[VulkanDevice.FramesInFlight];
+        for (var i = 0; i < _streams.Length; i++)
+        {
+            _streams[i] = new VulkanVertexStream(device.Api, device.LogicalDevice, device.PhysicalDevice, InitialCapacity, disposer);
+        }
     }
 
     /// <summary>Points the HUD's item slot at the freshly uploaded block/item atlas.</summary>
@@ -81,9 +89,11 @@ internal sealed unsafe class VulkanUiRenderer : IDisposable
             return 0;
         }
 
-        _stream.Reset();
-        _stream.EnsureCapacity(Math.Max(_peakBytes, InitialCapacity));
-        if (!_stream.TryWrite<TexturedUiVertex>(CollectionsMarshal.AsSpan(_vertices), out var offset))
+        // BeginFrame has waited on this slot's fence, so its stream is quiescent and may rewind and grow.
+        var stream = _streams[_device.CurrentFrameIndex];
+        stream.Reset();
+        stream.EnsureCapacity(Math.Max(_peakBytes, InitialCapacity));
+        if (!stream.TryWrite<TexturedUiVertex>(CollectionsMarshal.AsSpan(_vertices), out var offset))
         {
             return 0;
         }
@@ -98,7 +108,7 @@ internal sealed unsafe class VulkanUiRenderer : IDisposable
         var viewport = new Vector2(width, height);
         vk.CmdPushConstants(cmd, _pipelines.UiLayout, ShaderStageFlags.VertexBit, 0, 8, &viewport);
 
-        var handle = _stream.Handle;
+        var handle = stream.Handle;
         var bindingOffset = offset;
         vk.CmdBindVertexBuffers(cmd, 0, 1, &handle, &bindingOffset);
         vk.CmdDraw(cmd, (uint)_vertices.Count, 1, 0, 0);
@@ -114,7 +124,11 @@ internal sealed unsafe class VulkanUiRenderer : IDisposable
         }
 
         _disposed = true;
-        _stream.Dispose();
+        foreach (var stream in _streams)
+        {
+            stream.Dispose();
+        }
+
         _fontAtlas.Dispose();
         _guiAtlas.Dispose();
     }

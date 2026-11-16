@@ -11,6 +11,7 @@ layout (push_constant) uniform OverlayPushConstants
 {
     mat4 uTransform;
     vec4 uFog; // x = fog start, y = fog end
+    vec4 uFogColor; // rgb = colour distant geometry fades towards, a unused
 } uPush;
 
 layout (location = 0) out vec4 vColor;

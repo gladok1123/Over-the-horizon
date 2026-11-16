@@ -52,10 +52,10 @@ public sealed unsafe partial class VulkanRenderSubsystem : IWindowRenderSubsyste
     private Sampler _atlasSampler;
     private VulkanImage? _blockAtlasImage;
     private VulkanImage? _entityAtlasImage;
-    private VulkanVertexStream? _overlayStream;
+    private VulkanVertexStream[] _overlayStreams = [];
+    private VulkanDeferredDisposer? _disposer;
     private VulkanUploadQueue? _uploads;
     private VulkanBufferArena? _meshArena;
-    private bool _batchingUploads;
     private VulkanUiRenderer? _uiRenderer;
 
     /// <summary>Initializes a new instance of the <see cref="VulkanRenderSubsystem"/> class.</summary>
@@ -233,7 +233,7 @@ public sealed unsafe partial class VulkanRenderSubsystem : IWindowRenderSubsyste
 
         window.FramebufferResize += newSize =>
         {
-            _device?.InvalidateSwapchain();
+            _device?.InvalidateSwapchain((uint)newSize.X, (uint)newSize.Y);
             onResize?.Invoke(newSize.X, newSize.Y);
         };
 
@@ -294,7 +294,7 @@ public sealed unsafe partial class VulkanRenderSubsystem : IWindowRenderSubsyste
 
     private void UploadMeshToDevice(SectionMeshData mesh)
     {
-        var slot = VulkanSectionSlot.Create(_meshArena!, _uploads!, mesh);
+        var slot = VulkanSectionSlot.Create(_meshArena!, _uploads!, mesh, _disposer);
 
         var chunkPos = new ChunkPos(mesh.SectionPosition.X, mesh.SectionPosition.Z);
         if (!_gpuColumns.TryGetValue(chunkPos, out var col))
@@ -305,12 +305,9 @@ public sealed unsafe partial class VulkanRenderSubsystem : IWindowRenderSubsyste
 
         _gpuSectionCount += col.UpsertSection(slot);
 
-        // Outside a bulk upload the copy is submitted straight away: a section evicted a few lines later must
-        // never leave a recorded-but-unsubmitted copy pointing at a destroyed buffer.
-        if (!_batchingUploads)
-        {
-            _uploads!.Flush();
-        }
+        // The copy stays recorded until the frame-start flush submits it in one batch. That is safe even
+        // when this section is evicted a few lines later: the slot hands its buffers to the deferred
+        // disposer instead of destroying them, so the eventual submission never touches freed memory.
     }
 
     /// <inheritdoc />

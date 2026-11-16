@@ -56,8 +56,11 @@ public sealed unsafe partial class VulkanRenderSubsystem
 
     private void InitializeDeviceResources(IVkSurfaceSource surfaceSource, uint width, uint height)
     {
-        var device = new VulkanDevice(surfaceSource, width, height);
+        var device = new VulkanDevice(surfaceSource, width, height, _options.VSync);
         _device = device;
+
+        // Created before any GPU buffer can be retired: slots and vertex streams capture it at creation.
+        _disposer = new VulkanDeferredDisposer();
 
         var vk = device.Api;
         _shaderModules = new VulkanShaderModules(vk, device.LogicalDevice);
@@ -80,8 +83,21 @@ public sealed unsafe partial class VulkanRenderSubsystem
         _atlasSampler = VulkanImage.CreateNearestSampler(vk, device.LogicalDevice);
         _uploads = new VulkanUploadQueue(device);
         _meshArena = new VulkanBufferArena(device, MemoryPropertyFlags.DeviceLocalBit);
-        _overlayStream = new VulkanVertexStream(vk, device.LogicalDevice, device.PhysicalDevice, 4UL * 1024 * 1024);
-        _uiRenderer = new VulkanUiRenderer(device, _pipelines, _descriptorSets, _atlasSampler);
+
+        // One overlay stream per frame in flight: frame N-1 may still be drawing from the buffer that
+        // frame N would otherwise rewind or grow underneath it.
+        _overlayStreams = new VulkanVertexStream[VulkanDevice.FramesInFlight];
+        for (var i = 0; i < _overlayStreams.Length; i++)
+        {
+            _overlayStreams[i] = new VulkanVertexStream(
+                vk,
+                device.LogicalDevice,
+                device.PhysicalDevice,
+                OverlayStreamInitialCapacity,
+                _disposer);
+        }
+
+        _uiRenderer = new VulkanUiRenderer(device, _pipelines, _descriptorSets, _atlasSampler, _disposer);
 
         RenderingLog.ContextInitialized(_logger, (int)width, (int)height, _options.VSync);
 
@@ -96,7 +112,6 @@ public sealed unsafe partial class VulkanRenderSubsystem
         if (_stagedColumns.Count > 0)
         {
             // One submission for the whole backlog instead of one wait per section.
-            _batchingUploads = true;
             foreach (var colMap in _stagedColumns.Values)
             {
                 foreach (var mesh in colMap.Values)
@@ -105,7 +120,6 @@ public sealed unsafe partial class VulkanRenderSubsystem
                 }
             }
 
-            _batchingUploads = false;
             _uploads!.Flush();
 
             _stagedColumns.Clear();
@@ -161,6 +175,11 @@ public sealed unsafe partial class VulkanRenderSubsystem
 
     private void ReleaseDeviceResources()
     {
+        // Ordering matters: recorded staging copies must reach the GPU before any buffer they write into
+        // is destroyed, the columns must retire their buffers before the disposer drains, and the drain
+        // must run while the arena that owns the section ranges is still alive.
+        _uploads?.Flush();
+
         if (_device is { } device)
         {
             device.WaitIdle();
@@ -176,10 +195,18 @@ public sealed unsafe partial class VulkanRenderSubsystem
         _cullColumnCount = 0;
         _cullColumnsDirty = true;
 
+        // The device is idle, so every buffer retired by the columns above (and by any stream growth)
+        // can be destroyed right now.
+        _disposer?.DrainAll();
+
         _uiRenderer?.Dispose();
         _meshArena?.Dispose();
         _uploads?.Dispose();
-        _overlayStream?.Dispose();
+        foreach (var stream in _overlayStreams)
+        {
+            stream.Dispose();
+        }
+
         _entityAtlasImage?.Dispose();
         _blockAtlasImage?.Dispose();
 
@@ -202,7 +229,8 @@ public sealed unsafe partial class VulkanRenderSubsystem
         _uiRenderer = null;
         _meshArena = null;
         _uploads = null;
-        _overlayStream = null;
+        _overlayStreams = [];
+        _disposer = null;
         _entityAtlasImage = null;
         _blockAtlasImage = null;
         _descriptorSets = null;

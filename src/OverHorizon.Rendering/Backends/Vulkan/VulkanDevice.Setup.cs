@@ -118,13 +118,24 @@ internal sealed unsafe partial class VulkanDevice : IDisposable
         var foundPresent = false;
         for (var i = 0u; i < queueFamilyCount; i++)
         {
-            if (families[i].QueueFlags.HasFlag(QueueFlags.GraphicsBit))
+            _khrSurface.GetPhysicalDeviceSurfaceSupport(device, i, _surface, out var presentSupported);
+            var hasGraphics = families[i].QueueFlags.HasFlag(QueueFlags.GraphicsBit);
+
+            // First choice: a single family that can both render and present, so the swapchain images
+            // never need an explicit queue-family ownership transfer between the two queues.
+            if (hasGraphics && presentSupported)
+            {
+                graphicsFamily = i;
+                presentFamily = i;
+                return true;
+            }
+
+            if (hasGraphics)
             {
                 graphicsFamily = i;
                 foundGraphics = true;
             }
 
-            _khrSurface.GetPhysicalDeviceSurfaceSupport(device, i, _surface, out var presentSupported);
             if (presentSupported)
             {
                 presentFamily = i;
@@ -215,39 +226,6 @@ internal sealed unsafe partial class VulkanDevice : IDisposable
         VulkanResult.Ensure(_vk.CreateCommandPool(_logicalDevice, in poolInfo, null, out _commandPool), "vkCreateCommandPool");
     }
 
-    private void ChooseSurfaceFormat(uint width, uint height)
-    {
-        _khrSurface.GetPhysicalDeviceSurfaceCapabilities(_physicalDevice, _surface, out var capabilities);
-
-        var formatCount = 0u;
-        _khrSurface.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, ref formatCount, null);
-        var formats = new SurfaceFormatKHR[Math.Max(1u, formatCount)];
-        fixed (SurfaceFormatKHR* formatsPtr = formats)
-        {
-            _khrSurface.GetPhysicalDeviceSurfaceFormats(_physicalDevice, _surface, ref formatCount, formatsPtr);
-        }
-
-        // The shaders do their lighting maths on the raw texel values and the OpenGL backend wrote them to a
-        // plain UNORM default framebuffer, so the swapchain must stay UNORM too: an sRGB format would apply a
-        // linear->sRGB encode on write and wash the whole scene out.
-        _swapchainFormat = formats[0].Format;
-        var preferredFormat = formats.Select(static candidate => candidate.Format)
-            .FirstOrDefault(
-                static format => format is Format.B8G8R8A8Unorm or Format.R8G8B8A8Unorm,
-                _swapchainFormat);
-
-        _swapchainFormat = preferredFormat;
-
-        var extent = capabilities.CurrentExtent;
-        if (extent.Width == uint.MaxValue || extent.Width == 0)
-        {
-            extent.Width = Math.Clamp(width, capabilities.MinImageExtent.Width, capabilities.MaxImageExtent.Width);
-            extent.Height = Math.Clamp(height, capabilities.MinImageExtent.Height, capabilities.MaxImageExtent.Height);
-        }
-
-        _swapchainExtent = extent;
-    }
-
     private void CreateRenderPass()
     {
         var colorAttachment = new AttachmentDescription
@@ -264,7 +242,7 @@ internal sealed unsafe partial class VulkanDevice : IDisposable
 
         var depthAttachment = new AttachmentDescription
         {
-            Format = Format.D32Sfloat,
+            Format = _depthFormat,
             Samples = SampleCountFlags.Count1Bit,
             LoadOp = AttachmentLoadOp.Clear,
             StoreOp = AttachmentStoreOp.DontCare,
@@ -325,15 +303,7 @@ internal sealed unsafe partial class VulkanDevice : IDisposable
             _khrSurface.GetPhysicalDeviceSurfacePresentModes(_physicalDevice, _surface, ref presentModeCount, presentModesPtr);
         }
 
-        var presentMode = PresentModeKHR.FifoKhr;
-        foreach (var candidate in presentModes)
-        {
-            if (candidate == PresentModeKHR.MailboxKhr)
-            {
-                presentMode = candidate;
-                break;
-            }
-        }
+        var presentMode = ChoosePresentMode(presentModes.AsSpan(0, (int)presentModeCount));
 
         var imageCount = capabilities.MinImageCount + 1;
         if (capabilities.MaxImageCount > 0 && imageCount > capabilities.MaxImageCount)
@@ -352,7 +322,7 @@ internal sealed unsafe partial class VulkanDevice : IDisposable
             Surface = _surface,
             MinImageCount = imageCount,
             ImageFormat = _swapchainFormat,
-            ImageColorSpace = ColorSpaceKHR.SpaceSrgbNonlinearKhr,
+            ImageColorSpace = _swapchainColorSpace,
             ImageExtent = _swapchainExtent,
             ImageArrayLayers = 1,
             ImageUsage = ImageUsageFlags.ColorAttachmentBit,
@@ -360,7 +330,7 @@ internal sealed unsafe partial class VulkanDevice : IDisposable
             QueueFamilyIndexCount = exclusive ? 0u : 2u,
             PQueueFamilyIndices = queueFamilyIndices,
             PreTransform = capabilities.CurrentTransform,
-            CompositeAlpha = CompositeAlphaFlagsKHR.OpaqueBitKhr,
+            CompositeAlpha = ChooseCompositeAlpha(capabilities),
             PresentMode = presentMode,
             Clipped = true,
         };
@@ -399,7 +369,8 @@ internal sealed unsafe partial class VulkanDevice : IDisposable
             _logicalDevice,
             _physicalDevice,
             _swapchainExtent.Width,
-            _swapchainExtent.Height);
+            _swapchainExtent.Height,
+            _depthFormat);
 
         _framebuffers = new Framebuffer[_swapchainImageViews.Length];
         var framebufferAttachments = stackalloc ImageView[2];

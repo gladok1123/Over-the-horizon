@@ -10,6 +10,7 @@ layout (push_constant) uniform OverlayPushConstants
 {
     mat4 uTransform;
     vec4 uFog; // x = fog start, y = fog end
+    vec4 uFogColor; // rgb = colour distant geometry fades towards, a unused
 } uPush;
 
 layout (location = 0) in vec4 vColor;
@@ -48,5 +49,5 @@ void main()
     }
 
     float fog = clamp((vDistance - uPush.uFog.x) / max(0.01, uPush.uFog.y - uPush.uFog.x), 0.0, 1.0);
-    FragColor = vec4(mix(col.rgb, vec3(0.0), fog), col.a);
+    FragColor = vec4(mix(col.rgb, uPush.uFogColor.rgb, fog), col.a);
 }

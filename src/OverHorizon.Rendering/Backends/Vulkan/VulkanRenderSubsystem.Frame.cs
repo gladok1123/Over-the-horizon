@@ -37,6 +37,14 @@ public sealed unsafe partial class VulkanRenderSubsystem
             return SimulateCpuVisibilityPass(in frustum);
         }
 
+        // Every retire performed by this render call (overlay-stream growth) belongs to the frame that is
+        // about to record; retires from the update in between keep the stamp written by the previous frame,
+        // which is what makes Drain(_frameCount - 2) exact two frames later.
+        if (_disposer is not null)
+        {
+            _disposer.Frame = _frameCount;
+        }
+
         // Every mesh handed to us since the last frame is uploaded in one submission and one wait here, instead
         // of stalling the queue four times per section while chunks stream in.
         _uploads?.Flush();
@@ -49,19 +57,29 @@ public sealed unsafe partial class VulkanRenderSubsystem
         if (!device.BeginFrame(new Vector4(skyColor, 1.0f)))
         {
             // The swapchain is being recreated (minimised window, resize): drop this frame, keep the metrics.
+            // No frame was submitted for this slot, so an explicit idle proves every earlier frame is done
+            // and lets a full drain keep retired buffers from piling up while nothing can be presented.
+            device.WaitIdle();
+            _disposer?.DrainAll();
             return LastFrameMetrics;
         }
+
+        // This slot's fence has just been waited on, which proves every frame up to _frameCount - 2 has
+        // finished on the GPU: everything the disposer stamped by then is dead memory and can be destroyed.
+        _disposer?.Drain(_frameCount - 2);
 
         var vk = device.Api;
         var cmd = device.CurrentCommandBuffer;
         var frameIndex = device.CurrentFrameIndex;
 
         // The overlay stream is a persistently mapped bump allocator: it is rewound once per frame and may only
-        // grow here, before anything has been recorded against it.
-        if (_overlayStream is not null)
+        // grow here, before anything has been recorded against it. Each frame in flight owns its own stream, so
+        // this rewind never disturbs the frame that is still in flight.
+        if (_overlayStreams.Length > 0)
         {
-            _overlayStream.Reset();
-            _overlayStream.EnsureCapacity(Math.Max(_overlayPeakBytes, OverlayStreamInitialCapacity));
+            var overlayStream = _overlayStreams[frameIndex];
+            overlayStream.Reset();
+            overlayStream.EnsureCapacity(Math.Max(_overlayPeakBytes, OverlayStreamInitialCapacity));
         }
 
         _overlayPeakBytes = 0;
